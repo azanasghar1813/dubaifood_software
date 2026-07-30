@@ -1,20 +1,21 @@
 import { useState, useRef, useEffect } from "react"
 import { useUIStore } from "../store/uiStore"
-import { useAuthStore, CASHIERS } from "../store/authStore"
+import { useAuthStore } from "../store/authStore"
 import { Bell, Menu,  LogOut, Users, X, ChevronDown, Lock, User as UserIcon, Wifi, Printer, Clock, RefreshCw, Calendar, Search, Settings, Sun, Moon, Minus, Square } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 
 export default function TopNavbar() {
   const { toggleSidebar } = useUIStore()
-  const { user, login, logout } = useAuthStore()
+  const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [isSwitchModalOpen, setIsSwitchModalOpen] = useState(false)
   
   // Switch Cashier State
-  const [selectedCashier, setSelectedCashier] = useState(CASHIERS[0])
+  const dummyCashiers = [{ id: '1', name: 'Ali (Mock)', role: 'cashier', shift_id: '1', initial_float: 0 }]
+  const [selectedCashier, setSelectedCashier] = useState(dummyCashiers[0])
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [pin, setPin] = useState("")
   const [error, setError] = useState("")
@@ -44,20 +45,13 @@ export default function TopNavbar() {
 
   const handleSwitchCashier = (e: React.FormEvent) => {
     e.preventDefault()
-    setError("")
-    if (login(selectedCashier, pin)) {
-      setIsSwitchModalOpen(false)
-      setPin("")
-      setIsProfileOpen(false)
-    } else {
-      setError("Invalid PIN. Please try again.")
-    }
+    setError("Shift Engine not yet integrated. Please logout.")
   }
 
   const openSwitchModal = () => {
     setIsProfileOpen(false)
     setIsSwitchModalOpen(true)
-    setSelectedCashier(CASHIERS[0])
+    setSelectedCashier(dummyCashiers[0])
     setPin("")
     setError("")
   }
@@ -251,7 +245,7 @@ export default function TopNavbar() {
                       <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                         <UserIcon className="w-4 h-4" />
                       </div>
-                      <span className="font-bold">{selectedCashier}</span>
+                      <span className="font-bold">{selectedCashier.name}</span>
                       <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
                     </div>
                     
@@ -261,16 +255,16 @@ export default function TopNavbar() {
                         animate={{ opacity: 1, y: 0 }}
                         className="absolute top-full left-0 w-full mt-1 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden"
                       >
-                        {CASHIERS.map(cashier => (
+                        {dummyCashiers.map(cashier => (
                           <div 
-                            key={cashier}
+                            key={cashier.id}
                             onClick={() => {
                               setSelectedCashier(cashier)
                               setIsDropdownOpen(false)
                             }}
-                            className={`px-4 py-2 text-sm cursor-pointer hover:bg-secondary transition-colors font-bold ${selectedCashier === cashier ? 'bg-primary/10 text-primary' : ''}`}
+                            className={`px-4 py-2 text-sm cursor-pointer hover:bg-secondary transition-colors font-bold ${selectedCashier.id === cashier.id ? 'bg-primary/10 text-primary' : ''}`}
                           >
-                            {cashier}
+                            {cashier.name}
                           </div>
                         ))}
                       </motion.div>

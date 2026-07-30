@@ -1,17 +1,19 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { 
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  AreaChart, Area
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts"
-import { 
-  DollarSign, ShoppingBag, TrendingUp, Check, Search,
-  RefreshCw, Wifi, Printer, AlertTriangle, Database,
-  AlertCircle, ShoppingCart, Bell, User, Layers,
-  Flame, CheckCircle, Settings, ChevronRight, FileText
+import {
+  DollarSign, ShoppingBag, TrendingUp, CheckCircle, AlertCircle,
+  Flame, Bell, ChevronRight, Search, ShoppingCart, Layers, FileText,
+  RefreshCw, AlertTriangle, Check
 } from "lucide-react"
 import { useOrderStore } from "../store/orderStore"
 import { usePosStore } from "../store/posStore"
+import { useAuthStore } from "../store/authStore"
+import { dashboardService } from "../services/dashboardService"
+import type { DashboardSummary, DashboardOperations, RevenueAnalytics, PopularProduct, ActivityFeedItem } from "../services/dashboardService"
+import { toast } from "../store/toastStore"
 import { useNavigate } from "react-router-dom"
 
 // Status color definitions
@@ -42,6 +44,21 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const { orders } = useOrderStore()
   const { loadOrderForEdit, clearCart } = usePosStore()
+  const { user } = useAuthStore()
+
+  // Backend state
+  const [summary, setSummary] = useState<DashboardSummary | null>(null)
+  const [operations, setOperations] = useState<DashboardOperations | null>(null)
+  const [revenue, setRevenue] = useState<RevenueAnalytics[]>([])
+  const [popular, setPopular] = useState<PopularProduct[]>([])
+  const [activities, setActivities] = useState<ActivityFeedItem[]>([])
+  const [isLoading, setIsLoading] = useState({
+    summary: true,
+    operations: true,
+    revenue: true,
+    popular: true,
+    activity: true
+  })
 
   // Interface states
   const [searchQuery, setSearchQuery] = useState("")
@@ -72,67 +89,63 @@ export default function Dashboard() {
 
 
 
-  // Auto Refresh system metrics simulation
   const handleManualSync = () => {
-    // console.log("Cloud database synchronization completed")
+    // Manually trigger a refresh
+    fetchDashboardData()
   }
 
+  const fetchDashboardData = async () => {
+    setIsLoading({ summary: true, operations: true, revenue: true, popular: true, activity: true })
 
+    // Fetch Summary
+    dashboardService.getSummary().then(res => {
+      setSummary(res.data)
+      setIsLoading(prev => ({ ...prev, summary: false }))
+    }).catch(() => {
+      setIsLoading(prev => ({ ...prev, summary: false }))
+      toast.error("Dashboard Error", "Failed to load sales summary")
+    })
 
-  // Dynamic calculated sales, customer counts, stats from useOrderStore
-  const stats = useMemo(() => {
-    const totalTodaySales = orders
-      .filter(o => o.status === 'Completed' || o.status === 'Confirmed')
-      .reduce((sum, o) => sum + o.total, 0)
-    
-    const countOrders = orders.length
-    const prepOrders = orders.filter(o => o.kitchenStatus === 'Preparing').length
-    const readyOrdersCount = orders.filter(o => o.kitchenStatus === 'Ready').length
-    const servedOrders = orders.filter(o => o.kitchenStatus === 'Served').length
-    const paidOrders = orders.filter(o => o.paymentStatus === 'Paid').length
-    const unpaidOrders = orders.filter(o => o.paymentStatus === 'Unpaid').length
-    const avgOrderValue = countOrders > 0 ? Math.round(totalTodaySales / countOrders) : 0
-    const customersToday = new Set(orders.map(o => o.customerName || 'Walk-In')).size
-    
-    // Segment Sales
-    const fastFoodSales = orders
-      .filter(o => o.items.some(i => !i.name.toLowerCase().includes('karahi') && !i.name.toLowerCase().includes('handi') && !i.name.toLowerCase().includes('deal')))
-      .reduce((sum, o) => sum + o.total, 0)
-    
-    const restaurantSales = orders
-      .filter(o => o.items.some(i => i.name.toLowerCase().includes('karahi') || i.name.toLowerCase().includes('handi')))
-      .reduce((sum, o) => sum + o.total, 0)
-      
-    const dealsSales = orders
-      .filter(o => o.items.some(i => i.name.toLowerCase().includes('deal')))
-      .reduce((sum, o) => sum + o.total, 0)
+    // Fetch Operations
+    dashboardService.getOperations().then(res => {
+      setOperations(res.data)
+      setIsLoading(prev => ({ ...prev, operations: false }))
+    }).catch(() => setIsLoading(prev => ({ ...prev, operations: false })))
 
-    return {
-      todaySales: totalTodaySales,
-      ordersCount: countOrders,
-      preparing: prepOrders,
-      ready: readyOrdersCount,
-      served: servedOrders,
-      paid: paidOrders,
-      unpaid: unpaidOrders,
-      aov: avgOrderValue,
-      customers: customersToday,
-      fastFood: fastFoodSales,
-      restaurant: restaurantSales,
-      deals: dealsSales,
-      cashInDrawer: totalTodaySales * 0.72 // Simulation of Cash vs Card
+    // Fetch Revenue (Permission check on backend, but we also check locally before fetching)
+    if (user?.permissions?.includes('VIEW_REPORTS') || user?.role === '1') {
+      dashboardService.getRevenueAnalytics().then(res => {
+        setRevenue(res.data)
+        setIsLoading(prev => ({ ...prev, revenue: false }))
+      }).catch(() => setIsLoading(prev => ({ ...prev, revenue: false })))
+    } else {
+      setIsLoading(prev => ({ ...prev, revenue: false }))
     }
-  }, [orders])
 
-  // Chart data helpers
-  const hourlySalesData = [
-    { hour: "06:00 AM", sales: 2500 }, { hour: "08:00 AM", sales: 8500 },
-    { hour: "10:00 AM", sales: 12000 }, { hour: "12:00 PM", sales: 34000 },
-    { hour: "02:00 PM", sales: 28000 }, { hour: "04:00 PM", sales: 18500 },
-    { hour: "06:00 PM", sales: 42000 }, { hour: "08:00 PM", sales: 78000 },
-    { hour: "10:00 PM", sales: 94000 }, { hour: "12:00 AM", sales: 55000 },
-    { hour: "02:00 AM", sales: 22000 }, { hour: "04:00 AM", sales: 6500 }
-  ]
+    // Fetch Popular
+    dashboardService.getPopularProducts().then(res => {
+      setPopular(res.data)
+      setIsLoading(prev => ({ ...prev, popular: false }))
+    }).catch(() => setIsLoading(prev => ({ ...prev, popular: false })))
+
+    // Fetch Activity
+    dashboardService.getActivityFeed().then(res => {
+      setActivities(res.data)
+      setIsLoading(prev => ({ ...prev, activity: false }))
+    }).catch(() => setIsLoading(prev => ({ ...prev, activity: false })))
+  }
+
+  // Auto refresh
+  useEffect(() => {
+    fetchDashboardData()
+    // Poll every 60 seconds
+    const interval = setInterval(fetchDashboardData, 60000)
+    return () => clearInterval(interval)
+  }, [])
+
+
+
+
 
 
 
@@ -144,26 +157,26 @@ export default function Dashboard() {
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
       const q = searchQuery.toLowerCase()
-      return o.orderNumber.includes(q) || 
-             (o.customerName || '').toLowerCase().includes(q) ||
-             (o.cashierName || '').toLowerCase().includes(q)
+      return o.orderNumber.includes(q) ||
+        (o.customerName || '').toLowerCase().includes(q) ||
+        (o.cashierName || '').toLowerCase().includes(q)
     })
   }, [orders, searchQuery])
 
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto text-foreground">
-      
+
 
       {/* ==================================================
           OPERATIONS KPI CARDS BLOCK
           ================================================== */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { title: "Today's Sales", value: `Rs. ${stats.todaySales.toLocaleString()}`, desc: "Paid + Confirmed orders", trend: "+12.4% vs yesterday", color: "text-emerald-500", icon: DollarSign },
-          { title: "Today's Orders", value: stats.ordersCount, desc: "Total transactions today", trend: "+8.2% vs yesterday", color: "text-blue-500", icon: ShoppingBag },
-          { title: "Paid Orders", value: stats.paid, desc: "Completed transactions", trend: "Steady range (+1%)", color: "text-zinc-400", icon: CheckCircle },
-          { title: "Unpaid Orders", value: stats.unpaid, desc: "Open credit bills", trend: "Requires payout processing", color: "text-red-500", icon: AlertCircle }
+          { title: "Today's Sales", value: `Rs. ${(summary?.todaySales || 0).toLocaleString()}`, desc: "Paid + Confirmed orders", trend: "Live data", color: "text-emerald-500", icon: DollarSign },
+          { title: "Today's Orders", value: summary?.ordersCount || 0, desc: "Total transactions today", trend: "Live data", color: "text-blue-500", icon: ShoppingBag },
+          { title: "Paid Orders", value: summary?.paid || 0, desc: "Completed transactions", trend: "Steady range (+1%)", color: "text-zinc-400", icon: CheckCircle },
+          { title: "Unpaid Orders", value: operations?.unpaidOrders || 0, desc: "Open credit bills", trend: "Requires payout processing", color: "text-red-500", icon: AlertCircle }
         ].map((card, i) => (
           <motion.div
             key={card.title}
@@ -208,7 +221,7 @@ export default function Dashboard() {
                 <p className="text-[10px] text-muted-foreground font-bold">Active in kitchens</p>
               </div>
             </div>
-            <span className="text-2xl font-black text-sky-500">{stats.preparing}</span>
+            <span className="text-2xl font-black text-sky-500">{operations?.preparing || 0}</span>
           </div>
 
           <ChevronRight className="hidden md:block w-6 h-6 text-muted-foreground shrink-0" />
@@ -223,7 +236,7 @@ export default function Dashboard() {
                 <p className="text-[10px] text-muted-foreground font-bold">Waiting for servers</p>
               </div>
             </div>
-            <span className="text-2xl font-black text-orange-500">{stats.ready}</span>
+            <span className="text-2xl font-black text-orange-500">{operations?.ready || 0}</span>
           </div>
 
           <ChevronRight className="hidden md:block w-6 h-6 text-muted-foreground shrink-0" />
@@ -238,7 +251,7 @@ export default function Dashboard() {
                 <p className="text-[10px] text-muted-foreground font-bold">Delivered to guests</p>
               </div>
             </div>
-            <span className="text-2xl font-black text-purple-500">{stats.served}</span>
+            <span className="text-2xl font-black text-purple-500">{summary?.served || 0}</span>
           </div>
         </div>
       </div>
@@ -247,10 +260,10 @@ export default function Dashboard() {
           MAIN OPERATIONS CONTENT GRID (Recent Orders & Quick Actions)
           ================================================== */}
       <div className="grid grid-cols-12 gap-6">
-        
+
         {/* Left Column (col-span-8) */}
         <div className="col-span-12 xl:col-span-8 flex flex-col">
-          
+
           {/* Section: Recent Orders */}
           <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm flex-1">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border pb-4 mb-4 gap-2">
@@ -260,11 +273,11 @@ export default function Dashboard() {
               </div>
               <div className="relative w-full sm:w-64">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"><Search className="w-4 h-4" /></span>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search orders, customers..." 
+                  placeholder="Search orders, customers..."
                   className="w-full h-9 pl-9 pr-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-bold"
                 />
               </div>
@@ -274,13 +287,12 @@ export default function Dashboard() {
               {filteredOrders.slice(0, 5).map(order => {
                 const elapsedMin = Math.round((Date.now() - new Date(order.timestamp).getTime()) / 60000)
                 const isOverdue = elapsedMin > 25 && order.kitchenStatus !== 'Served' && order.kitchenStatus !== 'Cancelled'
-                
+
                 return (
-                  <div 
-                    key={order.id} 
-                    className={`p-4 rounded-2xl border bg-card transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-secondary/20 group ${
-                      isOverdue ? 'border-red-500/40 shadow-lg shadow-red-500/5 animate-pulse' : 'border-border'
-                    }`}
+                  <div
+                    key={order.id}
+                    className={`p-4 rounded-2xl border bg-card transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-secondary/20 group ${isOverdue ? 'border-red-500/40 shadow-lg shadow-red-500/5 animate-pulse' : 'border-border'
+                      }`}
                   >
                     <div>
                       <div className="flex items-center gap-2">
@@ -313,7 +325,7 @@ export default function Dashboard() {
                         <p className="text-[10px] text-muted-foreground font-bold">{elapsedMin} mins ago</p>
                       </div>
                       <div className="flex gap-1.5">
-                        <button 
+                        <button
                           onClick={() => {
                             clearCart()
                             loadOrderForEdit(order)
@@ -341,15 +353,15 @@ export default function Dashboard() {
           <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm">
             <h3 className="text-lg font-black uppercase tracking-wider text-foreground mb-4">Quick Actions</h3>
             <div className="grid grid-cols-2 gap-3">
-              <button 
+              <button
                 onClick={() => navigate("/pos")}
                 className="p-4 bg-secondary hover:bg-primary hover:text-white border border-border text-xs font-black rounded-2xl transition-all text-center flex flex-col items-center justify-center gap-2"
               >
                 <ShoppingCart className="w-5 h-5" />
                 <span>New POS Order</span>
               </button>
-              
-              <button 
+
+              <button
                 onClick={() => navigate("/orders")}
                 className="p-4 bg-secondary hover:bg-primary hover:text-white border border-border text-xs font-black rounded-2xl transition-all text-center flex flex-col items-center justify-center gap-2"
               >
@@ -357,7 +369,7 @@ export default function Dashboard() {
                 <span>Order History</span>
               </button>
 
-              <button 
+              <button
                 onClick={() => navigate("/reports")}
                 className="p-4 bg-secondary hover:bg-primary hover:text-white border border-border text-xs font-black rounded-2xl transition-all text-center flex flex-col items-center justify-center gap-2"
               >
@@ -365,7 +377,7 @@ export default function Dashboard() {
                 <span>Reports History</span>
               </button>
 
-              <button 
+              <button
                 onClick={handleManualSync}
                 className="p-4 bg-secondary hover:bg-primary hover:text-white border border-border text-xs font-black rounded-2xl transition-all text-center flex flex-col items-center justify-center gap-2"
               >
@@ -374,14 +386,14 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-          
+
           {/* Section: Alert Center */}
           <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm">
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Alert Center</h3>
               {alerts.length > 0 && (
-                <button 
-                  onClick={() => setAlerts([])} 
+                <button
+                  onClick={() => setAlerts([])}
                   className="text-[10px] text-primary hover:underline font-black"
                 >
                   Clear All
@@ -391,20 +403,19 @@ export default function Dashboard() {
             {alerts.length > 0 ? (
               <div className="space-y-2">
                 {alerts.map(alert => (
-                  <div 
-                    key={alert.id} 
-                    className={`p-3 rounded-2xl border transition-colors flex gap-2 items-start ${
-                      alert.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
-                      alert.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
-                      'bg-blue-500/10 border-blue-500/20 text-blue-500'
-                    }`}
+                  <div
+                    key={alert.id}
+                    className={`p-3 rounded-2xl border transition-colors flex gap-2 items-start ${alert.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
+                        alert.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
+                          'bg-blue-500/10 border-blue-500/20 text-blue-500'
+                      }`}
                   >
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                     <div className="flex-1">
                       <p className="text-xs font-bold leading-normal">{alert.title}</p>
                       <div className="flex justify-between items-center mt-1">
                         <span className="text-[9px] font-semibold opacity-75">{alert.time}</span>
-                        <button 
+                        <button
                           onClick={() => setAlerts(prev => prev.filter(a => a.id !== alert.id))}
                           className="text-[9px] font-black uppercase tracking-wider hover:opacity-50"
                         >
@@ -444,24 +455,23 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              
+
               {/* Ground Floor */}
               <div>
                 <h4 className="font-black text-xs uppercase text-foreground mb-3 text-center">Ground Floor</h4>
                 <div className="grid grid-cols-3 gap-2">
                   {groundFloorTables.map((t, idx) => (
-                    <button 
-                      key={t.id} 
+                    <button
+                      key={t.id}
                       onClick={() => {
                         const next = [...groundFloorTables]
                         next[idx].status = t.status === "Occupied" ? "Available" : "Occupied"
                         setGroundFloorTables(next)
                       }}
-                      className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${
-                        t.status === "Occupied" 
-                          ? 'bg-red-500/10 text-red-500 border-red-500/30' 
+                      className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${t.status === "Occupied"
+                          ? 'bg-red-500/10 text-red-500 border-red-500/30'
                           : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:border-emerald-500'
-                      }`}
+                        }`}
                     >
                       {t.id}
                     </button>
@@ -474,18 +484,17 @@ export default function Dashboard() {
                 <h4 className="font-black text-xs uppercase text-foreground mb-3 text-center">Family Hall</h4>
                 <div className="grid grid-cols-2 gap-2">
                   {familyTables.map((t, idx) => (
-                    <button 
-                      key={t.id} 
+                    <button
+                      key={t.id}
                       onClick={() => {
                         const next = [...familyTables]
                         next[idx].status = t.status === "Occupied" ? "Available" : "Occupied"
                         setFamilyTables(next)
                       }}
-                      className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${
-                        t.status === "Occupied" 
-                          ? 'bg-red-500/10 text-red-500 border-red-500/30' 
+                      className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${t.status === "Occupied"
+                          ? 'bg-red-500/10 text-red-500 border-red-500/30'
                           : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:border-emerald-500'
-                      }`}
+                        }`}
                     >
                       {t.id}
                     </button>
@@ -498,18 +507,17 @@ export default function Dashboard() {
                 <h4 className="font-black text-xs uppercase text-foreground mb-3 text-center">Rooftop</h4>
                 <div className="grid grid-cols-3 gap-2">
                   {rooftopTables.map((t, idx) => (
-                    <button 
-                      key={t.id} 
+                    <button
+                      key={t.id}
                       onClick={() => {
                         const next = [...rooftopTables]
                         next[idx].status = t.status === "Occupied" ? "Available" : "Occupied"
                         setRooftopTables(next)
                       }}
-                      className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${
-                        t.status === "Occupied" 
-                          ? 'bg-red-500/10 text-red-500 border-red-500/30' 
+                      className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${t.status === "Occupied"
+                          ? 'bg-red-500/10 text-red-500 border-red-500/30'
                           : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:border-emerald-500'
-                      }`}
+                        }`}
                     >
                       {t.id}
                     </button>
@@ -520,52 +528,60 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-        
+
       </div>
 
       {/* ==================================================
           Section: Hourly Sales Chart
           ================================================== */}
-      <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm">
-        <div className="flex justify-between items-center border-b border-border pb-4 mb-4">
-          <div>
-            <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Hourly Sales Trend</h3>
-            <p className="text-xs text-muted-foreground font-bold mt-0.5">Tracked over the active 24-hr business day (6 AM - 6 AM)</p>
+      {(user?.permissions?.includes('VIEW_REPORTS') || user?.role === '1') && (
+        <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm">
+          <div className="flex justify-between items-center border-b border-border pb-4 mb-4">
+            <div>
+              <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Hourly Sales Trend</h3>
+              <p className="text-xs text-muted-foreground font-bold mt-0.5">Tracked over the active 24-hr business day</p>
+            </div>
+          </div>
+          <div className="h-[300px] w-full mt-4">
+            {isLoading.revenue ? (
+              <div className="w-full h-full flex items-center justify-center">
+                <span className="text-muted-foreground font-bold text-sm">Loading analytics...</span>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={revenue}>
+                  <defs>
+                    <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                  <XAxis
+                    dataKey="hour"
+                    stroke="hsl(var(--muted-foreground))"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    stroke="hsl(var(--muted-foreground))"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(val) => `Rs ${val / 1000}k`}
+                  />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '12px' }}
+                    formatter={(val) => [`Rs. ${Number(val).toLocaleString()}`, "Sales"]}
+                  />
+                  <Area type="monotone" dataKey="sales" stroke="hsl(var(--primary))" strokeWidth={3} fillOpacity={1} fill="url(#salesGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
-        <div className="h-[300px] w-full mt-4">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={hourlySalesData}>
-              <defs>
-                <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-              <XAxis 
-                dataKey="hour" 
-                stroke="hsl(var(--muted-foreground))" 
-                fontSize={11} 
-                tickLine={false} 
-                axisLine={false} 
-              />
-              <YAxis 
-                stroke="hsl(var(--muted-foreground))" 
-                fontSize={11} 
-                tickLine={false} 
-                axisLine={false} 
-                tickFormatter={(val) => `Rs ${val / 1000}k`}
-              />
-              <Tooltip 
-                contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '12px' }}
-                formatter={(val) => [`Rs. ${Number(val).toLocaleString()}`, "Sales"]}
-              />
-              <Area type="monotone" dataKey="sales" stroke="hsl(var(--primary))" strokeWidth={3} fillOpacity={1} fill="url(#salesGrad)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      )}
 
       {/* Drawer Simulation Modal */}
       <AnimatePresence>
@@ -580,7 +596,7 @@ export default function Dashboard() {
               <p className="text-xs text-muted-foreground font-semibold mt-2">
                 Manager override key applied. Cashier Ali is authorized to process transactions. Logged in audit history.
               </p>
-              <button 
+              <button
                 onClick={() => setDrawerOpen(false)}
                 className="w-full mt-6 py-3 bg-secondary hover:bg-border rounded-xl font-bold text-xs uppercase transition-colors"
               >

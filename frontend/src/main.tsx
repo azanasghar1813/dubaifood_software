@@ -23,6 +23,9 @@ import UsersPermissions from './pages/UsersPermissions.tsx'
 import ActivityLogs from './pages/ActivityLogs.tsx'
 import Backup from './pages/Backup.tsx'
 import GlobalErrorBoundary from './components/GlobalErrorBoundary.tsx'
+import { ToastProvider } from './components/ui/ToastProvider.tsx'
+import { ProtectedRoute } from './components/ProtectedRoute.tsx'
+import { AppInitializer } from './components/AppInitializer.tsx'
 import { useUIStore } from './store/uiStore.ts'
 
 // Initialize theme on app load
@@ -34,7 +37,13 @@ const router = createBrowserRouter([
   },
   {
     path: "/",
-    element: <DashboardLayout />,
+    element: (
+      <AppInitializer>
+        <ProtectedRoute>
+          <DashboardLayout />
+        </ProtectedRoute>
+      </AppInitializer>
+    ),
     errorElement: <GlobalErrorBoundary />,
     children: [
       { path: "/", element: <Dashboard /> },
@@ -63,5 +72,6 @@ const router = createBrowserRouter([
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <RouterProvider router={router} />
+    <ToastProvider />
   </StrictMode>,
 )

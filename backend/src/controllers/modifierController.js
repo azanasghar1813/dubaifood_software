@@ -1,5 +1,5 @@
 import { modifierService } from '../services/modifierService.js';
-import { responseHandler } from '../utils/responseHandler.js';
+import { sendSuccess, sendError } from '../utils/responseHandler.js';
 import { modifierRepository } from '../repositories/modifierRepository.js';
 
 class ModifierController {
@@ -7,41 +7,39 @@ class ModifierController {
   createGroup = (req, res) => {
     try {
       const group = modifierService.createGroup(req.body, req.user.id);
-      return responseHandler.success(res, group, 'Modifier group created successfully', 201);
+      return sendSuccess(res, group, 'Modifier group created successfully', 201);
     } catch (error) {
-      return responseHandler.error(res, error.message, 400);
+      return sendError(res, 400, error.message);
     }
   };
 
-  updateGroup = (req, res) => {
+  updateModifierGroup = (req, res) => {
     try {
       const { groupId } = req.params;
-      const group = modifierService.updateGroup(groupId, req.body, req.user.id);
-      return responseHandler.success(res, group, 'Modifier group updated successfully');
+      const group = modifierService.updateModifierGroup(groupId, req.body, req.user.id);
+      return sendSuccess(res, group, 'Modifier group updated successfully');
     } catch (error) {
-      return responseHandler.error(res, error.message, 400);
+      return sendError(res, 400, error.message);
     }
   };
 
-  deleteGroup = (req, res) => {
+  deleteModifierGroup = (req, res) => {
     try {
       const { groupId } = req.params;
-      modifierService.deleteGroup(groupId, req.user.id);
-      return responseHandler.success(res, null, 'Modifier group deleted successfully');
+      modifierService.deleteModifierGroup(groupId, req.user.id);
+      return sendSuccess(res, null, 'Modifier group deleted successfully');
     } catch (error) {
-      return responseHandler.error(res, error.message, 400);
+      return sendError(res, 400, error.message);
     }
   };
 
-  getAllGroups = (req, res) => {
+  getModifierGroups = (req, res) => {
     try {
-      const groups = modifierRepository.findAllGroups();
-      groups.forEach(g => {
-        g.options = modifierRepository.getOptionsForGroup(g.id);
-      });
-      return responseHandler.success(res, groups, 'Modifier groups fetched');
+      const { is_active } = req.query;
+      const groups = modifierService.getModifierGroups({ is_active });
+      return sendSuccess(res, groups, 'Modifier groups fetched');
     } catch (error) {
-      return responseHandler.error(res, error.message, 400);
+      return sendError(res, 400, error.message);
     }
   };
 
@@ -49,9 +47,9 @@ class ModifierController {
   createModifier = (req, res) => {
     try {
       const mod = modifierService.createModifier(req.body, req.user.id);
-      return responseHandler.success(res, mod, 'Modifier created successfully', 201);
+      return sendSuccess(res, mod, 'Modifier created successfully', 201);
     } catch (error) {
-      return responseHandler.error(res, error.message, 400);
+      return sendError(res, 400, error.message);
     }
   };
 
@@ -59,50 +57,50 @@ class ModifierController {
     try {
       const { modifierId } = req.params;
       const mod = modifierService.updateModifier(modifierId, req.body, req.user.id);
-      return responseHandler.success(res, mod, 'Modifier updated successfully');
+      return sendSuccess(res, mod, 'Modifier updated successfully');
     } catch (error) {
-      return responseHandler.error(res, error.message, 400);
+      return sendError(res, 400, error.message);
     }
   };
 
-  getAllModifiers = (req, res) => {
+  getModifiers = (req, res) => {
     try {
-      const mods = modifierRepository.findAllModifiers();
-      return responseHandler.success(res, mods, 'Modifiers fetched');
+      const mods = modifierService.getModifiers();
+      return sendSuccess(res, mods, 'Modifiers fetched');
     } catch (error) {
-      return responseHandler.error(res, error.message, 400);
+      return sendError(res, 400, error.message);
     }
   };
 
-  // --- Linking ---
-  addOptionToGroup = (req, res) => {
+  // --- Group-Modifier Links ---
+  addModifierToGroup = (req, res) => {
     try {
       const { groupId, modifierId } = req.params;
-      modifierService.addOptionToGroup(groupId, modifierId, req.body, req.user.id);
-      return responseHandler.success(res, null, 'Option added to group', 201);
+      modifierService.addModifierToGroup(groupId, modifierId, req.body, req.user.id);
+      return sendSuccess(res, null, 'Option added to group', 201);
     } catch (error) {
-      return responseHandler.error(res, error.message, 400);
+      return sendError(res, 400, error.message);
     }
   };
 
-  removeOptionFromGroup = (req, res) => {
+  removeModifierFromGroup = (req, res) => {
     try {
-      const { optionId } = req.params;
-      modifierService.removeOptionFromGroup(optionId, req.user.id);
-      return responseHandler.success(res, null, 'Option removed from group');
+      const { groupId, modifierId } = req.params;
+      modifierService.removeModifierFromGroup(groupId, modifierId, req.user.id);
+      return sendSuccess(res, null, 'Option removed from group');
     } catch (error) {
-      return responseHandler.error(res, error.message, 400);
+      return sendError(res, 400, error.message);
     }
   };
 
+  // --- Product-Group Links ---
   linkGroupToProduct = (req, res) => {
     try {
       const { productId, groupId } = req.params;
-      const displayOrder = req.body.display_order || 0;
-      modifierService.linkGroupToProduct(productId, groupId, displayOrder, req.user.id);
-      return responseHandler.success(res, null, 'Group linked to product', 201);
+      modifierService.linkGroupToProduct(productId, groupId, req.body, req.user.id);
+      return sendSuccess(res, null, 'Group linked to product', 201);
     } catch (error) {
-      return responseHandler.error(res, error.message, 400);
+      return sendError(res, 400, error.message);
     }
   };
 
@@ -110,9 +108,9 @@ class ModifierController {
     try {
       const { productId, groupId } = req.params;
       modifierService.unlinkGroupFromProduct(productId, groupId, req.user.id);
-      return responseHandler.success(res, null, 'Group unlinked from product');
+      return sendSuccess(res, null, 'Group unlinked from product');
     } catch (error) {
-      return responseHandler.error(res, error.message, 400);
+      return sendError(res, 400, error.message);
     }
   };
 }

@@ -84,5 +84,20 @@ export const authService = {
   logout: (tokenId, userId) => {
     sessionRepository.revokeSession(tokenId);
     activityLogService.logActivity(userId, 'LOGOUT_SUCCESS', 'AUTH');
+  },
+
+  /**
+   * Retrieves active users for the login dropdown.
+   * Only returns non-sensitive fields.
+   */
+  getActiveUsersForLogin: () => {
+    // Only return id, username, first_name for the login screen
+    const users = userRepository.getAllActive();
+    return users.map(u => ({
+      id: u.id,
+      username: u.username,
+      firstName: u.first_name,
+      lastName: u.last_name
+    }));
   }
 };
