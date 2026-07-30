@@ -1,0 +1,144 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 10% 3.9%;
+    --radius: 0.5rem;
+    
+    /* Category styles default to standard card in light mode */
+    --cat-core-bg: var(--card);
+    --cat-core-text: var(--card-foreground);
+    --cat-burgers-bg: var(--card);
+    --cat-burgers-text: var(--card-foreground);
+    --cat-sides-bg: var(--card);
+    --cat-sides-text: var(--card-foreground);
+    --cat-drinks-bg: var(--card);
+    --cat-drinks-text: var(--card-foreground);
+    --cat-desserts-bg: var(--card);
+    --cat-desserts-text: var(--card-foreground);
+    --cat-border-color: var(--border);
+    --cat-border-width: 1px;
+    
+    /* Checkout button defaults */
+    --checkout-bg: #fcb47c;
+    --checkout-hover: #faa05c;
+    --checkout-text: #ffffff;
+  }
+
+  .dark {
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 349 74% 37%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 70%;
+    --accent: 0 0% 14%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 348 100% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 349 74% 37%;
+    
+    /* KFC Color-coded categories */
+    --cat-core-bg: #A6192E;
+    --cat-core-text: #FFFFFF;
+    --cat-burgers-bg: #0D47A1;
+    --cat-burgers-text: #FFFFFF;
+    --cat-sides-bg: #FFC400;
+    --cat-sides-text: #000000;
+    --cat-drinks-bg: #00B0FF;
+    --cat-drinks-text: #000000;
+    --cat-desserts-bg: #E91E63;
+    --cat-desserts-text: #FFFFFF;
+    --cat-border-color: #000000;
+    --cat-border-width: 3px;
+    
+    /* Checkout button KFC Red */
+    --checkout-bg: #A6192E;
+    --checkout-hover: #8C1526;
+    --checkout-text: #ffffff;
+  }
+
+  .colorful-theme {
+    --background: 0 0% 98%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 340 82% 52%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 260 84% 96%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 260 84% 96%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 260 84% 96%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 340 82% 52%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 260 30% 90%;
+    --input: 260 30% 90%;
+    --ring: 340 82% 52%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-receipt, .print-receipt * {
+    visibility: visible;
+  }
+  .print-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
