@@ -1,0 +1,47 @@
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { envSchema } from './schema.js';
+import { generatePaths } from './paths.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// 1. Load .env file from the backend root
+dotenv.config({ path: join(__dirname, '../../.env') });
+
+// 2. Validate environment variables
+const parsedEnv = envSchema.safeParse(process.env);
+
+if (!parsedEnv.success) {
+  console.error('❌ Invalid environment variables:');
+  console.error(JSON.stringify(parsedEnv.error.format(), null, 2));
+  process.exit(1);
+}
+
+const env = parsedEnv.data;
+
+// 3. Assemble unified configuration object
+const config = {
+  app: {
+    name: env.APP_NAME,
+    version: env.APP_VERSION,
+    env: env.NODE_ENV,
+    isDev: env.NODE_ENV === 'development',
+    isProd: env.NODE_ENV === 'production',
+  },
+  server: {
+    port: env.PORT,
+    apiPrefix: env.API_PREFIX,
+  },
+  security: {
+    jwtSecret: env.JWT_SECRET,
+  },
+  logger: {
+    level: env.LOG_LEVEL,
+  },
+  // 4. Dynamically generate and expose absolute paths
+  paths: generatePaths(env.STORAGE_ROOT),
+};
+
+export default config;
