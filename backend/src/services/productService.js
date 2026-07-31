@@ -1,4 +1,5 @@
 import { productRepository } from '../repositories/productRepository.js';
+import { dbEngine } from '../database/sqlite.js';
 import { modifierRepository } from '../repositories/modifierRepository.js';
 import { menuCacheService } from './menuCacheService.js';
 import { globalSearchService } from './search/globalSearchService.js';
@@ -27,79 +28,90 @@ class ProductService {
   }
 
   createProduct(data, userId) {
-    // 1. Generate Product Code if not provided
-    if (!data.product_code) {
-      data.product_code = this.generateNextProductCode();
-    } else {
-      // Validate uniqueness
-      const existing = productRepository.findByCode(data.product_code);
-      if (existing) {
-        throw new Error('Product code already exists in the system.');
+    return dbEngine.transaction(() => {
+      // 1. Generate Product Code if not provided
+      if (!data.product_code) {
+        data.product_code = this.generateNextProductCode();
+      } else {
+        // Validate uniqueness
+        const existing = productRepository.findByCode(data.product_code);
+        if (existing) {
+          throw new Error('Product code already exists in the system.');
+        }
       }
-    }
 
-    // 2. Create the base product
-    const product = productRepository.create(data);
+      // 2. Create the base product
+      const product = productRepository.create(data);
 
-    // 3. Handle Add-ons if provided
-    if (data.addons && Array.isArray(data.addons)) {
-      data.addons.forEach(addonId => {
-        productRepository.addAddon(product.id, addonId);
-      });
-    }
+      // 3. Handle Add-ons if provided
+      if (data.addons && Array.isArray(data.addons)) {
+        data.addons.forEach(addonId => {
+          productRepository.addAddon(product.id, addonId);
+        });
+      }
 
-    // 4. Log the action
-    activityLogService.logActivity(
-      userId,
-      'PRODUCT_CREATED',
-      'CATALOG',
-      product.id,
-      { code: product.product_code }
-    );
+      // 4. Log the action
+      activityLogService.logActivity(
+        userId,
+        'PRODUCT_CREATED',
+        'CATALOG',
+        product.id,
+        { code: product.product_code }
+      );
 
-    // 5. Queue Sync
-    syncService.queueSyncEvent('PRODUCT', product.id, 'CREATED', { code: product.product_code }, 1);
+      // 5. Queue Sync
+      syncService.queueSyncEvent('PRODUCT', product.id, 'CREATED', { code: product.product_code }, 1);
 
-    // 6. Refresh RAM cache
-    menuCacheService.refresh();
+      // 6. Refresh RAM cache
+      menuCacheService.refresh();
 
-    return this.getProductById(product.id);
+      return this.getProductById(product.id);
+    });
   }
 
   updateProduct(id, data, userId) {
-    // Code uniqueness validation if changing code
-    if (data.product_code) {
-      const existing = productRepository.findByCode(data.product_code);
-      if (existing && existing.id !== id) {
-        throw new Error('Product code already exists in the system.');
+    return dbEngine.transaction(() => {
+      // Code uniqueness validation if changing code
+      if (data.product_code) {
+        const existing = productRepository.findByCode(data.product_code);
+        if (existing && existing.id !== id) {
+          throw new Error('Product code already exists in the system.');
+        }
       }
-    }
 
-    const product = productRepository.update(id, data);
+      const product = productRepository.update(id, data);
 
-    // If addons provided, we can sync them, but for enterprise we usually use dedicated endpoints.
-    // We'll leave it simple here or expect clients to use the addon routes.
+      activityLogService.logActivity(
+        userId,
+        'PRODUCT_UPDATED',
+        'CATALOG',
+        product.id,
+        {}
+      );
 
-    activityLogService.logActivity(
-      userId,
-      'PRODUCT_UPDATED',
-      'CATALOG',
-      product.id,
-      {}
-    );
+      syncService.queueSyncEvent('PRODUCT', product.id, 'UPDATED', {}, product.version);
 
-    syncService.queueSyncEvent('PRODUCT', product.id, 'UPDATED', {}, product.version);
-
-    menuCacheService.refresh();
-    return this.getProductById(product.id);
+      menuCacheService.refresh();
+      return this.getProductById(product.id);
+    });
   }
 
   deleteProduct(id, userId) {
-    lifecycleService.softDelete('PRODUCT', id, userId);
+    return dbEngine.transaction(() => {
+      lifecycleService.softDelete('PRODUCT', id, userId);
+    });
   }
 
   archiveProduct(id, userId) {
-    lifecycleService.archive('PRODUCT', id, userId);
+    return dbEngine.transaction(() => {
+      lifecycleService.archive('PRODUCT', id, userId);
+    });
+  }
+
+  restoreProduct(id, userId) {
+    return dbEngine.transaction(() => {
+      lifecycleService.restore('PRODUCT', id, userId);
+    });
   }
 
   hideProduct(id, userId) {

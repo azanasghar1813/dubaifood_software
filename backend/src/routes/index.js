@@ -7,6 +7,7 @@ import permissionRoutes from './permissionRoutes.js';
 import configRoutes from './configRoutes.js';
 import catalogRoutes from './catalogRoutes.js';
 import dashboardRoutes from './dashboardRoutes.js';
+import orderRoutes from './orderRoutes.js';
 
 const router = Router();
 
@@ -19,5 +20,6 @@ router.use('/permissions', permissionRoutes);
 router.use('/config', configRoutes);
 router.use('/catalog', catalogRoutes);
 router.use('/dashboard', dashboardRoutes);
+router.use('/orders', orderRoutes);
 
 export default router;

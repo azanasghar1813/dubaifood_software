@@ -12,6 +12,16 @@ export const userRepository = {
     return stmt.all();
   },
 
+  getAllActive: () => {
+    const stmt = dbEngine.db.prepare(`
+      SELECT u.id, u.username, u.first_name, u.last_name 
+      FROM users u
+      WHERE u.is_active = 1
+      ORDER BY u.first_name ASC
+    `);
+    return stmt.all();
+  },
+
   findById: (id) => {
     const stmt = dbEngine.db.prepare(`
       SELECT u.*, r.name as role_name 

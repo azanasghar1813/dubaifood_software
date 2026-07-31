@@ -140,7 +140,7 @@ export const dashboardService = {
   getActivityFeed: (limit = 10) => {
     // Query the activity_logs table!
     const stmt = dbEngine.db.prepare(`
-      SELECT a.id, a.action, a.module, a.details, a.created_at as time, 
+      SELECT a.id, a.action, a.entity_type as module, a.details, a.created_at as time, 
              u.username, u.first_name, u.last_name
       FROM activity_logs a
       LEFT JOIN users u ON a.user_id = u.id

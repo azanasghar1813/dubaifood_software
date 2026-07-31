@@ -27,9 +27,6 @@ export const getProductById = (req, res) => {
 export const createProduct = (req, res) => {
   try {
     const { name, category_id, price } = req.body;
-    if (!name || !category_id || price === undefined) {
-      return sendError(res, 400, 'Name, category_id, and price are required');
-    }
 
     const product = productService.createProduct(req.body, req.user.id);
     sendSuccess(res, product, 'Product created successfully', 201);

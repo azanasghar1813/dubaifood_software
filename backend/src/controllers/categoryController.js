@@ -25,7 +25,6 @@ export const getCategoryById = (req, res) => {
 export const createCategory = (req, res) => {
   try {
     const { name } = req.body;
-    if (!name) return sendError(res, 400, 'Category name is required');
 
     const category = categoryService.createCategory(req.body, req.user.id);
     sendSuccess(res, category, 'Category created successfully', 201);

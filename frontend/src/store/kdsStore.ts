@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { type Order, type CartItem } from './orderStore'
+import { type Order, useOrderStore } from './orderStore'
+import { type CartItem } from './posStore'
 
 // Fallback ID generator for non-secure contexts (e.g. local IP testing without HTTPS)
 const generateId = () => {
@@ -17,7 +18,7 @@ export interface KitchenItem {
   name: string
   quantity: number
   modifiers: { name: string }[]
-  notes: string
+  notes: string | null
   kitchen: string
   status: KitchenStatus
   type: 'ADD' | 'REMOVE' | 'NORMAL'

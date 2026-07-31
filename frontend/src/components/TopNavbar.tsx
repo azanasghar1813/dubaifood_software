@@ -59,26 +59,8 @@ export default function TopNavbar() {
   return (
     <>
       <header className="h-16 bg-card/80 backdrop-blur-md border-b border-border/50 flex items-center justify-between px-4 z-10 sticky top-0 shadow-sm">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={toggleSidebar}
-            className="p-2 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-          
-          <div className="hidden md:flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground font-black">
-              DF
-            </div>
-            <div className="font-black text-lg text-foreground tracking-tight leading-none">
-              Dubai Food<br/><span className="text-[10px] text-muted-foreground uppercase">Terminal 1</span>
-            </div>
-          </div>
-        </div>
-
         {/* Global Header Search */}
-        <div className="hidden md:flex items-center flex-1 max-w-md mx-8">
+        <div className="hidden md:flex items-center flex-1 max-w-2xl mr-8">
           <div className="relative w-full">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input 
@@ -144,7 +126,6 @@ export default function TopNavbar() {
             >
               <div className="flex flex-col items-end hidden sm:flex">
                 <span className="text-sm font-bold text-foreground">{user?.name || "Guest"}</span>
-                <span className="text-xs text-muted-foreground font-medium">{user?.role || "Select Cashier"}</span>
               </div>
               <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-lg border border-primary/20">
                 {user?.name?.charAt(0) || "?"}

@@ -15,8 +15,7 @@ import {
   Store, UtensilsCrossed, Truck, CircleDot
 } from "lucide-react"
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
-import { api } from "../services/api"
-import { CATEGORIES } from "../services/mockData"
+import { menuService } from "../services/menuService"
 import { CustomerPanelModal } from "../components/CustomerPanelModal"
 import { TableSelectorModal } from "../components/TableSelectorModal"
 import { RecentOrdersModal } from "../components/RecentOrdersModal"
@@ -24,7 +23,7 @@ import type { PaymentMethod } from "../store/orderStore"
 
 // Helper to map category names to generic icons
 const getCategoryIcon = (name: string) => {
-  const n = name.toLowerCase()
+  const n = (name || '').toLowerCase()
   if (n.includes('burger')) return <Utensils className="w-5 h-5" />
   if (n.includes('pizza')) return <Pizza className="w-5 h-5" />
   if (n.includes('drink')) return <CupSoda className="w-5 h-5" />
@@ -40,7 +39,7 @@ const getCategoryIcon = (name: string) => {
 
 // Generate dynamic background gradients for placeholder images based on category
 const getCategoryGradient = (category: string) => {
-  const n = category.toLowerCase()
+  const n = (category || '').toLowerCase()
   if (n.includes('burger')) return 'bg-gradient-to-br from-orange-400 to-red-500'
   if (n.includes('pizza')) return 'bg-gradient-to-br from-red-500 to-rose-600'
   if (n.includes('drink')) return 'bg-gradient-to-br from-cyan-400 to-blue-500'
@@ -49,7 +48,7 @@ const getCategoryGradient = (category: string) => {
 }
 
 const getCategoryStyles = (category: string) => {
-  const n = category.toLowerCase()
+  const n = (category || '').toLowerCase()
   if (n.includes('burger') || n.includes('sandwich')) return 'bg-[var(--cat-burgers-bg)] text-[var(--cat-burgers-text)] border-[length:var(--cat-border-width)] border-[var(--cat-border-color)]'
   if (n.includes('appetizer') || n.includes('fries') || n.includes('side')) return 'bg-[var(--cat-sides-bg)] text-[var(--cat-sides-text)] border-[length:var(--cat-border-width)] border-[var(--cat-border-color)]'
   if (n.includes('drink') || n.includes('beverage')) return 'bg-[var(--cat-drinks-bg)] text-[var(--cat-drinks-text)] border-[length:var(--cat-border-width)] border-[var(--cat-border-color)]'
@@ -110,7 +109,8 @@ export default function POS() {
     setCustomer, gridDensity, tableNumber,
     isTaxEnabled, toggleTax, menuContext, setMenuContext,
     editingOrderId, clearEditMode, completeOrder,
-    deliveryCharges, setDeliveryCharges
+    deliveryCharges, setDeliveryCharges,
+    fetchDraftOrder
   } = usePosStore()
   
   const { orderCounter } = useOrderStore()
@@ -120,12 +120,105 @@ export default function POS() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [prods, cats] = await Promise.all([
-          api.getProducts(),
-          api.getCategories()
+        const [prodsRes, catsRes, dealsRes] = await Promise.all([
+          menuService.getProducts(),
+          menuService.getCategories(),
+          menuService.getDeals().catch(() => ({ data: [] }))
         ])
-        setProducts(prods)
-        setCategories([{ id: "all", name: "All" }, { id: "fav", name: "Favorites" }, ...cats])
+        
+        
+        const flattenCategories = (cats: any[]): any[] => {
+          let result: any[] = [];
+          cats.forEach(cat => {
+            result.push(cat);
+            if (cat.sub_categories && cat.sub_categories.length > 0) {
+              result = result.concat(flattenCategories(cat.sub_categories));
+            }
+          });
+          return result;
+        }
+        
+        const allFetchedCats = flattenCategories(catsRes.data || []);
+        const activeCats = allFetchedCats.filter((c: any) => c.status === "Active" || c.lifecycle_state === "ACTIVE")
+        
+        const loadedProducts = (prodsRes.data || []).map((p: any) => ({
+          ...p,
+          code: p.code || p.product_code,
+          category: activeCats.find(c => c.id === p.category_id)?.name || 'Unknown'
+        }))
+        
+        const loadedDeals = (dealsRes.data || []).map((deal: any) => ({
+          ...deal,
+          isDeal: true,
+          category: 'Deals',
+          id: deal.id,
+          name: deal.name,
+          price: deal.price,
+          code: deal.code,
+        }))
+
+        setProducts([...loadedProducts, ...loadedDeals])
+        
+
+        const getContext = (cat: any): string | null => {
+           if (cat.name === 'Fast Food' || cat.name === 'Restaurant' || cat.name === 'Deals') return cat.name;
+           if (cat.parent_id) {
+             const parent = activeCats.find((p: any) => p.id === cat.parent_id);
+             if (parent) return getContext(parent);
+           }
+           return null;
+        }
+
+        const catsWithContext = activeCats.map((c: any) => ({
+           ...c,
+           menuContext: getContext(c)
+        })).filter((c: any) => !(c.sub_categories && c.sub_categories.length > 0));
+
+        const preferredOrder = [
+          'Regular Pizza',
+          'Premium Pizza',
+          'Square Pizza',
+          'Burgers',
+          'Shawarma',
+          'Pratha Rolls',
+          'Special Rolls',
+          'Pasta',
+          'Appetizers',
+          'Sandwich',
+          'Extra Toppings',
+          'Chicken',
+          'Mutton',
+          'Beef',
+          'Bar BQ',
+          'Spicy Injected Broast',
+          'Rices',
+          'Starters',
+          'Tandoor',
+          'Chinese Gravy',
+          'Noodles',
+          'Soups',
+          'Salads',
+          'Hot & Cold Drinks',
+          'Special Drinks',
+          'Ice Cream',
+          'Bar-B-Q Platers'
+        ];
+
+        const sortedCats = catsWithContext.sort((a: any, b: any) => {
+          const indexA = preferredOrder.indexOf(a.name);
+          const indexB = preferredOrder.indexOf(b.name);
+          if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+          if (indexA !== -1) return -1;
+          if (indexB !== -1) return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+        setCategories([{ id: "all", name: "All", menuContext: "all" }, { id: "fav", name: "Favorites", menuContext: "all" }, ...sortedCats])
+
+        // Fetch user's current draft order from backend
+        await fetchDraftOrder()
+      } catch (err) {
+        console.error("Failed to load POS data:", err)
       } finally {
         setIsLoading(false)
       }
@@ -244,7 +337,7 @@ export default function POS() {
           return
         }
         const key = e.key.toLowerCase();
-        const matchedSize = activeProductForSize.sizes?.find(s => s.name.charAt(0).toLowerCase() === key);
+        const matchedSize = activeProductForSize.variants?.find((s: any) => s.name.charAt(0).toLowerCase() === key);
         if (matchedSize) {
           e.preventDefault();
           addToCart({ ...activeProductForSize, name: `${activeProductForSize.name} (${matchedSize.name})`, price: matchedSize.price, code: matchedSize.code || activeProductForSize.code });
@@ -361,6 +454,7 @@ export default function POS() {
 
   // Grid Category Filtering
   const gridFilteredProducts = products.filter(p => {
+    if (p.lifecycle_state === 'HIDDEN' && !p.isDeal) return false;
     let matchCategory = true
     if (activeCategory === "Favorites") {
       matchCategory = !!p.isFavorite
@@ -368,12 +462,34 @@ export default function POS() {
       matchCategory = p.category === activeCategory
     } else {
       // If "All" is selected, filter by menuContext
-      const catObj = CATEGORIES.find(c => c.name === p.category)
-      if (catObj && catObj.menuContext !== menuContext) {
+      if (menuContext === 'Deals' && !p.isDeal) return false;
+      if (menuContext !== 'Deals' && p.isDeal) return false;
+      const catObj = categories.find(c => c.name === p.category)
+      if (catObj && catObj.menuContext && catObj.menuContext !== 'all' && catObj.menuContext !== menuContext) {
         matchCategory = false
       }
     }
     return matchCategory
+  }).sort((a, b) => {
+    // Sort by display_order for products, deals by code number
+    if (a.isDeal && b.isDeal) {
+      const aNum = parseInt((a.code || '').replace('D', '')) || 0;
+      const bNum = parseInt((b.code || '').replace('D', '')) || 0;
+      return aNum - bNum;
+    }
+    
+    const codeA = parseInt(a.code || '') || parseInt(a.product_code || '') || 999999;
+    const codeB = parseInt(b.code || '') || parseInt(b.product_code || '') || 999999;
+    
+    if (codeA !== 999999 && codeB !== 999999 && codeA !== codeB) {
+      return codeA - codeB;
+    }
+
+    const orderA = a.display_order || 9999;
+    const orderB = b.display_order || 9999;
+    if (orderA !== orderB) return orderA - orderB;
+    
+    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
   })
 
   // Global Search Filtering & Sorting
@@ -381,8 +497,9 @@ export default function POS() {
     if (!debouncedSearchQuery.trim()) return []
     const q = debouncedSearchQuery.toLowerCase().trim()
     const matches = products.filter(p => {
+      if (p.lifecycle_state === 'HIDDEN' && !p.isDeal) return false;
       const pName = p.name.toLowerCase().replace(/\s+/g, '')
-      const pCode = p.code.toLowerCase()
+      const pCode = (p.code || '').toLowerCase()
       const searchStr = q.replace(/\s+/g, '')
       return pName.includes(searchStr) || pCode.includes(searchStr)
     })
@@ -390,8 +507,8 @@ export default function POS() {
     return matches.sort((a, b) => {
       const aName = a.name.toLowerCase().replace(/\s+/g, '')
       const bName = b.name.toLowerCase().replace(/\s+/g, '')
-      const aCode = a.code.toLowerCase()
-      const bCode = b.code.toLowerCase()
+      const aCode = (a.code || '').toLowerCase()
+      const bCode = (b.code || '').toLowerCase()
       const searchStr = q.replace(/\s+/g, '')
 
       // 1. Exact Code
@@ -413,7 +530,7 @@ export default function POS() {
       if (b.isPopular && !a.isPopular) return 1
 
       // 6. Alphabetical
-      return a.name.localeCompare(b.name)
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
     })
   }, [products, debouncedSearchQuery])
 
@@ -424,7 +541,7 @@ export default function POS() {
   }
 
   const handleProductClick = (product: Product) => {
-    if (product.sizes && product.sizes.length > 0) {
+    if (product.variants && product.variants.length > 0) {
       setActiveProductForSize(product)
       setSizeModalOpen(true)
     } else {
@@ -479,7 +596,7 @@ export default function POS() {
           {/* Left Panel: Categories */}
           <Panel defaultSize="15%" minSize="10%" maxSize="25%" className="flex flex-col z-10 border-r border-border bg-card">
             <div className="flex-1 overflow-y-auto p-3 custom-scrollbar space-y-2">
-              {categories.filter(c => c.name === "Favorites" || c.name === "All" || c.menuContext === menuContext).map(cat => {
+              {categories.filter(c => c.menuContext === 'all' || !c.menuContext || c.menuContext === menuContext).map(cat => {
                 const isActive = activeCategory === cat.name;
                 return (
                   <motion.button
@@ -640,10 +757,10 @@ export default function POS() {
                     transition={{ duration: 0.15 }}
                     key={product.id}
                     onClick={() => handleProductClick(product)}
-                    className={`rounded-[1.25rem] shadow-sm overflow-hidden flex flex-col text-left hover:opacity-90 hover:shadow-[0_8px_30px_rgba(0,0,0,0.15)] transition-all group relative ${getCategoryStyles(product.category)}`}
+                    className={`rounded-[1.25rem] shadow-sm overflow-hidden flex flex-col text-left hover:opacity-90 hover:shadow-[0_8px_30px_rgba(0,0,0,0.15)] transition-all group relative ${getCategoryStyles(product.category || categories.find(c => c.id === product.category_id)?.name)}`}
                   >
                     {gridDensity !== 'small' && (
-                      <div className={`${gridDensity === 'large' ? 'h-40' : 'h-32'} w-full relative overflow-hidden shrink-0 ${!product.image ? getCategoryGradient(product.category) : ''}`}>
+                      <div className={`${gridDensity === 'large' ? 'h-40' : 'h-32'} w-full relative overflow-hidden shrink-0 ${!product.image ? getCategoryGradient(product.category || categories.find(c => c.id === product.category_id)?.name) : ''}`}>
                         {product.image ? (
                           <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
                         ) : (
@@ -766,7 +883,7 @@ export default function POS() {
                           {cart.map((item) => (
                             <motion.div 
                               layout
-                              key={item.cartItemId} 
+                              key={item.id} 
                               className={`border rounded-xl p-3 flex gap-3 relative group ${
                                 item.editState === 'removed' ? 'bg-background border-border/50 opacity-50' :
                                 item.editState === 'new' ? 'bg-card border-green-500/50 shadow-[0_0_10px_rgba(34,197,94,0.1)]' :
@@ -776,7 +893,7 @@ export default function POS() {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                   <p className={`font-bold text-sm truncate ${item.editState === 'removed' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                                    {item.name}
+                                    {item.product_name || "Unknown Item"}
                                   </p>
                                   {item.editState === 'new' && <span className="text-[10px] bg-green-500/20 text-green-500 px-1.5 py-0.5 rounded font-bold">NEW</span>}
                                   {item.editState === 'modified' && <span className="text-[10px] bg-orange-500/20 text-orange-500 px-1.5 py-0.5 rounded font-bold">MODIFIED</span>}
@@ -785,19 +902,19 @@ export default function POS() {
                                   <div className={`flex items-center border border-border rounded-lg bg-secondary ${item.editState === 'removed' ? 'opacity-50 pointer-events-none' : ''}`}>
                                     <button onClick={() => {
                                       if (item.quantity > 1) {
-                                        updateQuantity(item.cartItemId, item.quantity - 1)
+                                        updateQuantity(item.id, item.quantity - 1)
                                       } else {
                                         if (editingOrderId && item.editState !== 'new') {
-                                          setRemovingCartItemId(item.cartItemId)
+                                          setRemovingCartItemId(item.id)
                                         } else {
-                                          removeFromCart(item.cartItemId)
+                                          removeFromCart(item.id)
                                         }
                                       }
                                     }} className="p-1 hover:bg-background rounded">
                                       <Minus className="w-4 h-4 text-foreground" />
                                     </button>
                                     <span className={`w-8 text-center font-bold text-sm ${item.editState === 'removed' ? 'line-through' : ''}`}>{item.quantity}</span>
-                                    <button onClick={() => updateQuantity(item.cartItemId, item.quantity + 1)} className="p-1 hover:bg-secondary rounded">
+                                    <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="p-1 hover:bg-secondary rounded">
                                       <Plus className="w-4 h-4 text-foreground" />
                                     </button>
                                   </div>
@@ -810,15 +927,15 @@ export default function POS() {
                               </div>
                               <div className="text-right">
                                 <p className={`font-bold ${item.editState === 'removed' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                                  Rs {((item.price + item.selectedModifiers.reduce((sum, mod) => sum + mod.price, 0)) * item.quantity).toLocaleString()}
+                                  Rs {(item.subtotal || 0).toLocaleString()}
                                 </p>
                                 {item.editState !== 'removed' && (
                                   <button 
                                     onClick={() => {
                                       if (editingOrderId && item.editState !== 'new') {
-                                        setRemovingCartItemId(item.cartItemId)
+                                        setRemovingCartItemId(item.id)
                                       } else {
-                                        removeFromCart(item.cartItemId)
+                                        removeFromCart(item.id)
                                       }
                                     }} 
                                     className="text-red-500 hover:text-red-600 mt-2 ml-auto block group"
@@ -1017,7 +1134,7 @@ export default function POS() {
                 <p className="text-muted-foreground font-bold mt-1">Select Size</p>
               </div>
               <div className="p-6 grid gap-3">
-                {activeProductForSize.sizes?.map((size) => {
+                {activeProductForSize.variants?.map((size: any) => {
                   // Determine shortcut based on name
                   const shortcut = size.name.charAt(0).toUpperCase();
                   return (

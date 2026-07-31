@@ -22,7 +22,7 @@ app.use(helmet());
 app.use(cors({
   origin: '*', // Configure properly in production
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id', 'x-cashier-session-id', 'x-terminal-id']
 }));
 
 // Request Logging

@@ -11,8 +11,10 @@ export const transactionsSchema = `
     tax_total REAL NOT NULL DEFAULT 0,
     discount_total REAL NOT NULL DEFAULT 0,
     grand_total REAL NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'PENDING', -- 'PENDING', 'COMPLETED', 'CANCELLED', 'REFUNDED'
+    status TEXT NOT NULL DEFAULT 'DRAFT', -- 'DRAFT', 'HELD', 'PENDING_PAYMENT', 'PAID', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED', 'REFUNDED', 'SUSPENDED'
     order_type TEXT NOT NULL DEFAULT 'DINE_IN', -- 'DINE_IN', 'TAKEAWAY', 'DELIVERY'
+    hold_name TEXT,
+    held_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
@@ -44,7 +46,7 @@ export const transactionsSchema = `
     price_adjustment REAL NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE CASCADE,
-    FOREIGN KEY (modifier_id) REFERENCES product_modifiers(id) ON DELETE RESTRICT
+    FOREIGN KEY (modifier_id) REFERENCES modifiers(id) ON DELETE RESTRICT
   );
 
   -- Payments

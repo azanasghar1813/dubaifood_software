@@ -17,7 +17,8 @@ import {
   Building2,
   Database,
   History,
-  Shield
+  Shield,
+  Menu
 } from "lucide-react"
 
 const menuItems = [
@@ -63,14 +64,16 @@ export default function Sidebar() {
         }`}
       >
         <div className="h-16 flex items-center justify-between border-b border-border/50 px-4">
-          <h1 className="text-xl font-bold text-primary truncate">
-            {isSidebarOpen ? "Dubai Foods" : "DF"}
-          </h1>
+          {isSidebarOpen && (
+            <h1 className="text-xl font-bold text-primary truncate">
+              Dubai Foods
+            </h1>
+          )}
           <button 
-            className="md:hidden text-muted-foreground hover:text-foreground"
+            className={`text-muted-foreground hover:text-foreground ${!isSidebarOpen && 'mx-auto'}`}
             onClick={toggleSidebar}
           >
-            <X className="w-5 h-5" />
+            <Menu className="w-5 h-5" />
           </button>
         </div>
         

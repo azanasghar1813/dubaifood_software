@@ -11,5 +11,6 @@ router.get('/users', authController.getUsers);
 // Protected routes
 router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.getMe);
+router.get('/validate', authenticate, authController.getMe);
 
 export default router;

@@ -5,7 +5,7 @@ class ProductRepository {
   findAll() {
     return dbEngine.prepare(`
       SELECT * FROM products 
-      ORDER BY name ASC
+      ORDER BY display_order ASC, name ASC
     `).all();
   }
 

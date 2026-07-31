@@ -9,21 +9,20 @@ import {
   Trash, ArrowUpDown, ChevronDown, Check, X, ShieldAlert, BadgeInfo
 } from "lucide-react"
 import { PRODUCTS as initialProducts } from "../services/mockData"
+import { menuService } from "../services/menuService"
+import { useAuthStore } from "../store/authStore"
+import { toast } from "../store/toastStore"
 
 // Categories matching options
-const categoriesList = [
-  "Pizza", "Premium Pizza", "Square Pizza", "Burgers", "Pratha Rolls", 
-  "Special Rolls", "Pasta", "Appetizers", "Sandwich", "Shawarma",
-  "Broast", "Starters", "Soups", "Bar-B-Q Platters", "Salads", "Tandoor",
-  "Hot & Cold Drinks", "Rices", "Chinese Gravy", "Noodles", "Special Drinks",
-  "Ice Cream", "Mutton", "Beef", "Chicken", "Bar BQ"
-]
+
 
 export default function Products() {
-  // Store state locally since there is no backend
-  const [products, setProducts] = useState<any[]>(() => {
-    return initialProducts
-  })
+  const { hasPermission } = useAuthStore()
+  const canManageProducts = hasPermission("MANAGE_PRODUCTS")
+
+  const [products, setProducts] = useState<any[]>([])
+  const [categoriesList, setCategoriesList] = useState<string[]>([])
+  const [isLoadingData, setIsLoadingData] = useState(true)
   
   const [currentTime, setCurrentTime] = useState(new Date())
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid")
@@ -48,6 +47,33 @@ export default function Products() {
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
+  }, [])
+
+  // Fetch backend data
+  const fetchProductsAndCategories = async () => {
+    try {
+      setIsLoadingData(true)
+      const [prodRes, catRes] = await Promise.all([
+        menuService.getProducts(),
+        menuService.getCategories()
+      ])
+      
+      if (prodRes.success) {
+        setProducts(prodRes.data)
+      }
+      if (catRes.success) {
+        setCategoriesList(catRes.data.map((c: any) => c.name))
+      }
+    } catch (error) {
+      toast.error("Failed to load catalog data")
+      console.error(error)
+    } finally {
+      setIsLoadingData(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchProductsAndCategories()
   }, [])
 
   // Keyboard Shortcuts Listener
@@ -118,21 +144,55 @@ export default function Products() {
   }, [products])
 
   // Handler: Save / Update Product
-  const handleSaveProduct = (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (drawerMode === "add") {
-      const newId = `prod-${Date.now()}`
-      const newProd = {
-        ...selectedProduct,
-        id: newId,
-        popularity: { sold: 0, revenue: 0 }
+    if (!canManageProducts) {
+      toast.error("Permission denied")
+      return
+    }
+
+    try {
+      if (drawerMode === "add") {
+        const res = await menuService.createProduct(selectedProduct)
+        if (res.success) {
+          toast.success("Product created")
+          setDrawerMode("view")
+          // Set the created ID so we can upload image if needed
+          setSelectedProduct(res.data)
+          fetchProductsAndCategories()
+        }
+      } else if (drawerMode === "edit") {
+        const res = await menuService.updateProduct(selectedProduct.id, selectedProduct)
+        if (res.success) {
+          toast.success("Product updated")
+          setDrawerMode("view")
+          setSelectedProduct(res.data)
+          fetchProductsAndCategories()
+        }
       }
-      setProducts([newProd, ...products])
-      setSelectedProduct(newProd)
-      setDrawerMode("view")
-    } else if (drawerMode === "edit") {
-      setProducts(products.map(p => p.id === selectedProduct.id ? selectedProduct : p))
-      setDrawerMode("view")
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || "Failed to save product")
+    }
+  }
+
+  // Image Upload Handler
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files.length) return
+    if (!selectedProduct?.id) {
+      toast.error("Save product first before uploading image")
+      return
+    }
+
+    const file = e.target.files[0]
+    try {
+      const res = await menuService.uploadProductImage(selectedProduct.id, file)
+      if (res.success) {
+        toast.success("Image uploaded successfully")
+        setSelectedProduct(res.data)
+        fetchProductsAndCategories()
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || "Failed to upload image")
     }
   }
 
@@ -167,30 +227,57 @@ export default function Products() {
   }
 
   // Handler: Duplicate
-  const handleDuplicateProduct = (prod: any) => {
+  const handleDuplicateProduct = async (prod: any) => {
+    if (!canManageProducts) {
+      toast.error("Permission denied")
+      return
+    }
     const duplicated = {
       ...prod,
-      id: `prod-${Date.now()}`,
       code: (parseInt(prod.code) + 1).toString(),
       name: `${prod.name} (Copy)`
     }
-    setProducts([duplicated, ...products])
-    alert(`Duplicated "${prod.name}" successfully.`)
+    delete duplicated.id // Backend will assign a new ID
+    delete duplicated._id
+    
+    try {
+      const res = await menuService.createProduct(duplicated)
+      if (res.success) {
+        toast.success(`Duplicated "${prod.name}" successfully.`)
+        fetchProductsAndCategories()
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || "Failed to duplicate product")
+    }
   }
 
   // Handler: Delete
-  const handleDeleteProduct = (id: string) => {
+  const handleDeleteProduct = async (id: string) => {
+    if (!canManageProducts) {
+      toast.error("Permission denied")
+      return
+    }
+    
     if (confirm("Are you sure you want to delete this product?")) {
-      setProducts(products.filter(p => p.id !== id))
-      setIsDrawerOpen(false)
-      setSelectedProduct(null)
+      try {
+        const res = await menuService.deleteProduct(id)
+        if (res.success) {
+          toast.success("Product deleted")
+          setIsDrawerOpen(false)
+          setSelectedProduct(null)
+          fetchProductsAndCategories()
+        }
+      } catch (error: any) {
+        toast.error(error.response?.data?.error || "Failed to delete product")
+      }
     }
   }
 
   // Refresh
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true)
-    setTimeout(() => setIsRefreshing(false), 800)
+    await fetchProductsAndCategories()
+    setIsRefreshing(false)
   }
 
   // Modifiers config inside form helper
@@ -294,12 +381,14 @@ export default function Products() {
             <Download className="w-4 h-4" /> Export Excel
           </button>
 
-          <button 
-            onClick={handleOpenAdd}
-            className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-xl text-xs font-black hover:bg-primary/95 shadow-md shadow-primary/10 transition-all active:scale-95"
-          >
-            <Plus className="w-4 h-4" /> Add Product [Ctrl+N]
-          </button>
+          {canManageProducts && (
+            <button 
+              onClick={handleOpenAdd}
+              className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-xl text-xs font-black hover:bg-primary/95 shadow-md shadow-primary/10 transition-all active:scale-95"
+            >
+              <Plus className="w-4 h-4" /> Add Product [Ctrl+N]
+            </button>
+          )}
         </div>
       </div>
 
@@ -617,18 +706,22 @@ export default function Products() {
                       >
                         <Eye className="w-3.5 h-3.5" />
                       </button>
-                      <button 
-                        onClick={() => handleDuplicateProduct(product)}
-                        className="p-2 bg-secondary text-foreground hover:bg-border border border-border rounded-xl transition-colors"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteProduct(product.id)}
-                        className="p-2 bg-secondary/80 text-red-500 hover:bg-red-500 hover:text-white border border-border rounded-xl transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canManageProducts && (
+                        <>
+                          <button 
+                            onClick={() => handleDuplicateProduct(product)}
+                            className="p-2 bg-secondary text-foreground hover:bg-border border border-border rounded-xl transition-colors"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteProduct(product.id)}
+                            className="p-2 bg-secondary/80 text-red-500 hover:bg-red-500 hover:text-white border border-border rounded-xl transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -711,18 +804,21 @@ export default function Products() {
                           </button>
                         </>
                       ) : (
-                        <div className="text-center p-4">
+                        <label className="text-center p-4 w-full h-full flex flex-col justify-center items-center cursor-pointer hover:bg-secondary/70 transition-colors">
                           <Upload className="w-8 h-8 mx-auto mb-2 opacity-35" />
                           <span className="text-xs font-black block">Upload Product Image</span>
                           <span className="text-[10px] text-muted-foreground font-semibold mt-1 block">Supports PNG, JPG (Max 2MB)</span>
-                          <button 
-                            type="button" 
-                            onClick={() => setSelectedProduct({ ...selectedProduct, image: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&h=300&fit=crop" })}
-                            className="mt-3 px-3 py-1.5 bg-card hover:bg-border rounded-xl border border-border text-[9px] font-black uppercase text-foreground transition-all"
-                          >
-                            Use Demo Image
-                          </button>
-                        </div>
+                          <input 
+                            type="file" 
+                            accept="image/png, image/jpeg" 
+                            onChange={handleImageUpload}
+                            className="hidden" 
+                            disabled={!canManageProducts || !selectedProduct?.id}
+                          />
+                          {!selectedProduct?.id && (
+                            <span className="text-[9px] text-orange-500 font-bold mt-2 block">(Save product first to upload image)</span>
+                          )}
+                        </label>
                       )}
                     </div>
                   </div>
@@ -925,40 +1021,51 @@ export default function Products() {
                 <div className="p-6 border-t border-border bg-card grid grid-cols-2 gap-2 shrink-0">
                   {drawerMode === "view" ? (
                     <>
-                      <button 
-                        type="button" 
-                        onClick={() => setDrawerMode("edit")}
-                        className="py-3 bg-primary text-white hover:bg-primary/95 font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md shadow-primary/10"
-                      >
-                        <Edit2 className="w-4 h-4" /> Edit Item
-                      </button>
-                      <button 
-                        type="button" 
-                        onClick={() => handleDuplicateProduct(selectedProduct)}
-                        className="py-3 bg-secondary hover:bg-border border border-border text-foreground font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
-                      >
-                        <Copy className="w-4 h-4" /> Duplicate
-                      </button>
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          const status = selectedProduct.status === "Active" ? "Hidden" : "Active"
-                          setSelectedProduct({ ...selectedProduct, status })
-                          setProducts(products.map(p => p.id === selectedProduct.id ? { ...p, status } : p))
-                          alert(`Product status changed to: ${status}`)
-                        }}
-                        className="col-span-2 py-3 bg-secondary hover:bg-border border border-border text-foreground font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
-                      >
-                        {selectedProduct.status === "Active" ? <EyeOff className="w-4 h-4 text-zinc-500" /> : <Eye className="w-4 h-4 text-primary" />}
-                        {selectedProduct.status === "Active" ? "Hide Product" : "Restore Product"}
-                      </button>
-                      <button 
-                        type="button" 
-                        onClick={() => handleDeleteProduct(selectedProduct.id)}
-                        className="col-span-2 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
-                      >
-                        <Trash2 className="w-4.5 h-4.5" /> Delete Product
-                      </button>
+                      {canManageProducts && (
+                        <>
+                          <button 
+                            type="button" 
+                            onClick={() => setDrawerMode("edit")}
+                            className="py-3 bg-primary text-white hover:bg-primary/95 font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md shadow-primary/10"
+                          >
+                            <Edit2 className="w-4 h-4" /> Edit Item
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={() => handleDuplicateProduct(selectedProduct)}
+                            className="py-3 bg-secondary hover:bg-border border border-border text-foreground font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                          >
+                            <Copy className="w-4 h-4" /> Duplicate
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={async () => {
+                              const status = selectedProduct.status === "Active" ? "Hidden" : "Active"
+                              try {
+                                const res = await menuService.updateProduct(selectedProduct.id, { status })
+                                if (res.success) {
+                                  setSelectedProduct(res.data)
+                                  fetchProductsAndCategories()
+                                  toast.success(`Product status changed to: ${status}`)
+                                }
+                              } catch (err: any) {
+                                toast.error("Failed to update status")
+                              }
+                            }}
+                            className="col-span-2 py-3 bg-secondary hover:bg-border border border-border text-foreground font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                          >
+                            {selectedProduct.status === "Active" ? <EyeOff className="w-4 h-4 text-zinc-500" /> : <Eye className="w-4 h-4 text-primary" />}
+                            {selectedProduct.status === "Active" ? "Hide Product" : "Restore Product"}
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={() => handleDeleteProduct(selectedProduct.id)}
+                            className="col-span-2 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                          >
+                            <Trash2 className="w-4.5 h-4.5" /> Delete Product
+                          </button>
+                        </>
+                      )}
                     </>
                   ) : (
                     <>

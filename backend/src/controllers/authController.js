@@ -1,5 +1,7 @@
 import { authService } from '../services/authService.js';
 import { z } from 'zod';
+import { sendSuccess, sendError } from '../utils/responseHandler.js';
+import { userRepository } from '../repositories/userRepository.js';
 
 const loginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -13,38 +15,55 @@ export const authController = {
       const parsed = loginSchema.parse(req.body);
       const { token, user } = authService.login(parsed.username, parsed.pin, parsed.deviceInfo);
       
-      return res.status(200).json({
-        message: 'Login successful',
-        data: { token, user }
-      });
+      return sendSuccess(res, { token, user }, 'Login successful');
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: error.errors[0].message });
+        return sendError(res, 400, error.errors[0].message);
       }
-      return res.status(401).json({ error: error.message });
+      return sendError(res, 401, error.message);
     }
   },
 
   logout: (req, res) => {
     try {
       authService.logout(req.sessionId, req.user.userId);
-      return res.status(200).json({ message: 'Logout successful' });
+      return sendSuccess(res, null, 'Logout successful');
     } catch (error) {
-      return res.status(500).json({ error: 'Failed to logout' });
+      return sendError(res, 500, 'Failed to logout');
     }
   },
 
   getMe: (req, res) => {
-    // The authenticate middleware already populated req.user
-    return res.status(200).json({ data: req.user });
+    try {
+      const user = userRepository.findById(req.user.userId);
+      if (!user) {
+        return sendError(res, 404, 'User not found');
+      }
+      
+      const permissions = userRepository.getUserPermissions(user.role_id);
+      
+      const userDetails = {
+        id: user.id,
+        username: user.username,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        roleId: user.role_id,
+        forcePinChange: user.force_pin_change === 1,
+        permissions
+      };
+      
+      return sendSuccess(res, { user: userDetails }, 'User details fetched');
+    } catch (error) {
+      return sendError(res, 500, 'Failed to fetch user details');
+    }
   },
 
   getUsers: (req, res) => {
     try {
       const users = authService.getActiveUsersForLogin();
-      return res.status(200).json({ data: users });
+      return sendSuccess(res, users, 'Users fetched successfully');
     } catch (error) {
-      return res.status(500).json({ error: 'Failed to retrieve users' });
+      return sendError(res, 500, 'Failed to retrieve users');
     }
   }
 };

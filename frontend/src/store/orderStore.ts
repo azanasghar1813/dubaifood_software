@@ -103,7 +103,7 @@ const generateMockOrders = (): Order[] => {
       items: [
         { cartItemId: "c1", id: "p1", name: "Premium Wagyu Burger", price: 85, quantity: 2, category: "Burgers", code: "WB01", selectedModifiers: [], notes: "No onions", isEdited: false, discount: 0, status: 'Active' },
         { cartItemId: "c2", id: "p2", name: "Truffle Fries", price: 45, quantity: 1, category: "Sides", code: "TF01", selectedModifiers: [], notes: "", isEdited: false, discount: 0, status: 'Active' }
-      ],
+      ] as any,
       subtotal: 215,
       tax: 15.05,
       serviceCharge: 10,
@@ -132,7 +132,7 @@ const generateMockOrders = (): Order[] => {
       orderType: "Takeaway",
       items: [
         { cartItemId: "c3", id: "p3", name: "Zinger Burger", price: 25, quantity: 1, category: "Burgers", code: "ZB01", selectedModifiers: [], notes: "", isEdited: false, discount: 0, status: 'Active' }
-      ],
+      ] as any,
       subtotal: 25,
       tax: 1.75,
       serviceCharge: 0,
@@ -166,7 +166,7 @@ const generateMockOrders = (): Order[] => {
       items: [
         { cartItemId: "c4", id: "p4", name: "Margherita Pizza", price: 65, quantity: 1, category: "Pizza", code: "PZ01", selectedModifiers: [], notes: "", isEdited: false, discount: 0, status: 'Active' },
         { cartItemId: "c5", id: "p5", name: "Diet Pepsi", price: 15, quantity: 2, category: "Drinks", code: "DP01", selectedModifiers: [], notes: "", isEdited: false, discount: 0, status: 'Active' }
-      ],
+      ] as any,
       subtotal: 95,
       tax: 6.65,
       serviceCharge: 0,

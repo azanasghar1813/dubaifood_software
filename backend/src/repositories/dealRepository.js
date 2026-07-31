@@ -4,7 +4,7 @@ import crypto from 'crypto';
 class DealRepository {
   findAll() {
     return dbEngine.prepare(`
-      SELECT * FROM deals ORDER BY name ASC
+      SELECT * FROM deals ORDER BY CAST(REPLACE(code, 'D', '') AS INTEGER) ASC
     `).all();
   }
 
