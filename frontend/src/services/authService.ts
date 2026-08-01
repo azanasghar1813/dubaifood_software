@@ -10,9 +10,13 @@ export interface AuthResponse {
   success: boolean
   data: {
     token: string
+    cashierSessionId?: string | null
     user: {
       id: string
       name: string
+      username?: string
+      firstName?: string
+      lastName?: string
       role: string
       permissions: string[]
     }

@@ -24,9 +24,15 @@ apiClient.interceptors.request.use(
     useLoadingStore.getState().startLoading()
 
     // 2. Attach Authorization Header if token exists
-    const token = useAuthStore.getState().token
+    const { token, user, cashierSessionId } = useAuthStore.getState()
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
+    }
+    if (user?.id && config.headers) {
+      config.headers['x-user-id'] = user.id
+    }
+    if (cashierSessionId && config.headers) {
+      config.headers['x-cashier-session-id'] = cashierSessionId
     }
     
     return config

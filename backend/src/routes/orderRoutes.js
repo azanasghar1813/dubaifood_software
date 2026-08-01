@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { authenticate } from '../middleware/authenticate.js';
 import { orderController } from '../controllers/orderController.js';
 import { validate } from '../middleware/validationMiddleware.js';
 import { 
@@ -10,6 +11,8 @@ import {
 } from '../validation/orderValidation.js';
 
 const router = Router();
+
+router.use(authenticate);
 
 // Draft operations
 router.get('/draft', orderController.getDraft);

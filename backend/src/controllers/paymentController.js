@@ -22,7 +22,7 @@ export const paymentController = {
    */
   processPayment: (req, res) => {
     const sessionId     = req.headers['x-cashier-session-id'];
-    const cashierUserId = req.headers['x-user-id'];
+    const cashierUserId = req.headers['x-user-id'] || req.user?.userId;
     const { orderId }   = req.params;
 
     if (!sessionId)     return sendError(res, 400, 'x-cashier-session-id header is required.');

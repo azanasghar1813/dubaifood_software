@@ -1,7 +1,10 @@
 import { Router } from 'express';
+import { authenticate } from '../middleware/authenticate.js';
 import { paymentController } from '../controllers/paymentController.js';
 
 const router = Router();
+
+router.use(authenticate);
 
 // ── Payment Method & Utility Routes ────────────────────────────────────────
 // GET /api/payments/methods                  — Active payment method list for POS UI

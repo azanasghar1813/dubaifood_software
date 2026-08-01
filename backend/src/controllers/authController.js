@@ -2,6 +2,7 @@ import { authService } from '../services/authService.js';
 import { z } from 'zod';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
 import { userRepository } from '../repositories/userRepository.js';
+import { cashierSessionRepository } from '../repositories/cashierSessionRepository.js';
 
 const loginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -13,9 +14,9 @@ export const authController = {
   login: (req, res) => {
     try {
       const parsed = loginSchema.parse(req.body);
-      const { token, user } = authService.login(parsed.username, parsed.pin, parsed.deviceInfo);
+      const { token, user, cashierSessionId } = authService.login(parsed.username, parsed.pin, parsed.deviceInfo);
       
-      return sendSuccess(res, { token, user }, 'Login successful');
+      return sendSuccess(res, { token, user, cashierSessionId }, 'Login successful');
     } catch (error) {
       if (error instanceof z.ZodError) {
         return sendError(res, 400, error.errors[0].message);
@@ -41,15 +42,20 @@ export const authController = {
       }
       
       const permissions = userRepository.getUserPermissions(user.role_id);
-      
+      const name = `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username;
+      const openShift = cashierSessionRepository.findOpenSessionForUser(user.id);
+
       const userDetails = {
         id: user.id,
         username: user.username,
         firstName: user.first_name,
         lastName: user.last_name,
+        name,
         roleId: user.role_id,
+        role: user.role_name || 'User',
         forcePinChange: user.force_pin_change === 1,
-        permissions
+        permissions,
+        cashierSessionId: openShift?.id || null,
       };
       
       return sendSuccess(res, { user: userDetails }, 'User details fetched');

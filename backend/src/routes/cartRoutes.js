@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { authenticate } from '../middleware/authenticate.js';
 import { cartController } from '../controllers/cartController.js';
 import { validate } from '../middleware/validationMiddleware.js';
 import {
@@ -10,6 +11,8 @@ import {
 } from '../validation/cartValidation.js';
 
 const router = Router();
+
+router.use(authenticate);
 
 // ── Cart session ────────────────────────────────────────────────────────────
 // GET  /api/cart           — Get current cart (creates empty if none exists)

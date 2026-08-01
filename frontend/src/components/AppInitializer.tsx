@@ -9,7 +9,7 @@ import { Loader2 } from 'lucide-react'
  * before rendering protected routes.
  */
 export function AppInitializer({ children }: { children: React.ReactNode }) {
-  const { token, logout, setSession } = useAuthStore()
+  const { token, logout, setSession, setCashierSessionId } = useAuthStore()
   const [isInitializing, setIsInitializing] = useState(true)
 
   useEffect(() => {
@@ -29,14 +29,16 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           const { user } = response.data
           const sessionUser = {
             id: user.id,
-            username: user.name,
-            name: user.name,
+            username: user.username || user.name,
+            name: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username,
             role: user.role,
             permissions: user.permissions || []
           }
           
-          // Re-hydrate session with fresh permissions
-          setSession(sessionUser, token)
+          setSession(sessionUser, token, user.cashierSessionId || null)
+          if (user.cashierSessionId) {
+            setCashierSessionId(user.cashierSessionId)
+          }
           
           // 2. Load Business Configuration (Future)
           // await configService.getGeneralSettings()
@@ -56,7 +58,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
     }
 
     initializeApp()
-  }, [token, logout, setSession]) // Re-run if token changes (like on explicit login)
+  }, [token, logout, setSession, setCashierSessionId])
 
   if (isInitializing) {
     return (

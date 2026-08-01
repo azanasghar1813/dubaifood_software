@@ -1,9 +1,27 @@
 import crypto from 'crypto';
 import { userRepository } from '../repositories/userRepository.js';
 import { sessionRepository } from '../repositories/sessionRepository.js';
+import { cashierSessionRepository } from '../repositories/cashierSessionRepository.js';
+import { roleRepository } from '../repositories/roleRepository.js';
 import { activityLogService } from './activityLogService.js';
 import { securityUtils } from '../utils/security.js';
 import { dbEngine } from '../database/sqlite.js';
+
+const buildUserPayload = (user, permissions) => {
+  const role = roleRepository.findById(user.role_id);
+  const name = `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username;
+  return {
+    id: user.id,
+    username: user.username,
+    firstName: user.first_name,
+    lastName: user.last_name,
+    name,
+    roleId: user.role_id,
+    role: role?.name || 'User',
+    forcePinChange: user.force_pin_change === 1,
+    permissions,
+  };
+};
 
 export const authService = {
   /**
@@ -43,6 +61,7 @@ export const authService = {
     // 3. Login Successful - Transaction to reset attempts and create session
     let token = null;
     let userDetails = null;
+    let cashierSessionId = null;
 
     dbEngine.transaction(() => {
       userRepository.resetFailedAttempts(user.id);
@@ -52,6 +71,7 @@ export const authService = {
       sessionRepository.createSession(user.id, tokenId, deviceInfo);
 
       const permissions = userRepository.getUserPermissions(user.role_id);
+      cashierSessionId = cashierSessionRepository.getOrCreateOpenSession(user.id, deviceInfo, 0);
       
       // Token payload
       const payload = {
@@ -61,21 +81,12 @@ export const authService = {
       };
 
       token = securityUtils.generateToken(payload, tokenId);
-
-      userDetails = {
-        id: user.id,
-        username: user.username,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        roleId: user.role_id,
-        forcePinChange: user.force_pin_change === 1,
-        permissions
-      };
+      userDetails = buildUserPayload(user, permissions);
     });
 
     activityLogService.logActivity(user.id, 'LOGIN_SUCCESS', 'AUTH', user.id, { device: deviceInfo });
     
-    return { token, user: userDetails };
+    return { token, user: userDetails, cashierSessionId };
   },
 
   /**

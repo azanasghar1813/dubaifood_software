@@ -2,31 +2,30 @@ import { cartService } from '../services/cartService.js';
 import { orderCreationService } from '../services/orderCreationService.js';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
 
-/**
- * CartController
- * 
- * Thin HTTP request handlers that delegate entirely to cartService and
- * orderCreationService. No business logic lives here.
- * 
- * Session identity is read from request headers:
- *   x-cashier-session-id  — the active cashier shift/session ID
- *   x-user-id             — the authenticated user's ID
- *   x-branch-id           — (optional) the branch ID
- */
-export const cartController = {
-  /**
-   * GET /api/cart
-   * Returns the current active cart for the session, or an empty cart structure.
-   */
-  getCart: (req, res) => {
-    const sessionId = req.headers['x-cashier-session-id'];
-    const userId = req.headers['x-user-id'];
-    const branchId = req.headers['x-branch-id'] || 'DEFAULT_BRANCH';
+const resolveCartContext = (req, res) => {
+  const sessionId = req.headers['x-cashier-session-id'];
+  const userId = req.headers['x-user-id'] || req.user?.userId;
+  const branchId = req.headers['x-branch-id'] || 'DEFAULT_BRANCH';
 
-    if (!sessionId) return sendError(res, 400, 'x-cashier-session-id header is required.');
+  if (!sessionId) {
+    sendError(res, 400, 'x-cashier-session-id header is required.');
+    return null;
+  }
+  if (!userId) {
+    sendError(res, 400, 'Authenticated user identity is required.');
+    return null;
+  }
+
+  return { sessionId, userId, branchId };
+};
+
+export const cartController = {
+  getCart: (req, res) => {
+    const ctx = resolveCartContext(req, res);
+    if (!ctx) return;
 
     try {
-      const cart = cartService.getOrCreateCart(sessionId, userId, branchId, {
+      const cart = cartService.getOrCreateCart(ctx.sessionId, ctx.userId, ctx.branchId, {
         order_type: req.query.order_type || 'DINE_IN'
       });
       sendSuccess(res, cart, 'Cart retrieved successfully.');
@@ -35,42 +34,28 @@ export const cartController = {
     }
   },
 
-  /**
-   * POST /api/cart/items
-   * Adds a product (with optional variant, modifiers, add-ons, combo) to the cart.
-   * Merges quantity if an identical line already exists.
-   */
   addItem: (req, res) => {
-    const sessionId = req.headers['x-cashier-session-id'];
-    const userId = req.headers['x-user-id'];
-    const branchId = req.headers['x-branch-id'] || 'DEFAULT_BRANCH';
-
-    if (!sessionId) return sendError(res, 400, 'x-cashier-session-id header is required.');
+    const ctx = resolveCartContext(req, res);
+    if (!ctx) return;
 
     try {
-      const updatedCart = cartService.addItem(sessionId, userId, branchId, req.body);
+      const updatedCart = cartService.addItem(ctx.sessionId, ctx.userId, ctx.branchId, req.body);
       sendSuccess(res, updatedCart, 'Item added to cart.');
     } catch (error) {
       sendError(res, 400, error.message);
     }
   },
 
-  /**
-   * PUT /api/cart/items/:cartItemId
-   * Updates the quantity of a specific cart line item. 
-   * Sending quantity: 0 removes the item.
-   */
   updateItemQuantity: (req, res) => {
-    const sessionId = req.headers['x-cashier-session-id'];
-    const userId = req.headers['x-user-id'];
+    const ctx = resolveCartContext(req, res);
+    if (!ctx) return;
 
-    if (!sessionId) return sendError(res, 400, 'x-cashier-session-id header is required.');
     try {
       const updatedCart = cartService.updateItemQuantity(
-        sessionId,
+        ctx.sessionId,
         req.params.cartItemId,
         Number(req.body.quantity),
-        userId
+        ctx.userId
       );
       sendSuccess(res, updatedCart, 'Cart item quantity updated.');
     } catch (error) {
@@ -79,13 +64,11 @@ export const cartController = {
   },
 
   updateItemDetails: (req, res) => {
-    const sessionId = req.headers['x-cashier-session-id'];
-    const userId = req.headers['x-user-id'];
-
-    if (!sessionId) return sendError(res, 400, 'x-cashier-session-id header is required.');
+    const ctx = resolveCartContext(req, res);
+    if (!ctx) return;
 
     try {
-      const updatedCart = cartService.updateItemDetails(sessionId, req.params.cartItemId, req.body || {}, userId);
+      const updatedCart = cartService.updateItemDetails(ctx.sessionId, req.params.cartItemId, req.body || {}, ctx.userId);
       sendSuccess(res, updatedCart, 'Cart item updated.');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -93,44 +76,31 @@ export const cartController = {
   },
 
   duplicateItem: (req, res) => {
-    const sessionId = req.headers['x-cashier-session-id'];
-    const userId = req.headers['x-user-id'];
-
-    if (!sessionId) return sendError(res, 400, 'x-cashier-session-id header is required.');
+    const ctx = resolveCartContext(req, res);
+    if (!ctx) return;
 
     try {
-      const updatedCart = cartService.duplicateItem(sessionId, req.params.cartItemId, userId);
+      const updatedCart = cartService.duplicateItem(ctx.sessionId, req.params.cartItemId, ctx.userId);
       sendSuccess(res, updatedCart, 'Cart item duplicated.');
     } catch (error) {
       sendError(res, 400, error.message);
     }
   },
 
-  /**
-   * DELETE /api/cart/items/:cartItemId
-   * Removes a specific cart line item by its temporary UUID.
-   */
   removeItem: (req, res) => {
-    const sessionId = req.headers['x-cashier-session-id'];
-    const userId = req.headers['x-user-id'];
-
-    if (!sessionId) return sendError(res, 400, 'x-cashier-session-id header is required.');
+    const ctx = resolveCartContext(req, res);
+    if (!ctx) return;
 
     try {
-      const updatedCart = cartService.removeItem(sessionId, req.params.cartItemId, userId);
+      const updatedCart = cartService.removeItem(ctx.sessionId, req.params.cartItemId, ctx.userId);
       sendSuccess(res, updatedCart, 'Cart item removed.');
     } catch (error) {
       sendError(res, 400, error.message);
     }
   },
 
-  /**
-   * PATCH /api/cart/notes
-   * Sets order-level and kitchen notes on the active cart.
-   */
   setNotes: (req, res) => {
     const sessionId = req.headers['x-cashier-session-id'];
-
     if (!sessionId) return sendError(res, 400, 'x-cashier-session-id header is required.');
 
     try {
@@ -144,13 +114,8 @@ export const cartController = {
     }
   },
 
-  /**
-   * PATCH /api/cart/meta
-   * Updates order type, customer assignment, or table assignment on the cart.
-   */
   setMeta: (req, res) => {
     const sessionId = req.headers['x-cashier-session-id'];
-
     if (!sessionId) return sendError(res, 400, 'x-cashier-session-id header is required.');
 
     try {
@@ -165,38 +130,24 @@ export const cartController = {
     }
   },
 
-  /**
-   * DELETE /api/cart
-   * Clears all items from the active cart session (keeps session alive).
-   */
   clearCart: (req, res) => {
-    const sessionId = req.headers['x-cashier-session-id'];
-    const userId = req.headers['x-user-id'];
-
-    if (!sessionId) return sendError(res, 400, 'x-cashier-session-id header is required.');
+    const ctx = resolveCartContext(req, res);
+    if (!ctx) return;
 
     try {
-      const clearedCart = cartService.clearCart(sessionId, userId);
+      const clearedCart = cartService.clearCart(ctx.sessionId, ctx.userId);
       sendSuccess(res, clearedCart, 'Cart cleared.');
     } catch (error) {
       sendError(res, 400, error.message);
     }
   },
 
-  /**
-   * POST /api/cart/checkout
-   * Validates the cart and converts it into a permanent Order Draft atomically.
-   * This is the ONLY path that creates orders and allocates order numbers.
-   */
   checkout: (req, res) => {
-    const sessionId = req.headers['x-cashier-session-id'];
-    const userId = req.headers['x-user-id'];
-
-    if (!sessionId) return sendError(res, 400, 'x-cashier-session-id header is required.');
-    if (!userId) return sendError(res, 400, 'x-user-id header is required.');
+    const ctx = resolveCartContext(req, res);
+    if (!ctx) return;
 
     try {
-      const order = orderCreationService.checkoutCart(sessionId, userId, req.body || {});
+      const order = orderCreationService.checkoutCart(ctx.sessionId, ctx.userId, req.body || {});
       sendSuccess(res, order, `Order ${order.order_number} created successfully.`, 201);
     } catch (error) {
       sendError(res, 400, error.message);

@@ -41,18 +41,17 @@ export default function Login() {
     try {
       const response = await authService.login({ username: selectedUsername, pin })
       if (response.success && response.data) {
-        const { token, user } = response.data
+        const { token, user, cashierSessionId } = response.data
         
-        // Construct standard User object mapping backend payload
         const sessionUser = {
           id: user.id,
-          username: selectedUsername,
-          name: user.name,
+          username: user.username || selectedUsername,
+          name: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || selectedUsername,
           role: user.role,
           permissions: user.permissions || []
         }
 
-        setSession(sessionUser, token)
+        setSession(sessionUser, token, cashierSessionId || null)
         toast.success("Welcome back", `Successfully logged in as ${sessionUser.name}`)
         navigate("/dashboard")
       }

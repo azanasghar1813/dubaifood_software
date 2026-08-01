@@ -1,12 +1,28 @@
 import { orderService } from '../services/orderService.js';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
 
+const resolveSessionContext = (req, res, { requireShift = true } = {}) => {
+  const shiftId = req.headers['x-cashier-session-id'];
+  const userId = req.headers['x-user-id'] || req.user?.userId;
+
+  if (requireShift && !shiftId) {
+    sendError(res, 400, 'x-cashier-session-id header is required.');
+    return null;
+  }
+  if (!userId) {
+    sendError(res, 400, 'Authenticated user identity is required.');
+    return null;
+  }
+
+  return { shiftId, userId };
+};
+
 export const orderController = {
   getDraft: (req, res) => {
-    const shiftId = req.headers['x-cashier-session-id'] || 'mock-session-123';
-    const userId = req.headers['x-user-id'] || 'mock-user-123';
+    const ctx = resolveSessionContext(req, res);
+    if (!ctx) return;
     try {
-      const draft = orderService.getOrCreateDraft(shiftId, userId);
+      const draft = orderService.getOrCreateDraft(ctx.shiftId, ctx.userId);
       sendSuccess(res, draft, 'Draft retrieved successfully');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -14,10 +30,10 @@ export const orderController = {
   },
 
   createOrder: (req, res) => {
-    const shiftId = req.headers['x-cashier-session-id'] || 'mock-session-123';
-    const userId = req.headers['x-user-id'] || 'mock-user-123';
+    const ctx = resolveSessionContext(req, res);
+    if (!ctx) return;
     try {
-      const order = orderService.createDraftOrder(shiftId, userId, req.body);
+      const order = orderService.createDraftOrder(ctx.shiftId, ctx.userId, req.body);
       sendSuccess(res, order, 'Order created successfully', 201);
     } catch (error) {
       sendError(res, 400, error.message);
@@ -37,10 +53,10 @@ export const orderController = {
   },
 
   addItemToDraft: (req, res) => {
-    const shiftId = req.headers['x-cashier-session-id'] || 'mock-session-123';
-    const userId = req.headers['x-user-id'] || 'mock-user-123';
+    const ctx = resolveSessionContext(req, res);
+    if (!ctx) return;
     try {
-      const updatedDraft = orderService.addItemToDraft(shiftId, userId, req.body);
+      const updatedDraft = orderService.addItemToDraft(ctx.shiftId, ctx.userId, req.body);
       sendSuccess(res, updatedDraft, 'Item added to draft');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -48,9 +64,10 @@ export const orderController = {
   },
 
   addItemToOrder: (req, res) => {
-    const userId = req.headers['x-user-id'] || 'mock-user-123';
+    const ctx = resolveSessionContext(req, res, { requireShift: false });
+    if (!ctx) return;
     try {
-      const updatedOrder = orderService.addItemToOrder(req.params.orderId, req.body, userId);
+      const updatedOrder = orderService.addItemToOrder(req.params.orderId, req.body, ctx.userId);
       sendSuccess(res, updatedOrder, 'Item added to order');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -58,9 +75,10 @@ export const orderController = {
   },
 
   updateItemQuantity: (req, res) => {
-    const userId = req.headers['x-user-id'] || 'mock-user-123';
+    const ctx = resolveSessionContext(req, res, { requireShift: false });
+    if (!ctx) return;
     try {
-      const updatedOrder = orderService.updateItemQuantity(req.params.orderId, req.params.itemId, req.body.quantity, userId);
+      const updatedOrder = orderService.updateItemQuantity(req.params.orderId, req.params.itemId, req.body.quantity, ctx.userId);
       sendSuccess(res, updatedOrder, 'Item quantity updated');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -68,9 +86,10 @@ export const orderController = {
   },
 
   removeItemFromOrder: (req, res) => {
-    const userId = req.headers['x-user-id'] || 'mock-user-123';
+    const ctx = resolveSessionContext(req, res, { requireShift: false });
+    if (!ctx) return;
     try {
-      const updatedOrder = orderService.removeItem(req.params.orderId, req.params.itemId, userId);
+      const updatedOrder = orderService.removeItem(req.params.orderId, req.params.itemId, ctx.userId);
       sendSuccess(res, updatedOrder, 'Item removed from order');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -78,10 +97,10 @@ export const orderController = {
   },
 
   holdOrder: (req, res) => {
-    const shiftId = req.headers['x-cashier-session-id'] || 'mock-session-123';
-    const userId = req.headers['x-user-id'] || 'mock-user-123';
+    const ctx = resolveSessionContext(req, res);
+    if (!ctx) return;
     try {
-      const heldOrder = orderService.holdOrder(shiftId, userId, req.body.holdName);
+      const heldOrder = orderService.holdOrder(ctx.shiftId, ctx.userId, req.body.holdName);
       sendSuccess(res, heldOrder, 'Order held successfully');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -99,10 +118,10 @@ export const orderController = {
   },
 
   resumeOrder: (req, res) => {
-    const shiftId = req.headers['x-cashier-session-id'] || 'mock-session-123';
-    const userId = req.headers['x-user-id'] || 'mock-user-123';
+    const ctx = resolveSessionContext(req, res);
+    if (!ctx) return;
     try {
-      const resumedOrder = orderService.resumeOrder(shiftId, userId, req.params.orderId);
+      const resumedOrder = orderService.resumeOrder(ctx.shiftId, ctx.userId, req.params.orderId);
       sendSuccess(res, resumedOrder, 'Order resumed');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -110,21 +129,20 @@ export const orderController = {
   },
 
   transitionState: (req, res) => {
-    const userId = req.headers['x-user-id'] || 'mock-user-123';
+    const ctx = resolveSessionContext(req, res, { requireShift: false });
+    if (!ctx) return;
     try {
       const updatedOrder = orderService.transitionOrderState(
         req.params.orderId,
         req.body.targetState,
         {
-          userId,
+          userId: ctx.userId,
           reason: req.body.reason,
-          kitchenState: req.body.kitchenState,
-          paymentState: req.body.paymentState
         }
       );
-      sendSuccess(res, updatedOrder, `Order state transitioned to ${req.body.targetState}`);
+      sendSuccess(res, updatedOrder, 'Order state updated');
     } catch (error) {
       sendError(res, 400, error.message);
     }
-  }
+  },
 };

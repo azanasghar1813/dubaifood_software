@@ -12,10 +12,11 @@ export interface User {
 interface AuthState {
   user: User | null
   token: string | null
+  cashierSessionId: string | null
   isAuthenticated: boolean
   
-  // Actions
-  setSession: (user: User, token: string) => void
+  setSession: (user: User, token: string, cashierSessionId?: string | null) => void
+  setCashierSessionId: (cashierSessionId: string | null) => void
   logout: () => void
 }
 
@@ -24,28 +25,29 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null,
       token: null,
+      cashierSessionId: null,
       isAuthenticated: false,
 
-      setSession: (user, token) => set({
+      setSession: (user, token, cashierSessionId = null) => set({
         user,
         token,
+        cashierSessionId,
         isAuthenticated: true
       }),
 
+      setCashierSessionId: (cashierSessionId) => set({ cashierSessionId }),
+
       logout: () => {
-        // Here we could also call authService.logout() if needed,
-        // but typically the logout clears local state. 
-        // The AppInitializer or a logout button will call the API.
         set({
           user: null,
           token: null,
+          cashierSessionId: null,
           isAuthenticated: false
         })
       }
     }),
     {
       name: 'auth-storage',
-      // Only persist token and basic user info, we can re-fetch permissions on startup
     }
   )
 )

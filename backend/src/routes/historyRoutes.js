@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { authenticate } from '../middleware/authenticate.js';
 import {
   getOrderList,
   getOrderDetail,
@@ -14,6 +15,8 @@ import {
 
 const router = Router();
 
+router.use(authenticate);
+
 // ─── Stats ────────────────────────────────────────────────────────────────────
 router.get('/stats',                            getStats);
 router.get('/cache/stats',                      getCacheStats);
@@ -22,16 +25,6 @@ router.get('/cache/stats',                      getCacheStats);
 router.get('/search',                           searchOrders);
 
 // ─── Order List ───────────────────────────────────────────────────────────────
-// Supports all filter dimensions via query params:
-//   ?date_preset=TODAY|YESTERDAY|LAST_7_DAYS|THIS_MONTH|CURRENT_SHIFT
-//   ?date_from=2026-07-01&date_to=2026-07-31
-//   ?lifecycle_state=COMPLETED,CANCELLED  (comma-separated for multi-select)
-//   ?payment_state=PAID&order_type=DINE_IN
-//   ?cashier_user_id=xxx&branch_id=xxx
-//   ?min_amount=100&max_amount=5000
-//   ?payment_method=CASH&product_name=burger
-//   ?sort_by=NEWEST|OLDEST|HIGHEST|LOWEST|ORDER_NUMBER
-//   ?page=1&limit=50
 router.get('/orders',                           getOrderList);
 
 // ─── Order Detail ─────────────────────────────────────────────────────────────

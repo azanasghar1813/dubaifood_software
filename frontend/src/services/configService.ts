@@ -5,7 +5,7 @@ export const configService = {
    * Get general business settings (Name, Address, Tax settings).
    */
   getGeneralSettings: async () => {
-    return apiClient.get('/config/general')
+    return apiClient.get('/config')
   },
 
   /**

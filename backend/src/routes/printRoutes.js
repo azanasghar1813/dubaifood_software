@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { authenticate } from '../middleware/authenticate.js';
 import {
   getQueue,
   getJobById,
@@ -17,6 +18,8 @@ import {
 } from '../controllers/printController.js';
 
 const router = Router();
+
+router.use(authenticate);
 
 // ─── Queue Monitoring ─────────────────────────────────────────────────────────
 router.get('/queue',                     getQueue);
