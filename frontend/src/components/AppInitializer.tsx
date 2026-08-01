@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { authService } from '../services/authService'
 import { Loader2 } from 'lucide-react'
-import { toast } from '../store/toastStore'
 
 /**
  * Enterprise Application Initializer.
@@ -10,7 +9,7 @@ import { toast } from '../store/toastStore'
  * before rendering protected routes.
  */
 export function AppInitializer({ children }: { children: React.ReactNode }) {
-  const { token, isAuthenticated, logout, setSession } = useAuthStore()
+  const { token, logout, setSession } = useAuthStore()
   const [isInitializing, setIsInitializing] = useState(true)
 
   useEffect(() => {
@@ -26,13 +25,13 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         // 1. Validate Session
         const response = await authService.validateSession()
         
-        if (response.success && response.data) {
+        if (response.data) {
           const { user } = response.data
           const sessionUser = {
             id: user.id,
-            username: user.username,
-            name: `${user.firstName} ${user.lastName}`,
-            role: user.roleId.toString(),
+            username: user.name,
+            name: user.name,
+            role: user.role,
             permissions: user.permissions || []
           }
           
@@ -57,7 +56,7 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
     }
 
     initializeApp()
-  }, [token]) // Re-run if token changes (like on explicit login)
+  }, [token, logout, setSession]) // Re-run if token changes (like on explicit login)
 
   if (isInitializing) {
     return (

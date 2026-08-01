@@ -5,6 +5,7 @@ import { initDatabase } from './database/initDatabase.js';
 import { dbEngine } from './database/sqlite.js';
 import { configService } from './services/configService.js';
 import { menuCacheService } from './services/menuCacheService.js';
+import { printEngineService } from './services/printEngineService.js';
 
 /**
  * Handle Uncaught Exceptions
@@ -98,7 +99,10 @@ const startServer = async () => {
     // 4. Initialize Menu Engine Cache
     menuCacheService.initialize();
 
-    // 5. Start the server
+    // 5. Start the Print Engine background processor (independent of HTTP server)
+    printEngineService.start();
+
+    // 6. Start the HTTP server
     const server = app.listen(config.server.port, () => {
       const startupTimeMs = Date.now() - startTime;
       printStartupSummary(storageResults, dbInfo, startupTimeMs);
@@ -110,6 +114,7 @@ const startServer = async () => {
      */
     process.on('unhandledRejection', (err) => {
       console.error('[UNHANDLED REJECTION] Shutting down...', err.name, err.message);
+      printEngineService.stop();
       dbEngine.close();
       server.close(() => {
         process.exit(1);
@@ -119,6 +124,7 @@ const startServer = async () => {
     // Handle graceful shutdown signals (e.g., Ctrl+C or Electron quit)
     const gracefulShutdown = (signal) => {
       console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
+      printEngineService.stop();
       dbEngine.close();
       server.close(() => {
         console.log('HTTP server closed.');
@@ -138,6 +144,3 @@ const startServer = async () => {
 };
 
 startServer();
-
-// touch
-// touch2

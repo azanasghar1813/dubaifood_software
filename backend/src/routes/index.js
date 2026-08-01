@@ -8,6 +8,11 @@ import configRoutes from './configRoutes.js';
 import catalogRoutes from './catalogRoutes.js';
 import dashboardRoutes from './dashboardRoutes.js';
 import orderRoutes from './orderRoutes.js';
+import cartRoutes from './cartRoutes.js';
+import paymentRoutes from './paymentRoutes.js';
+import kitchenRoutes from './kitchenRoutes.js';
+import printRoutes from './printRoutes.js';
+import historyRoutes from './historyRoutes.js';
 
 const router = Router();
 
@@ -21,5 +26,10 @@ router.use('/config', configRoutes);
 router.use('/catalog', catalogRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/orders', orderRoutes);
+router.use('/cart', cartRoutes);
+router.use('/payments', paymentRoutes);
+router.use('/kitchen', kitchenRoutes);
+router.use('/print', printRoutes);
+router.use('/history', historyRoutes);
 
 export default router;

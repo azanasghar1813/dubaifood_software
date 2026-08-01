@@ -2,13 +2,10 @@ import { useState, useEffect, useMemo, useRef } from "react"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
-  Search, Filter, Plus, Edit2, Trash2, ChevronLeft, ChevronRight, 
-  CheckCircle2, XCircle, Package, Loader2, Download, Upload,
-  Grid, List, Eye, Copy, RefreshCw, Smartphone, Printer, Settings,
-  AlertTriangle, DollarSign, Clock, HelpCircle, EyeOff, Sparkles, BarChart2,
-  Trash, ArrowUpDown, ChevronDown, Check, X, ShieldAlert, BadgeInfo
+  Search, Filter, Plus, Edit2, Trash2, 
+  Package, Download, Grid, List, Eye, Copy, RefreshCw, EyeOff, Sparkles, BarChart2,
+  Trash, X
 } from "lucide-react"
-import { PRODUCTS as initialProducts } from "../services/mockData"
 import { menuService } from "../services/menuService"
 import { useAuthStore } from "../store/authStore"
 import { toast } from "../store/toastStore"
@@ -17,14 +14,13 @@ import { toast } from "../store/toastStore"
 
 
 export default function Products() {
-  const { hasPermission } = useAuthStore()
-  const canManageProducts = hasPermission("MANAGE_PRODUCTS")
+  const { user } = useAuthStore()
+  const canManageProducts = user?.permissions?.includes("MANAGE_PRODUCTS") ?? false
 
   const [products, setProducts] = useState<any[]>([])
   const [categoriesList, setCategoriesList] = useState<string[]>([])
-  const [isLoadingData, setIsLoadingData] = useState(true)
-  
-  const [currentTime, setCurrentTime] = useState(new Date())
+  const [, setIsLoadingData] = useState(true)
+
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid")
   const [search, setSearch] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("All")
@@ -43,12 +39,6 @@ export default function Products() {
   // Refs for shortcuts
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  // Live clock
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    return () => clearInterval(timer)
-  }, [])
-
   // Fetch backend data
   const fetchProductsAndCategories = async () => {
     try {
@@ -58,10 +48,10 @@ export default function Products() {
         menuService.getCategories()
       ])
       
-      if (prodRes.success) {
+      if (prodRes.data) {
         setProducts(prodRes.data)
       }
-      if (catRes.success) {
+      if (catRes.data) {
         setCategoriesList(catRes.data.map((c: any) => c.name))
       }
     } catch (error) {
@@ -154,7 +144,7 @@ export default function Products() {
     try {
       if (drawerMode === "add") {
         const res = await menuService.createProduct(selectedProduct)
-        if (res.success) {
+        if (res.data) {
           toast.success("Product created")
           setDrawerMode("view")
           // Set the created ID so we can upload image if needed
@@ -163,7 +153,7 @@ export default function Products() {
         }
       } else if (drawerMode === "edit") {
         const res = await menuService.updateProduct(selectedProduct.id, selectedProduct)
-        if (res.success) {
+        if (res.data) {
           toast.success("Product updated")
           setDrawerMode("view")
           setSelectedProduct(res.data)
@@ -186,7 +176,7 @@ export default function Products() {
     const file = e.target.files[0]
     try {
       const res = await menuService.uploadProductImage(selectedProduct.id, file)
-      if (res.success) {
+      if (res.data) {
         toast.success("Image uploaded successfully")
         setSelectedProduct(res.data)
         fetchProductsAndCategories()
@@ -242,7 +232,7 @@ export default function Products() {
     
     try {
       const res = await menuService.createProduct(duplicated)
-      if (res.success) {
+      if (res.data) {
         toast.success(`Duplicated "${prod.name}" successfully.`)
         fetchProductsAndCategories()
       }
@@ -261,7 +251,7 @@ export default function Products() {
     if (confirm("Are you sure you want to delete this product?")) {
       try {
         const res = await menuService.deleteProduct(id)
-        if (res.success) {
+        if (res.data) {
           toast.success("Product deleted")
           setIsDrawerOpen(false)
           setSelectedProduct(null)
@@ -1043,7 +1033,7 @@ export default function Products() {
                               const status = selectedProduct.status === "Active" ? "Hidden" : "Active"
                               try {
                                 const res = await menuService.updateProduct(selectedProduct.id, { status })
-                                if (res.success) {
+                                if (res.data) {
                                   setSelectedProduct(res.data)
                                   fetchProductsAndCategories()
                                   toast.success(`Product status changed to: ${status}`)

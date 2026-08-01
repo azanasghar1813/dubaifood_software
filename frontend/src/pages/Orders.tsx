@@ -282,7 +282,7 @@ export default function Orders() {
       const matchPhone = (order.customerPhone || '').includes(q)
       const matchCashier = (order.cashierName || '').toLowerCase().includes(q)
       const matchTable = (order.tableNumber || '').toLowerCase().includes(q)
-      const matchItemName = order.items.some(i => i.name.toLowerCase().includes(q) || i.code.includes(q))
+      const matchItemName = order.items.some(i => i.name.toLowerCase().includes(q) || (i.code || '').includes(q))
       
       const searchMatches = !searchQuery || matchId || matchCustomer || matchPhone || matchCashier || matchTable || matchItemName
 

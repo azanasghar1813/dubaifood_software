@@ -1,0 +1,401 @@
+import { dbEngine } from '../database/sqlite.js';
+import { cartService } from './cartService.js';
+import { cartValidationService } from './cartValidationService.js';
+import { orderRepository } from '../repositories/orderRepository.js';
+import { orderItemRepository } from '../repositories/orderItemRepository.js';
+import { orderPaymentRepository } from '../repositories/orderPaymentRepository.js';
+import { orderTimelineRepository } from '../repositories/orderTimelineRepository.js';
+import { orderMetadataRepository } from '../repositories/orderMetadataRepository.js';
+import { orderNumberService } from './orderNumberService.js';
+import { orderTimelineService } from './orderTimelineService.js';
+import { orderCacheService } from './orderCacheService.js';
+import { activityLogService } from './activityLogService.js';
+import { syncService } from './syncService.js';
+import { configService } from './configService.js';
+import { userRepository } from '../repositories/userRepository.js';
+import { productRepository } from '../repositories/productRepository.js';
+import { variantRepository } from '../repositories/variantRepository.js';
+import { dealRepository } from '../repositories/dealRepository.js';
+import { modifierRepository } from '../repositories/modifierRepository.js';
+import { printerRepository } from '../repositories/printerRepository.js';
+import { availabilityService } from './availabilityService.js';
+import { OrderLifecycleState } from '../constants/orderStates.js';
+import crypto from 'crypto';
+
+/**
+ * OrderCreationService
+ * 
+ * Converts a fully validated working Cart into a permanent Order Draft in a single
+ * atomic SQLite transaction. This is the ONLY bridge between the temporary cart
+ * world and the permanent order world.
+ * 
+ * Responsibilities:
+ * 1. Validate the working cart
+ * 2. Allocate the business order number (first and only moment it is consumed)
+ * 3. Create the orders row with all financial totals
+ * 4. Create all order_items with full immutable snapshot data
+ * 5. Create order_item_variants, order_item_modifiers, order_item_addons, order_combo_components
+ * 6. Record timeline audit entry
+ * 7. Log activity
+ * 8. Queue sync event
+ * 9. Destroy the working cart (outside transaction on success)
+ * 10. Return the complete hydrated Order graph
+ */
+class OrderCreationService {
+  _getBusinessDateForNow() {
+    const businessDay = configService.getBusinessDay();
+    const [startHour, startMinute] = String(businessDay.start_time || '06:00').split(':').map(Number);
+    const now = new Date();
+    const businessStart = new Date(now);
+    businessStart.setHours(startHour, startMinute, 0, 0);
+
+    if (now < businessStart) {
+      businessStart.setDate(businessStart.getDate() - 1);
+    }
+
+    return businessStart.toISOString().slice(0, 10);
+  }
+
+  _assertActiveSession(sessionId) {
+    const session = dbEngine.prepare('SELECT * FROM cashier_sessions WHERE id = ?').get(sessionId);
+    if (!session) {
+      throw new Error('Cashier session is required to perform checkout.');
+    }
+    if (session.status !== 'OPEN') {
+      throw new Error('Cashier session must be open to perform checkout.');
+    }
+    return session;
+  }
+
+  _assertCheckoutPermission(userId) {
+    const user = userRepository.findById(userId);
+    if (!user || !user.is_active) {
+      throw new Error('Active cashier user session is required to perform checkout.');
+    }
+
+    const permissions = userRepository.getUserPermissions(user.role_id) || [];
+    const allowedRoles = new Set(['Super Admin', 'Admin', 'Manager', 'Cashier']);
+    const hasOperationalPermission = permissions.some(code => /CHECKOUT|ORDER|CART|POS/i.test(code));
+
+    if (!hasOperationalPermission && !allowedRoles.has(user.role_name)) {
+      throw new Error('Permission denied for checkout.');
+    }
+
+    return user;
+  }
+
+  _assertBranch(branchId) {
+    if (!branchId || typeof branchId !== 'string' || !branchId.trim()) {
+      throw new Error('Branch is required to perform checkout.');
+    }
+    return branchId.trim();
+  }
+
+  _assertCartAvailability(cart) {
+    for (const item of cart.items) {
+      const product = productRepository.findById(item.product_id) || dealRepository.findById(item.product_id);
+      if (!availabilityService.isOrderable(product)) {
+        throw new Error(`Item ${item.product_id} is not currently orderable.`);
+      }
+
+      if (item.variant_id) {
+        const variant = variantRepository.findById(item.variant_id);
+        if (!variant || variant.lifecycle_state !== 'ACTIVE' || variant.product_id !== item.product_id) {
+          throw new Error(`Variant ${item.variant_id} is not valid for checkout.`);
+        }
+      }
+
+      for (const addon of item.addons || []) {
+        const addonProduct = productRepository.findById(addon.addon_id);
+        if (!availabilityService.isOrderable(addonProduct)) {
+          throw new Error(`Add-on ${addon.addon_id} is not currently orderable.`);
+        }
+      }
+
+      for (const comp of item.comboComponents || []) {
+        const comboProduct = productRepository.findById(comp.product_id);
+        if (!availabilityService.isOrderable(comboProduct)) {
+          throw new Error(`Combo component ${comp.product_id} is not currently orderable.`);
+        }
+      }
+
+      for (const mod of item.modifiers || []) {
+        const modifier = modifierRepository.findModifierById(mod.modifier_id);
+        if (!modifier || modifier.lifecycle_state !== 'ACTIVE') {
+          throw new Error(`Modifier ${mod.modifier_id} is not currently orderable.`);
+        }
+      }
+    }
+  }
+
+  _assertComboRules(cart) {
+    for (const item of cart.items) {
+      const product = dealRepository.findById(item.product_id);
+      if (!product) continue;
+
+      const comboSelections = Array.isArray(item.comboComponents) ? item.comboComponents.length : 0;
+      const groups = Array.isArray(product.groups) ? product.groups : [];
+      if (groups.length === 0) continue;
+
+      const minRequired = groups.reduce((total, group) => total + (Number(group.min_selection) || 0), 0);
+      const maxAllowed = groups.reduce((total, group) => total + (Number(group.max_selection) || 0), 0);
+
+      if (comboSelections < minRequired) {
+        throw new Error(`Combo rules are not satisfied for ${product.name || product.display_name || 'deal'}.`);
+      }
+
+      if (maxAllowed > 0 && comboSelections > maxAllowed) {
+        throw new Error(`Combo rules exceed the maximum allowed selections for ${product.name || product.display_name || 'deal'}.`);
+      }
+    }
+  }
+
+  /**
+   * Hydrates a full order graph from the database (items + payments + timeline + metadata + tags).
+   */
+  _hydrateOrder(orderId) {
+    const order = orderRepository.findById(orderId);
+    if (!order) return null;
+
+    order.items = orderItemRepository.findItemsByOrderId(orderId);
+    order.payments = orderPaymentRepository.findByOrderId(orderId);
+    order.timeline = orderTimelineRepository.findByOrderId(orderId);
+    order.metadata = orderMetadataRepository.getAllMeta(orderId);
+    order.tags = orderMetadataRepository.getTags(orderId);
+
+    orderCacheService.upsertOrder(order);
+    return order;
+  }
+
+  /**
+   * Converts the active cart for a session into an Order Draft atomically.
+   * 
+   * @param {string} sessionId  - Cashier session/shift ID
+   * @param {string} cashierUserId - Acting user ID
+   * @param {Object} options - Overrides: { order_type, customer_id, table_id, notes, branch_id, business_date }
+   * @returns {Object} Hydrated Order Draft with all sub-entities
+   */
+  checkoutCart(sessionId, cashierUserId, options = {}) {
+    // 1. Retrieve working cart from memory / crash-recovery cache
+    this._assertActiveSession(sessionId);
+    this._assertCheckoutPermission(cashierUserId);
+
+    const cart = cartService.getCart(sessionId);
+    if (!cart) {
+      throw new Error('Cannot checkout an empty cart.');
+    }
+
+    const requestedBusinessDate = options.business_date || this._getBusinessDateForNow();
+    const currentBusinessDate = this._getBusinessDateForNow();
+    if (requestedBusinessDate !== currentBusinessDate) {
+      throw new Error('Business date is not valid for the current business day.');
+    }
+
+    const branchId = this._assertBranch(options.branch_id || cart.branch_id || 'DEFAULT_BRANCH');
+
+    // 2. Full cart validation — throws on any rule violation
+    cartValidationService.validateCartForCheckout({
+      ...cart,
+      shift_id: sessionId,
+      cashier_user_id: cashierUserId
+    });
+
+    this._assertCartAvailability(cart);
+    this._assertComboRules(cart);
+
+    // 3. Atomic SQLite transaction: create all order records
+    const { orderId, orderNumber } = dbEngine.transaction(() => {
+      const businessDate = requestedBusinessDate;
+      const orderType = options.order_type || cart.order_type || 'DINE_IN';
+      const customerId = options.customer_id !== undefined ? options.customer_id : (cart.customer_id || null);
+      const tableId = options.table_id !== undefined ? options.table_id : (cart.table_id || null);
+      const orderNotes = options.notes !== undefined ? options.notes : (cart.notes || null);
+      const kitchenNotes = cart.kitchen_notes || null;
+
+      // ── 3a. Allocate atomic business order number ──────────────────────────
+      // This is the ONLY moment a sequence number is consumed.
+      // Abandoned carts never reach here, so no numbers are ever wasted.
+      const newOrderNumber = orderNumberService.generateNextNumber(branchId, businessDate);
+      const newOrderId = crypto.randomUUID();
+
+      // ── 3b. Calculate cart-level financial totals ──────────────────────────
+      let subtotal = 0;
+      let taxTotal = 0;
+      let discountTotal = 0;
+
+      for (const cartItem of cart.items) {
+        subtotal += Number(cartItem.subtotal) || 0;
+        taxTotal += Number(cartItem.tax_amount) || 0;
+        discountTotal += Number(cartItem.discount_amount) || 0;
+      }
+
+      const grandTotal = subtotal + taxTotal - discountTotal;
+
+      // ── 3c. Create master orders row ───────────────────────────────────────
+      orderRepository.create({
+        id: newOrderId,
+        order_number: newOrderNumber,
+        business_date: businessDate,
+        branch_id: branchId,
+        cashier_user_id: cashierUserId,
+        shift_id: sessionId,
+        customer_id: customerId,
+        table_id: tableId,
+        order_type: orderType,
+        lifecycle_state: OrderLifecycleState.DRAFT,
+        kitchen_state: 'PENDING',
+        payment_state: 'UNPAID',
+        subtotal,
+        tax_total: taxTotal,
+        discount_total: discountTotal,
+        grand_total: grandTotal,
+        paid_total: 0,
+        due_total: grandTotal,
+        notes: orderNotes
+      });
+
+      orderMetadataRepository.setMeta(newOrderId, 'order_type', orderType);
+      orderMetadataRepository.setMeta(newOrderId, 'source', 'CART_CHECKOUT');
+      orderMetadataRepository.setMeta(newOrderId, 'kitchen_notes', kitchenNotes);
+      orderMetadataRepository.setMeta(newOrderId, 'business_day', businessDate);
+      orderMetadataRepository.setMeta(newOrderId, 'cart_totals', {
+        subtotal,
+        tax_total: taxTotal,
+        discount_total: discountTotal,
+        grand_total: grandTotal
+      });
+
+      // ── 3d. Create line items with full immutable snapshots ────────────────
+      for (const cartItem of cart.items) {
+        const itemId = crypto.randomUUID();
+
+        // Refresh product snapshot names at the moment of order creation
+        let product = productRepository.findById(cartItem.product_id);
+        if (!product) product = dealRepository.findById(cartItem.product_id);
+        if (!product) continue; // Already validated; safeguard only
+
+        const productNameSnapshot = product.display_name || product.name || 'Item';
+        const productCodeSnapshot = product.product_code || product.sku || product.code || null;
+        const resolvedKitchenStation = cartItem.kitchen_station_id || null;
+        const resolvedKitchenStationName = resolvedKitchenStation ? printerRepository.findById(resolvedKitchenStation)?.name || null : null;
+
+        // Insert order_items row
+        orderItemRepository.addItem({
+          id: itemId,
+          order_id: newOrderId,
+          product_id: cartItem.product_id,
+          product_name_snapshot: productNameSnapshot,
+          product_code_snapshot: productCodeSnapshot,
+          base_unit_price: Number(cartItem.base_unit_price) || 0,
+          final_unit_price: Number(cartItem.final_unit_price) || 0,
+          quantity: Number(cartItem.quantity) || 1,
+          subtotal: Number(cartItem.subtotal) || 0,
+          discount_amount: Number(cartItem.discount_amount) || 0,
+          tax_amount: Number(cartItem.tax_amount) || 0,
+          total_amount: Number(cartItem.total_amount) || 0,
+          tax_rate: Number(cartItem.tax_rate) || 0,
+          tax_name: cartItem.tax_name || 'VAT',
+          is_tax_inclusive: cartItem.is_tax_inclusive ? 1 : 0,
+          kitchen_station_id: resolvedKitchenStation,
+          kitchen_station_name_snapshot: resolvedKitchenStationName,
+          estimated_prep_minutes: Number(cartItem.estimated_prep_minutes) || 10,
+          kitchen_state: 'PENDING',
+          notes: cartItem.notes || null
+        });
+
+        // Variant snapshot
+        if (cartItem.variant_id) {
+          const variant = variantRepository.findById(cartItem.variant_id);
+          if (variant) {
+            orderItemRepository.addVariant({
+              id: crypto.randomUUID(),
+              order_item_id: itemId,
+              variant_id: variant.id,
+              variant_name_snapshot: cartItem.variant_name || variant.name,
+              variant_sku_snapshot: cartItem.variant_sku || variant.sku || variant.product_code || null,
+              price_adjustment: Number(cartItem.variant_price_adj) || 0
+            });
+          }
+        }
+
+        // Modifier snapshots
+        for (const mod of (cartItem.modifiers || [])) {
+          orderItemRepository.addModifier({
+            id: crypto.randomUUID(),
+            order_item_id: itemId,
+            modifier_id: mod.modifier_id,
+            group_id: mod.group_id || null,
+            group_name_snapshot: mod.group_name || null,
+            modifier_name_snapshot: mod.modifier_name || 'Modifier',
+            price_adjustment: Number(mod.price_adjustment) || 0,
+            quantity: Number(mod.quantity) || 1
+          });
+        }
+
+        // Add-on snapshots
+        for (const addon of (cartItem.addons || [])) {
+          orderItemRepository.addAddon({
+            id: crypto.randomUUID(),
+            order_item_id: itemId,
+            addon_id: addon.addon_id,
+            addon_name_snapshot: addon.addon_name || 'Add-on',
+            unit_price: Number(addon.unit_price) || 0,
+            quantity: Number(addon.quantity) || 1,
+            subtotal: Number(addon.subtotal) || (Number(addon.unit_price) * (Number(addon.quantity) || 1))
+          });
+        }
+
+        // Combo component snapshots
+        for (const comp of (cartItem.comboComponents || [])) {
+          orderItemRepository.addComboComponent({
+            id: crypto.randomUUID(),
+            order_item_id: itemId,
+            component_id: comp.component_id || crypto.randomUUID(),
+            product_id: comp.product_id,
+            product_name_snapshot: comp.product_name || 'Component',
+            variant_snapshot: comp.variant_name || null,
+            price_adjustment: Number(comp.price_adjustment) || 0
+          });
+        }
+      }
+
+      // ── 3e. Timeline audit entry ───────────────────────────────────────────
+      orderTimelineService.recordEvent(newOrderId, cashierUserId, 'ORDER_CREATED', {
+        to_state: OrderLifecycleState.DRAFT,
+        description: `Order ${newOrderNumber} created from cart by cashier ${cashierUserId}`,
+        metadata: {
+          branch_id: branchId,
+          order_type: orderType,
+          item_count: cart.items.length,
+          grand_total: grandTotal
+        }
+      }, { strict: true });
+
+      // ── 3f. Activity log ───────────────────────────────────────────────────
+      activityLogService.logActivity(cashierUserId, 'ORDER_DRAFT_CREATED', 'ORDER', newOrderId, {
+        order_number: newOrderNumber,
+        branch_id: branchId,
+        grand_total: grandTotal,
+        item_count: cart.items.length
+      }, { strict: true });
+
+      // ── 3g. Sync queue ─────────────────────────────────────────────────────
+      syncService.queueSyncEvent('ORDER', newOrderId, 'ORDER_CREATED', {
+        order_number: newOrderNumber,
+        business_date: businessDate,
+        grand_total: grandTotal
+      }, 1, { strict: true });
+
+      return { orderId: newOrderId, orderNumber: newOrderNumber };
+    });
+
+    // 4. Destroy working cart AFTER successful transaction commit
+    //    (if transaction throws, the cart is preserved for retry)
+    cartService.destroyCart(sessionId);
+
+    // 5. Hydrate and return full order graph
+    return this._hydrateOrder(orderId);
+  }
+}
+
+export const orderCreationService = new OrderCreationService();

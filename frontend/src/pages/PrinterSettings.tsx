@@ -1,5 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { useState, useEffect, useMemo } from "react"
 import { RefreshCw } from 'lucide-react'
 import { usePrinterStore } from '../store/printerStore'
 
@@ -144,7 +143,7 @@ export default function PrinterSettings() {
                 <input 
                   type="text" 
                   value={selectedPrinter.name}
-                  onChange={(e) => {
+                  onChange={() => {
                     printerStore.updatePrinterStatus(selectedPrinter.id, selectedPrinter.status)
                   }}
                   className="w-full h-10 px-3 rounded-xl bg-secondary border border-border outline-none text-xs font-black text-foreground"

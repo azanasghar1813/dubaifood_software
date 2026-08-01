@@ -1,41 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useKdsStore, type KitchenTicket, type KitchenStatus, type KitchenPriority } from '../store/kdsStore'
-import { usePrinterStore } from '../store/printerStore'
+import { useKdsStore, type KitchenTicket } from '../store/kdsStore'
 import { useOrderStore } from '../store/orderStore'
 import { 
-  Clock, Search, Filter, ChefHat, CheckCircle2, 
-  XCircle, AlertCircle, Play, X, RefreshCw, Maximize2,
-  Volume2, VolumeX, List, HelpCircle, User, Wifi, Printer,
-  ChevronRight, Trash, Ban, Check, Award
+  Clock, Search, ChefHat, CheckCircle2,
+  AlertCircle, Play, X, RefreshCw, Maximize2,
+  Volume2, VolumeX, Printer, Wifi, Check
 } from 'lucide-react'
 
-// Status styling colors
-const orderStatusColors: Record<string, string> = {
-  Draft: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
-  Confirmed: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  Completed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  Cancelled: "bg-red-500/10 text-red-400 border-red-500/20"
-}
-
-const kitchenStatusColors: Record<string, string> = {
-  Waiting: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  Accepted: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
-  Preparing: "bg-sky-500/10 text-sky-400 border-sky-500/20",
-  Ready: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-  Served: "bg-purple-500/10 text-purple-400 border-purple-500/20",
-  Cancelled: "bg-red-500/10 text-red-400 border-red-500/20"
-}
-
-const paymentStatusColors: Record<string, string> = {
-  Unpaid: "bg-red-500/10 text-red-400 border-red-500/20",
-  "Partial Paid": "bg-yellow-500/10 text-yellow-450 border-yellow-500/20",
-  Paid: "bg-green-500/10 text-green-400 border-green-500/20",
-  Refunded: "bg-purple-500/10 text-purple-400 border-purple-500/20"
-}
-
 export const KDS: React.FC = () => {
-  const { tickets, filters, setFilter, updateTicketStatus, receiveOrder } = useKdsStore()
+  const { tickets, updateTicketStatus, receiveOrder } = useKdsStore()
   const { orders } = useOrderStore()
   
   // Local KDS State

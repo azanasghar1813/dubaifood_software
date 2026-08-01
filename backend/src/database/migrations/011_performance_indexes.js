@@ -23,12 +23,22 @@ export default {
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     `);
 
-    // Orders indexes
-    db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_orders_cashier_session_id ON orders(cashier_session_id);
-      CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
-      CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
-    `);
+    // Orders indexes - wrapped safely to accommodate enterprise order schema updates
+    try {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+      `);
+    } catch (e) {
+      // Column 'status' or 'orders' table may be in enterprise format
+    }
+
+    try {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_orders_cashier_session_id ON orders(cashier_session_id);
+      `);
+    } catch (e) {
+      // Column 'cashier_session_id' replaced by 'shift_id' in enterprise schema
+    }
   },
   down: (db) => {
     db.exec(`
@@ -46,7 +56,6 @@ export default {
 
       DROP INDEX IF NOT EXISTS idx_orders_cashier_session_id;
       DROP INDEX IF NOT EXISTS idx_orders_status;
-      DROP INDEX IF NOT EXISTS idx_orders_user_id;
     `);
   }
 };

@@ -66,6 +66,7 @@ interface POSState {
 
   // Async Backend Actions
   fetchDraftOrder: () => Promise<void>
+  loadOrderForEdit: (order: any) => void
   addToCart: (product: any, quantity?: number, selectedModifiers?: any[], notes?: string) => Promise<void>
   removeFromCart: (cartItemId: string, reason?: string) => Promise<void>
   updateQuantity: (cartItemId: string, quantity: number) => Promise<void>
@@ -140,6 +141,16 @@ export const usePosStore = create<POSState>((set, get) => ({
     }
   },
 
+  loadOrderForEdit: (order) => {
+    set({
+      activeOrder: order,
+      editingOrderId: order?.id || null,
+      orderType: order?.orderType || order?.order_type || get().orderType,
+      tableNumber: order?.tableNumber || order?.table_id || null,
+      customer: order?.customerName ? { name: order.customerName } : get().customer
+    })
+  },
+
   addToCart: async (product, quantity = 1, selectedModifiers = [], notes = "") => {
     set({ isLoadingOrder: true })
     try {
@@ -188,15 +199,45 @@ export const usePosStore = create<POSState>((set, get) => ({
   },
 
   updateItemModifiers: async (cartItemId, modifiers) => {
-    // Implement via cartService later
+    set({ isLoadingOrder: true })
+    try {
+      const res = await cartService.updateItemDetails(cartItemId, { modifiers })
+      if (res.success) {
+        set({ activeOrder: res.data })
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      set({ isLoadingOrder: false })
+    }
   },
 
   updateItemNotes: async (cartItemId, notes) => {
-    // Implement via cartService later
+    set({ isLoadingOrder: true })
+    try {
+      const res = await cartService.updateItemDetails(cartItemId, { notes })
+      if (res.success) {
+        set({ activeOrder: res.data })
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      set({ isLoadingOrder: false })
+    }
   },
 
   duplicateItem: async (cartItemId) => {
-    // Implement via cartService later
+    set({ isLoadingOrder: true })
+    try {
+      const res = await cartService.duplicateItem(cartItemId)
+      if (res.success) {
+        set({ activeOrder: res.data })
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      set({ isLoadingOrder: false })
+    }
   },
 
   holdOrder: async (holdName) => {
@@ -235,11 +276,32 @@ export const usePosStore = create<POSState>((set, get) => ({
     
     set({ isLoadingOrder: true })
     try {
-      // Add all payments
+      let order = state.activeOrder as any
+
+      if (!order.order_number) {
+        const checkoutResult = await cartService.checkout({
+          order_type: order.order_type || order.orderType || 'DINE_IN',
+          customer_id: order.customer_id || null,
+          table_id: order.table_id || null,
+          notes: order.notes || null,
+          branch_id: order.branch_id || 'DEFAULT_BRANCH',
+          business_date: order.business_date
+        })
+
+        if (checkoutResult.success) {
+          order = checkoutResult.data
+          set({ activeOrder: order })
+        }
+      }
+
       for (const p of payments) {
-        await cartService.addPayment(state.activeOrder.id, {
-          paymentMethod: p.method,
-          amount: p.amount
+        await cartService.addPayment(order.id, {
+          payment_method: String(p.method || p.paymentMethod || 'CASH').toUpperCase().replace(/ /g, '_'),
+          amount: p.amount,
+          amount_received: p.received ?? p.amount,
+          transaction_reference: p.transaction_reference || p.reference || null,
+          approval_code: p.approval_code || null,
+          notes: p.notes || null
         })
       }
       // Draft order is now completed. Fetch a new draft order.
@@ -253,10 +315,13 @@ export const usePosStore = create<POSState>((set, get) => ({
   },
 
   clearCart: () => {
-    // Ideally this cancels the draft order on the backend. 
-    // For now, we will just fetch a new one or clear local UI.
-    set({ activeOrder: null })
-    get().fetchDraftOrder()
+    void cartService.clearCart().then(() => {
+      set({ activeOrder: null })
+      void get().fetchDraftOrder()
+    }).catch(() => {
+      set({ activeOrder: null })
+      void get().fetchDraftOrder()
+    })
   },
 
   getSubtotal: () => get().activeOrder?.subtotal || 0,

@@ -1,13 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Legend, PieChart, Pie, Cell, LineChart, Line
+  BarChart, Bar, Legend, PieChart, Pie, Cell
 } from 'recharts'
 import {
-  Download, FileText, Calendar, TrendingUp, TrendingDown, DollarSign,
-  ShoppingBag, CreditCard, Loader2, Search, Filter, RefreshCw, Printer,
-  Layers, Users, Clock, Flame, Award, CheckCircle, Database, ChevronRight,
-  TrendingUp as TrendUpIcon, RotateCcw, AlertTriangle, ShieldCheck
+  Download, Calendar, Search, RefreshCw, Printer,
+  ChevronRight
 } from "lucide-react"
 import { useOrderStore } from "../store/orderStore"
 import { formatCurrency } from "../utils/currency"
@@ -208,6 +206,10 @@ export default function Reports() {
     }
     return data
   }, [timeRange, reportStats])
+
+  void filterPayment
+  void currentTime
+  void trendChartData
 
   // Category Sales Data
   const categorySalesData = useMemo(() => {
@@ -565,7 +567,7 @@ export default function Reports() {
                             dataKey="rev"
                             nameKey="cat"
                           >
-                            {categorySalesData.map((entry, index) => (
+                            {categorySalesData.map((_entry, index) => (
                               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
                           </Pie>

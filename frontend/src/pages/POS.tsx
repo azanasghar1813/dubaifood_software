@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 
 import { usePosStore } from "../store/posStore"
-import type { Product, Modifier, CartItem } from "../store/posStore"
+import type { CartItem } from "../store/posStore"
 import { motion, AnimatePresence } from "framer-motion"
 import { useAuthStore } from "../store/authStore"
 import { useOrderStore } from "../store/orderStore"
@@ -20,6 +20,9 @@ import { CustomerPanelModal } from "../components/CustomerPanelModal"
 import { TableSelectorModal } from "../components/TableSelectorModal"
 import { RecentOrdersModal } from "../components/RecentOrdersModal"
 import type { PaymentMethod } from "../store/orderStore"
+
+type Product = any
+type Modifier = any
 
 // Helper to map category names to generic icons
 const getCategoryIcon = (name: string) => {
@@ -293,7 +296,7 @@ export default function POS() {
         e.preventDefault()
         if (cart.length > 0) {
           setActiveCartItem(cart[0])
-          setTempNotes(cart[0].notes)
+          setTempNotes(cart[0].notes || "")
           setTempModifiers(cart[0].selectedModifiers)
           setCustomizeModalOpen(true)
         }
@@ -416,7 +419,7 @@ export default function POS() {
             e.preventDefault()
             if (cart.length > 0) {
               setActiveCartItem(cart[0])
-              setTempNotes(cart[0].notes)
+              setTempNotes(cart[0].notes || "")
               setCustomizeModalOpen(prev => !prev)
             }
             break

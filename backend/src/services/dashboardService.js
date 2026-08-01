@@ -1,6 +1,7 @@
 import { dbEngine } from '../database/sqlite.js';
 import { configService } from './configService.js';
 import { activityLogService } from './activityLogService.js';
+import { kitchenService } from './kitchenService.js';
 
 export const dashboardService = {
   /**
@@ -80,33 +81,25 @@ export const dashboardService = {
     `);
     const activeCashiers = sessionStmt.get().activeCashiers || 0;
 
-    // Kitchen Queue (from orders / order_items)
-    // For now, order_items status is used for kitchen status
-    const kitchenStmt = dbEngine.db.prepare(`
-      SELECT status, COUNT(id) as count
-      FROM order_items
-      WHERE created_at >= ? AND created_at < ?
-      GROUP BY status
-    `);
-    const kitchenItems = kitchenStmt.all(start, end);
+    const kitchenMetrics = kitchenService.getDashboardMetrics();
 
-    const preparing = kitchenItems.find(i => i.status === 'PREPARING')?.count || 0;
-    const ready = kitchenItems.find(i => i.status === 'READY')?.count || 0;
-
-    // Unpaid Orders
-    const paymentStmt = dbEngine.db.prepare(`
+    // Unpaid Orders from enterprise order states
+    const unpaidStmt = dbEngine.db.prepare(`
       SELECT COUNT(id) as unpaid
-      FROM payments
-      WHERE status = 'PENDING'
-      AND created_at >= ? AND created_at < ?
+      FROM orders
+      WHERE payment_state != 'PAID'
+        AND created_at >= ? AND created_at < ?
     `);
-    const unpaid = paymentStmt.get(start, end)?.unpaid || 0;
+    const unpaid = unpaidStmt.get(start, end)?.unpaid || 0;
 
     return {
       activeCashiers,
-      kitchenQueue: preparing + ready,
-      preparing,
-      ready,
+      kitchenQueue: kitchenMetrics.kitchenQueue,
+      preparing: kitchenMetrics.preparing,
+      ready: kitchenMetrics.ready,
+      served: kitchenMetrics.served,
+      averagePreparationTime: kitchenMetrics.averagePreparationTime,
+      overdueKitchenItems: kitchenMetrics.overdue,
       unpaidOrders: unpaid
     };
   },

@@ -10,7 +10,7 @@ export const activityLogService = {
    * @param {string|null} entityId - Specific ID of the affected entity
    * @param {Object} details - Any structured JSON data providing context
    */
-  logActivity: (userId, action, entityType, entityId = null, details = {}) => {
+  logActivity: (userId, action, entityType, entityId = null, details = {}, options = {}) => {
     try {
       const stmt = dbEngine.db.prepare(`
         INSERT INTO activity_logs (id, user_id, action, entity_type, entity_id, details)
@@ -29,6 +29,9 @@ export const activityLogService = {
       // We log to the console but do not throw, as we don't want a failed log 
       // to crash the main business transaction in production.
       console.error(`[ActivityLog] Failed to record activity: ${action}`, error);
+      if (options.strict) {
+        throw error;
+      }
     }
   }
 };

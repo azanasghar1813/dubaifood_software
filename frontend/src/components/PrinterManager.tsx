@@ -9,7 +9,7 @@ interface PrinterManagerProps {
 }
 
 export const PrinterManager: React.FC<PrinterManagerProps> = ({ isOpen, onClose }) => {
-  const { printers, printQueue, retryPrintJob, cancelPrintJob } = usePrinterStore()
+  const { printers, printQueue, reprintJob, cancelJob } = usePrinterStore()
 
   if (!isOpen) return null
 
@@ -88,35 +88,35 @@ export const PrinterManager: React.FC<PrinterManagerProps> = ({ isOpen, onClose 
                     >
                       <div>
                         <div className="font-bold text-foreground">
-                          {job.type} Job <span className="text-muted-foreground font-normal text-sm">for {job.printerType}</span>
+                          {job.job_type} Job <span className="text-muted-foreground font-normal text-sm">for {job.printer_id || 'unassigned'}</span>
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          {new Date(job.timestamp).toLocaleTimeString()} • ID: {job.id.slice(-6)}
+                          {new Date(job.created_at).toLocaleTimeString()} • ID: {job.id.slice(-6)}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-4">
                         <span className={`text-xs px-3 py-1 rounded-full font-bold flex items-center gap-1 ${
-                          job.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-500' :
-                          job.status === 'Printing' ? 'bg-blue-500/10 text-blue-500' :
-                          job.status === 'Failed' ? 'bg-red-500/10 text-red-500' :
+                          job.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-500' :
+                          job.status === 'PROCESSING' ? 'bg-blue-500/10 text-blue-500' :
+                          job.status === 'FAILED' ? 'bg-red-500/10 text-red-500' :
                           'bg-amber-500/10 text-amber-500'
                         }`}>
-                          {job.status === 'Printing' && <RefreshCw className="w-3 h-3 animate-spin" />}
-                          {job.status === 'Failed' && <AlertCircle className="w-3 h-3" />}
+                          {job.status === 'PROCESSING' && <RefreshCw className="w-3 h-3 animate-spin" />}
+                          {job.status === 'FAILED' && <AlertCircle className="w-3 h-3" />}
                           {job.status}
                         </span>
 
-                        {job.status === 'Failed' && (
+                        {job.status === 'FAILED' && (
                           <div className="flex gap-2">
                             <button 
-                              onClick={() => retryPrintJob(job.id)}
+                              onClick={() => reprintJob(job.id, 'system', 'Retry from printer manager')}
                               className="px-3 py-1 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:bg-primary/90"
                             >
                               Retry
                             </button>
                             <button 
-                              onClick={() => cancelPrintJob(job.id)}
+                              onClick={() => cancelJob(job.id)}
                               className="px-3 py-1 bg-destructive/10 text-destructive text-xs font-bold rounded-lg hover:bg-destructive/20"
                             >
                               Cancel

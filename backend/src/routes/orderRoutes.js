@@ -1,54 +1,33 @@
 import { Router } from 'express';
 import { orderController } from '../controllers/orderController.js';
 import { validate } from '../middleware/validationMiddleware.js';
-import { z } from 'zod';
+import { 
+  createOrderSchema, 
+  addItemSchema, 
+  updateQuantitySchema, 
+  holdOrderSchema, 
+  transitionStateSchema 
+} from '../validation/orderValidation.js';
 
 const router = Router();
 
-// Validation schemas for order routes
-const addItemSchema = z.object({
-  product_id: z.string().uuid(),
-  quantity: z.number().int().min(1).default(1),
-  modifiers: z.array(z.any()).optional().default([]),
-  notes: z.string().optional().nullable()
-});
-
-const updateQuantitySchema = z.object({
-  quantity: z.number().int().min(1)
-});
-
-const holdOrderSchema = z.object({
-  holdName: z.string().min(1, 'Hold name is required')
-});
-
-const addPaymentSchema = z.object({
-  payment_method: z.string().min(1),
-  amount: z.number().min(0),
-  transaction_reference: z.string().optional().nullable()
-});
-
-// Get active draft order
+// Draft operations
 router.get('/draft', orderController.getDraft);
-
-// Add item to draft
 router.post('/draft/items', validate(addItemSchema), orderController.addItemToDraft);
 
-// Update item quantity in draft
-router.put('/draft/items/:itemId', validate(updateQuantitySchema), orderController.updateItemQuantity);
+// Create new order
+router.post('/', validate(createOrderSchema), orderController.createOrder);
 
-// Remove item from draft
-router.delete('/draft/items/:itemId', orderController.removeItemFromDraft);
-
-// Hold order
-router.post('/draft/hold', validate(holdOrderSchema), orderController.holdOrder);
-
-// Get held orders
+// Order by ID operations
 router.get('/held', orderController.getHeldOrders);
+router.get('/:orderId', orderController.getOrderDetails);
+router.post('/:orderId/items', validate(addItemSchema), orderController.addItemToOrder);
+router.put('/:orderId/items/:itemId', validate(updateQuantitySchema), orderController.updateItemQuantity);
+router.delete('/:orderId/items/:itemId', orderController.removeItemFromOrder);
 
-// Resume order
+// State & Hold operations
+router.post('/draft/hold', validate(holdOrderSchema), orderController.holdOrder);
 router.post('/resume/:orderId', orderController.resumeOrder);
-
-// Add payment and complete
-router.post('/:orderId/pay', validate(addPaymentSchema), orderController.addPayment);
+router.post('/:orderId/transition', validate(transitionStateSchema), orderController.transitionState);
 
 export default router;

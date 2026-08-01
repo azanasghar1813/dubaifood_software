@@ -46,9 +46,9 @@ export default function Login() {
         // Construct standard User object mapping backend payload
         const sessionUser = {
           id: user.id,
-          username: user.username,
-          name: `${user.firstName} ${user.lastName}`,
-          role: user.roleId.toString(), // or name if available
+          username: selectedUsername,
+          name: user.name,
+          role: user.role,
           permissions: user.permissions || []
         }
 

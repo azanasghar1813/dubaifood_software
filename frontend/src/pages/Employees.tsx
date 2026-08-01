@@ -205,7 +205,7 @@ export default function Employees() {
       return
     }
     setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, pin: newPin, pinStatus: "Configured" } : e))
-    setSelectedEmp(prev => prev ? { ...prev, pin: newPin, pinStatus: "Configured" } : null)
+    setSelectedEmp((prev: any) => prev ? { ...prev, pin: newPin, pinStatus: "Configured" } : null)
     alert(`PIN for ${emp.name} updated successfully to: ${newPin}`)
   }
 

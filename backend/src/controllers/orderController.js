@@ -3,64 +3,95 @@ import { sendSuccess, sendError } from '../utils/responseHandler.js';
 
 export const orderController = {
   getDraft: (req, res) => {
-    const cashierSessionId = req.headers['x-cashier-session-id'] || 'mock-session-123';
+    const shiftId = req.headers['x-cashier-session-id'] || 'mock-session-123';
     const userId = req.headers['x-user-id'] || 'mock-user-123';
     try {
-      const draft = orderService.getOrCreateDraft(cashierSessionId, userId);
+      const draft = orderService.getOrCreateDraft(shiftId, userId);
       sendSuccess(res, draft, 'Draft retrieved successfully');
     } catch (error) {
       sendError(res, 400, error.message);
     }
   },
 
-  addItemToDraft: async (req, res) => {
-    const cashierSessionId = req.headers['x-cashier-session-id'] || 'mock-session-123';
+  createOrder: (req, res) => {
+    const shiftId = req.headers['x-cashier-session-id'] || 'mock-session-123';
     const userId = req.headers['x-user-id'] || 'mock-user-123';
     try {
-      const updatedDraft = await orderService.addItemToDraft(cashierSessionId, userId, req.body);
+      const order = orderService.createDraftOrder(shiftId, userId, req.body);
+      sendSuccess(res, order, 'Order created successfully', 201);
+    } catch (error) {
+      sendError(res, 400, error.message);
+    }
+  },
+
+  getOrderDetails: (req, res) => {
+    try {
+      const order = orderService.getOrderById(req.params.orderId);
+      if (!order) {
+        return sendError(res, 404, 'Order not found');
+      }
+      sendSuccess(res, order, 'Order details retrieved');
+    } catch (error) {
+      sendError(res, 400, error.message);
+    }
+  },
+
+  addItemToDraft: (req, res) => {
+    const shiftId = req.headers['x-cashier-session-id'] || 'mock-session-123';
+    const userId = req.headers['x-user-id'] || 'mock-user-123';
+    try {
+      const updatedDraft = orderService.addItemToDraft(shiftId, userId, req.body);
       sendSuccess(res, updatedDraft, 'Item added to draft');
     } catch (error) {
       sendError(res, 400, error.message);
     }
   },
 
-  updateItemQuantity: async (req, res) => {
-    const cashierSessionId = req.headers['x-cashier-session-id'] || 'mock-session-123';
+  addItemToOrder: (req, res) => {
     const userId = req.headers['x-user-id'] || 'mock-user-123';
     try {
-      const updatedDraft = await orderService.updateItemQuantity(cashierSessionId, userId, req.params.itemId, req.body.quantity);
-      sendSuccess(res, updatedDraft, 'Quantity updated');
+      const updatedOrder = orderService.addItemToOrder(req.params.orderId, req.body, userId);
+      sendSuccess(res, updatedOrder, 'Item added to order');
     } catch (error) {
       sendError(res, 400, error.message);
     }
   },
 
-  removeItemFromDraft: async (req, res) => {
-    const cashierSessionId = req.headers['x-cashier-session-id'] || 'mock-session-123';
+  updateItemQuantity: (req, res) => {
     const userId = req.headers['x-user-id'] || 'mock-user-123';
     try {
-      const updatedDraft = await orderService.removeItemFromDraft(cashierSessionId, userId, req.params.itemId);
-      sendSuccess(res, updatedDraft, 'Item removed');
+      const updatedOrder = orderService.updateItemQuantity(req.params.orderId, req.params.itemId, req.body.quantity, userId);
+      sendSuccess(res, updatedOrder, 'Item quantity updated');
+    } catch (error) {
+      sendError(res, 400, error.message);
+    }
+  },
+
+  removeItemFromOrder: (req, res) => {
+    const userId = req.headers['x-user-id'] || 'mock-user-123';
+    try {
+      const updatedOrder = orderService.removeItem(req.params.orderId, req.params.itemId, userId);
+      sendSuccess(res, updatedOrder, 'Item removed from order');
     } catch (error) {
       sendError(res, 400, error.message);
     }
   },
 
   holdOrder: (req, res) => {
-    const cashierSessionId = req.headers['x-cashier-session-id'] || 'mock-session-123';
+    const shiftId = req.headers['x-cashier-session-id'] || 'mock-session-123';
     const userId = req.headers['x-user-id'] || 'mock-user-123';
     try {
-      const held = orderService.holdOrder(cashierSessionId, userId, req.body.holdName);
-      sendSuccess(res, held, 'Order held');
+      const heldOrder = orderService.holdOrder(shiftId, userId, req.body.holdName);
+      sendSuccess(res, heldOrder, 'Order held successfully');
     } catch (error) {
       sendError(res, 400, error.message);
     }
   },
 
   getHeldOrders: (req, res) => {
-    const cashierSessionId = req.headers['x-cashier-session-id'] || 'mock-session-123';
+    const shiftId = req.headers['x-cashier-session-id'] || null;
     try {
-      const heldOrders = orderService.getHeldOrders(cashierSessionId);
+      const heldOrders = orderService.getHeldOrders(shiftId);
       sendSuccess(res, heldOrders, 'Held orders retrieved');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -68,22 +99,30 @@ export const orderController = {
   },
 
   resumeOrder: (req, res) => {
-    const cashierSessionId = req.headers['x-cashier-session-id'] || 'mock-session-123';
+    const shiftId = req.headers['x-cashier-session-id'] || 'mock-session-123';
     const userId = req.headers['x-user-id'] || 'mock-user-123';
     try {
-      const resumed = orderService.resumeOrder(cashierSessionId, userId, req.params.orderId);
-      sendSuccess(res, resumed, 'Order resumed');
+      const resumedOrder = orderService.resumeOrder(shiftId, userId, req.params.orderId);
+      sendSuccess(res, resumedOrder, 'Order resumed');
     } catch (error) {
       sendError(res, 400, error.message);
     }
   },
 
-  addPayment: (req, res) => {
-    const cashierSessionId = req.headers['x-cashier-session-id'] || 'mock-session-123';
+  transitionState: (req, res) => {
     const userId = req.headers['x-user-id'] || 'mock-user-123';
     try {
-      const order = orderService.addPayment(req.params.orderId, cashierSessionId, userId, req.body);
-      sendSuccess(res, order, 'Payment added');
+      const updatedOrder = orderService.transitionOrderState(
+        req.params.orderId,
+        req.body.targetState,
+        {
+          userId,
+          reason: req.body.reason,
+          kitchenState: req.body.kitchenState,
+          paymentState: req.body.paymentState
+        }
+      );
+      sendSuccess(res, updatedOrder, `Order state transitioned to ${req.body.targetState}`);
     } catch (error) {
       sendError(res, 400, error.message);
     }

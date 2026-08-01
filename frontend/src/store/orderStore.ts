@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { CartItem } from './posStore'
+import { fetchOrders, fetchOrderDetail, type HistoryOrderRow, type HistoryOrderDetail } from '../api/historyApi'
 
 export type OrderStatus = 'Draft' | 'Confirmed' | 'Completed' | 'Cancelled'
 export type KitchenStatus = 'Waiting' | 'Accepted' | 'Preparing' | 'Ready' | 'Served' | 'Cancelled'
@@ -78,6 +79,7 @@ export interface Order {
 interface OrderState {
   orders: Order[]
   orderCounter: number
+  isSyncingFromBackend: boolean
   addOrder: (order: Order) => void
   updateOrder: (id: string, updates: Partial<Order>) => void
   addAuditLog: (orderId: string, log: Omit<AuditLogEntry, 'id' | 'when'>) => void
@@ -85,118 +87,117 @@ interface OrderState {
   getOrders: () => Order[]
   lockOrder: (id: string, cashier: string) => void
   unlockOrder: (id: string, override?: boolean) => void
+  syncOrdersFromBackend: () => Promise<void>
 }
 
-const generateMockOrders = (): Order[] => {
-  const now = new Date()
-  return [
-    {
-      id: "ord-1025",
-      orderNumber: "1025",
-      cashierName: "Ahmed",
-      customerName: "Sheikh Tariq",
-      customerPhone: "0501234567",
-      isVip: true,
-      tableNumber: "G5",
-      guestCount: 4,
-      orderType: "Dine In",
-      items: [
-        { cartItemId: "c1", id: "p1", name: "Premium Wagyu Burger", price: 85, quantity: 2, category: "Burgers", code: "WB01", selectedModifiers: [], notes: "No onions", isEdited: false, discount: 0, status: 'Active' },
-        { cartItemId: "c2", id: "p2", name: "Truffle Fries", price: 45, quantity: 1, category: "Sides", code: "TF01", selectedModifiers: [], notes: "", isEdited: false, discount: 0, status: 'Active' }
-      ] as any,
-      subtotal: 215,
-      tax: 15.05,
-      serviceCharge: 10,
-      discount: 0,
-      total: 240.05,
-      status: "Confirmed",
-      kitchenStatus: "Preparing",
-      kitchenNotes: "Extra spicy",
-      payments: [],
-      roundOffAdjustment: 0,
-      paymentStatus: "Unpaid",
-      timestamp: new Date(now.getTime() - 15 * 60000).toISOString(),
-      timeline: [
-        { event: "Order Created", timestamp: new Date(now.getTime() - 15 * 60000).toISOString(), cashier: "Ahmed" },
-        { event: "Sent to Kitchen", timestamp: new Date(now.getTime() - 14 * 60000).toISOString(), cashier: "Ahmed" },
-        { event: "Kitchen Accepted", timestamp: new Date(now.getTime() - 13 * 60000).toISOString(), cashier: "Chef Ali" }
-      ],
-      auditLog: []
-    },
-    {
-      id: "ord-1024",
-      orderNumber: "1024",
-      cashierName: "Sarah",
-      customerName: "Walk-in",
-      tableNumber: null,
-      orderType: "Takeaway",
-      items: [
-        { cartItemId: "c3", id: "p3", name: "Zinger Burger", price: 25, quantity: 1, category: "Burgers", code: "ZB01", selectedModifiers: [], notes: "", isEdited: false, discount: 0, status: 'Active' }
-      ] as any,
-      subtotal: 25,
-      tax: 1.75,
-      serviceCharge: 0,
-      discount: 0,
-      total: 26.75,
-      status: "Confirmed",
-      kitchenStatus: "Ready",
-      paymentStatus: "Paid",
-      payments: [
-        { id: "pay2", method: "Debit Card", amount: 26.75, timestamp: new Date(now.getTime() - 25 * 60000).toISOString(), cashier: "Sarah", status: "Completed" }
-      ],
-      roundOffAdjustment: 0,
-      timestamp: new Date(now.getTime() - 25 * 60000).toISOString(),
-      timeline: [
-        { event: "Order Created", timestamp: new Date(now.getTime() - 25 * 60000).toISOString(), cashier: "Sarah" },
-        { event: "Sent to Kitchen", timestamp: new Date(now.getTime() - 24 * 60000).toISOString(), cashier: "Sarah" },
-        { event: "Ready for Pickup", timestamp: new Date(now.getTime() - 5 * 60000).toISOString(), cashier: "Chef Ali" }
-      ],
-      auditLog: []
-    },
-    {
-      id: "ord-1023",
-      orderNumber: "1023",
-      cashierName: "Ahmed",
-      customerName: "Ali Reza",
-      customerPhone: "0559876543",
-      isVip: false,
-      tableNumber: "T8",
-      guestCount: 2,
-      orderType: "Dine In",
-      items: [
-        { cartItemId: "c4", id: "p4", name: "Margherita Pizza", price: 65, quantity: 1, category: "Pizza", code: "PZ01", selectedModifiers: [], notes: "", isEdited: false, discount: 0, status: 'Active' },
-        { cartItemId: "c5", id: "p5", name: "Diet Pepsi", price: 15, quantity: 2, category: "Drinks", code: "DP01", selectedModifiers: [], notes: "", isEdited: false, discount: 0, status: 'Active' }
-      ] as any,
-      subtotal: 95,
-      tax: 6.65,
-      serviceCharge: 0,
-      discount: 0,
-      total: 101.65,
-      status: "Completed",
-      kitchenStatus: "Served",
-      paymentStatus: "Paid",
-      payments: [
-        { id: "pay3", method: "Cash", amount: 101.65, received: 110, change: 8.35, timestamp: new Date(now.getTime() - 10 * 60000).toISOString(), cashier: "Ahmed", status: "Completed" }
-      ],
-      roundOffAdjustment: 0,
-      timestamp: new Date(now.getTime() - 60 * 60000).toISOString(),
-      timeline: [
-        { event: "Order Created", timestamp: new Date(now.getTime() - 60 * 60000).toISOString(), cashier: "Ahmed" },
-        { event: "Served", timestamp: new Date(now.getTime() - 40 * 60000).toISOString(), cashier: "Waiter" },
-        { event: "Paid", timestamp: new Date(now.getTime() - 10 * 60000).toISOString(), cashier: "Ahmed" }
-      ],
-      auditLog: [
-        { id: "al-1", who: "Ahmed", when: new Date(now.getTime() - 55 * 60000).toISOString(), actionType: "Added Item", oldValue: "None", newValue: "Diet Pepsi (x1)", reason: "Customer requested extra drink" }
-      ],
-      lastEdited: new Date(now.getTime() - 55 * 60000).toISOString(),
-      editedBy: "Ahmed"
-    }
-  ]
+const mapLifecycleState = (state: string): OrderStatus => {
+  const normalized = String(state || '').toUpperCase()
+  if (normalized.includes('CANCEL')) return 'Cancelled'
+  if (normalized.includes('COMPLETE') || normalized.includes('PAID')) return 'Completed'
+  if (normalized.includes('CONFIRM') || normalized.includes('OPEN')) return 'Confirmed'
+  return 'Draft'
+}
+
+const mapKitchenState = (state: string): KitchenStatus => {
+  const normalized = String(state || '').toUpperCase()
+  if (normalized.includes('CANCEL')) return 'Cancelled'
+  if (normalized.includes('SERV')) return 'Served'
+  if (normalized.includes('READY')) return 'Ready'
+  if (normalized.includes('PREP')) return 'Preparing'
+  if (normalized.includes('ACC')) return 'Accepted'
+  return 'Waiting'
+}
+
+const mapPaymentState = (state: string): PaymentStatus => {
+  const normalized = String(state || '').toUpperCase()
+  if (normalized.includes('REFUND')) return 'Refunded'
+  if (normalized.includes('PART')) return 'Partial Paid'
+  if (normalized.includes('PAID')) return 'Paid'
+  return 'Unpaid'
+}
+
+const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOrderDetail): Order => {
+  const items = (detail?.items || []).map((item: any, index: number) => ({
+    cartItemId: item.id || `${row.id}-item-${index}`,
+    id: item.product_id || item.id || `${row.id}-product-${index}`,
+    name: item.product_name || item.name || 'Item',
+    price: Number(item.unit_price ?? item.price ?? 0),
+    quantity: Number(item.quantity ?? 1),
+    category: item.category || item.category_name || 'Unknown',
+    code: item.code || item.product_code || '',
+    selectedModifiers: item.modifiers || item.selectedModifiers || [],
+    notes: item.notes || '',
+    isEdited: Boolean(item.is_edited || item.updated_at),
+    discount: Number(item.discount_total ?? item.discount ?? 0),
+    status: 'Active'
+  })) as any
+
+  const payments = (detail?.payments || []).map((payment: any, index: number) => ({
+    id: payment.id || `${row.id}-payment-${index}`,
+    method: payment.payment_method || payment.method || 'Cash',
+    amount: Number(payment.amount || 0),
+    received: payment.amount_received ?? payment.received,
+    change: payment.change_amount ?? payment.change,
+    timestamp: payment.created_at || row.updated_at,
+    cashier: payment.cashier_name || row.cashier_user_id || 'Cashier',
+    status: payment.status || 'Completed'
+  })) as PaymentRecord[]
+
+  const timeline = (detail?.timeline || []).map((event: any) => ({
+    event: event.event_type || event.notes || 'Event',
+    timestamp: event.created_at,
+    cashier: event.actor_user_id || 'System',
+    remarks: event.notes || ''
+  }))
+
+  const auditLog = (detail?.audit_trail || []).map((entry: any) => ({
+    id: entry.id,
+    who: entry.user_id || 'System',
+    when: entry.created_at,
+    actionType: (entry.action || 'Other') as AuditLogEntry['actionType'],
+    oldValue: typeof entry.old_value === 'string' ? entry.old_value : JSON.stringify(entry.old_value ?? ''),
+    newValue: typeof entry.new_value === 'string' ? entry.new_value : JSON.stringify(entry.new_value ?? ''),
+    reason: entry.reason || ''
+  }))
+
+  return {
+    id: row.id,
+    orderNumber: row.order_number,
+    cashierName: row.cashier_user_id || 'Cashier',
+    customerName: row.customer_id || 'Walk-in',
+    customerPhone: undefined,
+    isVip: false,
+    tableNumber: row.table_id || null,
+    guestCount: 1,
+    orderType: (row.order_type === 'TAKEAWAY' ? 'Takeaway' : row.order_type === 'DELIVERY' ? 'Delivery' : row.order_type === 'DRIVE_THROUGH' ? 'Drive Through' : 'Dine In'),
+    items,
+    subtotal: Number(row.subtotal || 0),
+    tax: Number(row.tax_total || 0),
+    serviceCharge: 0,
+    discount: Number(row.discount_total || 0),
+    total: Number(row.grand_total || 0),
+    status: mapLifecycleState(row.lifecycle_state),
+    kitchenStatus: mapKitchenState(row.kitchen_state),
+    paymentStatus: mapPaymentState(row.payment_state),
+    timestamp: row.created_at,
+    lastEdited: row.updated_at,
+    editedBy: undefined,
+    isLocked: false,
+    lockedBy: undefined,
+    timeline,
+    auditLog,
+    notes: row.notes || undefined,
+    kitchenNotes: undefined,
+    payments,
+    splits: undefined,
+    roundOffAdjustment: 0
+  }
 }
 
 export const useOrderStore = create<OrderState>((set, get) => ({
-  orders: generateMockOrders(),
-  orderCounter: 1026,
+  orders: [],
+  orderCounter: 1,
+  isSyncingFromBackend: false,
   
   addOrder: (order) => set((state) => ({
     orders: [order, ...state.orders],
@@ -245,5 +246,38 @@ export const useOrderStore = create<OrderState>((set, get) => ({
     orders: state.orders.map(o => 
       o.id === id ? { ...o, isLocked: false, lockedBy: undefined } : o
     )
-  }))
+  })),
+
+  syncOrdersFromBackend: async () => {
+    set({ isSyncingFromBackend: true })
+    try {
+      const listResult = await fetchOrders({}, { page: 1, limit: 50, sort_by: 'NEWEST' })
+      const detailedOrders = await Promise.all(
+        (listResult.data || []).map(async (row: HistoryOrderRow) => {
+          try {
+            const detailResult = await fetchOrderDetail(row.id)
+            return mapHistoryDetailToOrder(row, detailResult.data)
+          } catch {
+            return mapHistoryDetailToOrder(row)
+          }
+        })
+      )
+
+      const highestOrderNumber = detailedOrders.reduce((max, order) => {
+        const parsed = Number(order.orderNumber)
+        return Number.isFinite(parsed) ? Math.max(max, parsed) : max
+      }, 0)
+
+      set({
+        orders: detailedOrders,
+        orderCounter: highestOrderNumber + 1,
+        isSyncingFromBackend: false
+      })
+    } catch (error) {
+      console.error('Failed to sync backend orders', error)
+      set({ isSyncingFromBackend: false })
+    }
+  }
 }))
+
+void useOrderStore.getState().syncOrdersFromBackend()

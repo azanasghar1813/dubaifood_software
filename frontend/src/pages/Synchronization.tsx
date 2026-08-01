@@ -1,9 +1,6 @@
-import { useState, useEffect, useMemo, useRef } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { useState, useEffect, useRef } from "react"
 import { 
-  Cloud, CheckCircle2, RefreshCw, Wifi, WifiOff, Database, Server, Laptop, 
-  Terminal, ShieldCheck, Play, Pause, RotateCcw, AlertTriangle, ShieldAlert, 
-  Settings, Trash2, Plus, Edit3, Check, X, Search, Filter, History, HelpCircle
+  RefreshCw, AlertTriangle, History, Trash2, Plus
 } from "lucide-react"
 
 export default function Synchronization() {

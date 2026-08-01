@@ -1,23 +1,19 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
-  Building2, Receipt, Palette, Cloud, Printer, Keyboard, Upload, Save, 
-  CheckCircle2, Server, RefreshCw, ShieldCheck, Image as ImageIcon,
-  Clock, DollarSign, Table, Plus, Trash2, Edit2, Play, Volume2, 
-  Settings as SettingsIcon, AlertTriangle, Key, Heart, Check, X, ShieldAlert,
+  Building2, Receipt, Palette, Cloud, Printer, Keyboard, Save, 
+  CheckCircle2, Server,
+  Clock, DollarSign, Table, Plus, Trash2,
+  Settings as SettingsIcon, AlertTriangle, Key,
   Calendar, Layers, Moon, Sun, Smartphone, Wifi, Bell, CreditCard
 } from "lucide-react"
-import { useUIStore } from "../store/uiStore"
 import { useSettingsStore } from "../store/settingsStore"
 
 export default function Settings() {
-  const { theme, setTheme } = useUIStore()
   const settingsStore = useSettingsStore()
   
   const [activeTab, setActiveTab] = useState("Business Information")
   const [isSaved, setIsSaved] = useState(false)
-  const [currentTime, setCurrentTime] = useState(new Date())
-
   // Core configuration states
   const [formData, setFormData] = useState({
     restaurantName: settingsStore.restaurantName,
@@ -86,22 +82,6 @@ export default function Settings() {
     { action: "Clear Ticket Roster", key: "F1" },
     { action: "Duplicate Selected Order", key: "Ctrl + D" }
   ])
-
-  // Payment gateways toggle state
-  const [gateways, setGateways] = useState([
-    { name: "Cash", enabled: true },
-    { name: "JazzCash", enabled: true },
-    { name: "EasyPaisa", enabled: true },
-    { name: "Meezan Bank", enabled: true },
-    { name: "Debit/Credit Card", enabled: true },
-    { name: "Bank Transfer", enabled: false }
-  ])
-
-  // Live timer tick
-  useEffect(() => {
-    const clockTimer = setInterval(() => setCurrentTime(new Date()), 1000)
-    return () => clearInterval(clockTimer)
-  }, [])
 
   const handleSave = (e?: React.FormEvent) => {
     if (e) e.preventDefault()

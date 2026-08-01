@@ -51,6 +51,10 @@ class ConfigService {
     return this.getBusinessCategory('ORDER');
   }
 
+  getKitchenConfig() {
+    return this.getBusinessCategory('KITCHEN');
+  }
+
   getProductConfig() {
     return this.getBusinessCategory('PRODUCT');
   }

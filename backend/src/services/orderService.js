@@ -1,196 +1,387 @@
-import { orderRepository } from '../repositories/orderRepository.js';
 import { dbEngine } from '../database/sqlite.js';
-import { pricingService } from './pricingService.js';
+import { orderRepository } from '../repositories/orderRepository.js';
+import { orderItemRepository } from '../repositories/orderItemRepository.js';
+import { orderPaymentRepository } from '../repositories/orderPaymentRepository.js';
+import { orderTimelineRepository } from '../repositories/orderTimelineRepository.js';
+import { orderMetadataRepository } from '../repositories/orderMetadataRepository.js';
+import { orderLifecycleService } from './orderLifecycleService.js';
+import { orderNumberService } from './orderNumberService.js';
+import { orderSnapshotService } from './orderSnapshotService.js';
+import { orderTimelineService } from './orderTimelineService.js';
+import { orderValidationService } from './orderValidationService.js';
+import { orderCacheService } from './orderCacheService.js';
 import { activityLogService } from './activityLogService.js';
-import { productRepository } from '../repositories/productRepository.js';
-import { dealRepository } from '../repositories/dealRepository.js';
+import { syncService } from './syncService.js';
+import { OrderLifecycleState } from '../constants/orderStates.js';
+import crypto from 'crypto';
 
 class OrderService {
   /**
-   * Recalculates the subtotals and grand totals of an order
+   * Retrieves full hydrated order graph.
    */
-  async recalculateOrder(orderId) {
+  getOrderById(orderId) {
+    const cached = orderCacheService.getOrder(orderId);
+    if (cached) return cached;
+
+    const order = orderRepository.findById(orderId);
+    if (!order) return null;
+
+    return this._hydrateOrder(order);
+  }
+
+  getOrderByNumber(orderNumber) {
+    const cached = orderCacheService.getOrderByNumber(orderNumber);
+    if (cached) return cached;
+
+    const order = orderRepository.findByNumber(orderNumber);
+    if (!order) return null;
+
+    return this._hydrateOrder(order);
+  }
+
+  /**
+   * Internal hydrator that loads items, variants, modifiers, add-ons, combos, payments, timeline, metadata.
+   */
+  _hydrateOrder(order) {
+    if (!order) return null;
+    order.items = orderItemRepository.findItemsByOrderId(order.id);
+    order.payments = orderPaymentRepository.findByOrderId(order.id);
+    order.timeline = orderTimelineRepository.findByOrderId(order.id);
+    order.metadata = orderMetadataRepository.getAllMeta(order.id);
+    order.tags = orderMetadataRepository.getTags(order.id);
+    order.attachments = orderMetadataRepository.getAttachments(order.id);
+    
+    // Cache if active
+    orderCacheService.upsertOrder(order);
+    return order;
+  }
+
+  /**
+   * Recalculates order financial totals atomically inside SQLite transaction.
+   */
+  recalculateOrderTotals(orderId) {
     return dbEngine.transaction(() => {
       const order = orderRepository.findById(orderId);
-      if (!order) throw new Error('Order not found');
+      if (!order) throw new Error('Order not found.');
 
-      let subtotal = 0;
+      const items = orderItemRepository.findItemsByOrderId(orderId);
       
-      for (const item of order.items) {
-        const modifierIds = item.modifiers.map(m => m.modifier_id);
-        
-        let unitPrice = 0;
-        try {
-          unitPrice = pricingService.calculateItemPrice(item.product_id, null, modifierIds, []);
-        } catch (e) {
-          unitPrice = item.unit_price;
-        }
+      let subtotal = 0;
+      let taxTotal = 0;
+      let discountTotal = 0;
 
-        const itemSubtotal = unitPrice * item.quantity;
-        
-        orderRepository.updateItem(item.id, {
-          unit_price: unitPrice,
-          subtotal: itemSubtotal
-        });
-
-        subtotal += itemSubtotal;
+      for (const item of items) {
+        subtotal += item.subtotal;
+        taxTotal += item.tax_amount;
+        discountTotal += item.discount_amount;
       }
 
-      const tax_total = subtotal * 0.05;
-      const discount_total = 0;
-      const grand_total = subtotal + tax_total - discount_total;
+      const grandTotal = subtotal + taxTotal - discountTotal + order.tip_total + order.delivery_fee;
+      const paidTotal = orderPaymentRepository.getTotalPaidForOrder(orderId);
+      const dueTotal = Math.max(0, grandTotal - paidTotal);
 
-      const updatedOrder = orderRepository.update(orderId, {
+      let paymentState = order.payment_state;
+      if (paidTotal >= grandTotal && grandTotal > 0) {
+        paymentState = 'PAID';
+      } else if (paidTotal > 0) {
+        paymentState = 'PARTIALLY_PAID';
+      } else {
+        paymentState = 'UNPAID';
+      }
+
+      const updated = orderRepository.update(orderId, {
         subtotal,
-        tax_total,
-        discount_total,
-        grand_total
+        tax_total: taxTotal,
+        discount_total: discountTotal,
+        grand_total: grandTotal,
+        paid_total: paidTotal,
+        due_total: dueTotal,
+        payment_state: paymentState
+      });
+
+      return this._hydrateOrder(updated);
+    });
+  }
+
+  /**
+   * Opens a new Draft Order.
+   */
+  createDraftOrder(shiftId, userId, options = {}) {
+    orderValidationService.validateOrderCreation({ shift_id: shiftId, cashier_user_id: userId });
+
+    return dbEngine.transaction(() => {
+      const businessDate = options.business_date || new Date().toISOString().split('T')[0];
+      const branchId = options.branch_id || 'DEFAULT_BRANCH';
+      
+      // Allocate atomic Business Order Number
+      const orderNumber = orderNumberService.generateNextNumber(branchId, businessDate);
+      const orderId = crypto.randomUUID();
+
+      const newOrder = orderRepository.create({
+        id: orderId,
+        order_number: orderNumber,
+        business_date: businessDate,
+        branch_id: branchId,
+        cashier_user_id: userId,
+        shift_id: shiftId,
+        customer_id: options.customer_id || null,
+        table_id: options.table_id || null,
+        order_type: options.order_type || 'DINE_IN',
+        lifecycle_state: OrderLifecycleState.DRAFT,
+        kitchen_state: 'PENDING',
+        payment_state: 'UNPAID',
+        notes: options.notes || null
+      });
+
+      // Record Timeline Event
+      orderTimelineService.recordEvent(orderId, userId, 'ORDER_CREATED', {
+        to_state: OrderLifecycleState.DRAFT,
+        description: `Order ${orderNumber} created by cashier ${userId}`,
+        metadata: { branch_id: branchId, order_type: options.order_type || 'DINE_IN' }
+      });
+
+      // Log Activity
+      activityLogService.logActivity(userId, 'ORDER_CREATED', 'ORDER', orderId, {
+        order_number: orderNumber,
+        branch_id: branchId
+      });
+
+      // Queue Sync Event
+      syncService.queueSyncEvent('ORDER', orderId, 'ORDER_CREATED', {
+        order_number: orderNumber,
+        business_date: businessDate
+      });
+
+      return this._hydrateOrder(newOrder);
+    });
+  }
+
+  /**
+   * Gets existing active draft for cashier shift session or creates a new one.
+   */
+  getOrCreateDraft(shiftId, userId, options = {}) {
+    return dbEngine.transaction(() => {
+      let draft = orderRepository.findDraftBySession(shiftId);
+      if (!draft) {
+        draft = this.createDraftOrder(shiftId, userId, options);
+      } else {
+        draft = this._hydrateOrder(draft);
+      }
+      return draft;
+    });
+  }
+
+  /**
+   * Adds an item with complete menu snapshot to an order inside an atomic transaction.
+   */
+  addItemToDraft(shiftId, userId, itemInput) {
+    return dbEngine.transaction(() => {
+      const order = this.getOrCreateDraft(shiftId, userId);
+      return this.addItemToOrder(order.id, itemInput, userId);
+    });
+  }
+
+  /**
+   * Adds an item to a specific order.
+   */
+  addItemToOrder(orderId, itemInput, actorUserId = 'SYSTEM') {
+    return dbEngine.transaction(() => {
+      const order = orderRepository.findById(orderId);
+      orderValidationService.validateItemAddition(order, itemInput);
+
+      // Create snapshot object
+      const snapshot = orderSnapshotService.createItemSnapshot({
+        productId: itemInput.product_id,
+        variantId: itemInput.variant_id || null,
+        modifiers: itemInput.modifiers || [],
+        addons: itemInput.addons || [],
+        comboComponents: itemInput.comboComponents || [],
+        quantity: itemInput.quantity || 1,
+        notes: itemInput.notes || null
+      });
+
+      // Save item
+      snapshot.item.order_id = orderId;
+      orderItemRepository.addItem(snapshot.item);
+
+      // Save variant
+      if (snapshot.variant) {
+        orderItemRepository.addVariant(snapshot.variant);
+      }
+
+      // Save modifiers
+      if (snapshot.modifiers.length > 0) {
+        for (const mod of snapshot.modifiers) {
+          orderItemRepository.addModifier(mod);
+        }
+      }
+
+      // Save addons
+      if (snapshot.addons.length > 0) {
+        for (const add of snapshot.addons) {
+          orderItemRepository.addAddon(add);
+        }
+      }
+
+      // Save combo components
+      if (snapshot.comboComponents.length > 0) {
+        for (const comp of snapshot.comboComponents) {
+          orderItemRepository.addComboComponent(comp);
+        }
+      }
+
+      // Recalculate Totals
+      const updatedOrder = this.recalculateOrderTotals(orderId);
+
+      // Record Timeline Event
+      orderTimelineService.recordEvent(orderId, actorUserId, 'ITEM_ADDED', {
+        description: `Added ${snapshot.item.quantity}x ${snapshot.item.product_name_snapshot} to order ${order.order_number}`,
+        metadata: { item_id: snapshot.item.id, product_id: snapshot.item.product_id }
+      });
+
+      // Log Activity
+      activityLogService.logActivity(actorUserId, 'ITEM_ADDED', 'ORDER', orderId, {
+        order_number: order.order_number,
+        product: snapshot.item.product_name_snapshot,
+        quantity: snapshot.item.quantity
+      });
+
+      // Queue Sync Event
+      syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', {
+        action: 'ITEM_ADDED',
+        order_number: order.order_number
       });
 
       return updatedOrder;
     });
   }
 
-  getOrCreateDraft(cashierSessionId, userId) {
-    return dbEngine.transaction(() => {
-      let order = orderRepository.findDraftBySession(cashierSessionId);
-      
-      if (!order) {
-        order = orderRepository.create({
-          cashier_session_id: cashierSessionId,
-          user_id: userId,
-          status: 'DRAFT',
-          order_type: 'DINE_IN'
-        });
-        activityLogService.logActivity(userId, 'ORDER_STARTED', `Order started with ID: ${order.order_number}`, null, order.id);
-      }
-      return order;
-    });
-  }
-
-  async addItemToDraft(cashierSessionId, userId, itemData) {
-    const orderId = dbEngine.transaction(() => {
-      const order = this.getOrCreateDraft(cashierSessionId, userId);
-      
-      let product = productRepository.findById(itemData.product_id);
-      let isDeal = false;
-      if (!product) {
-        product = dealRepository.findById(itemData.product_id);
-        if (product) isDeal = true;
-      }
-      if (!product) throw new Error('Product not found');
-
-      orderRepository.addItem(order.id, {
-        product_id: itemData.product_id,
-        quantity: itemData.quantity || 1,
-        unit_price: product.price,
-        subtotal: product.price * (itemData.quantity || 1),
-        modifiers: itemData.modifiers || []
-      });
-
-      activityLogService.logActivity(userId, 'ITEM_ADDED', `Added ${product.name} to order ${order.order_number}`, null, order.id);
-      return order.id;
-    });
-    
-    return await this.recalculateOrder(orderId);
-  }
-
-  async removeItemFromDraft(cashierSessionId, userId, itemId) {
-    const orderId = dbEngine.transaction(() => {
-      const order = orderRepository.findDraftBySession(cashierSessionId);
-      if (!order) throw new Error('No draft order found');
-      
-      orderRepository.removeItem(itemId);
-      activityLogService.logActivity(userId, 'ITEM_REMOVED', `Removed item from order ${order.order_number}`, null, order.id);
-      return order.id;
-    });
-
-    return await this.recalculateOrder(orderId);
-  }
-
-  async updateItemQuantity(cashierSessionId, userId, itemId, quantity) {
-    const orderId = dbEngine.transaction(() => {
-      const order = orderRepository.findDraftBySession(cashierSessionId);
-      if (!order) throw new Error('No draft order found');
-
-      if (quantity <= 0) {
-        orderRepository.removeItem(itemId);
-        activityLogService.logActivity(userId, 'ITEM_REMOVED', `Removed item from order ${order.order_number}`, null, order.id);
-        return order.id;
-      }
-      
-      orderRepository.updateItem(itemId, { quantity });
-      activityLogService.logActivity(userId, 'QUANTITY_CHANGED', `Changed quantity for item in order ${order.order_number}`, null, order.id);
-      return order.id;
-    });
-
-    return await this.recalculateOrder(orderId);
-  }
-
-  holdOrder(cashierSessionId, userId, holdName) {
-    return dbEngine.transaction(() => {
-      const order = orderRepository.findDraftBySession(cashierSessionId);
-      if (!order) throw new Error('No draft order found to hold');
-      
-      const updated = orderRepository.update(order.id, {
-        status: 'HELD',
-        hold_name: holdName,
-        held_at: new Date().toISOString()
-      });
-
-      activityLogService.logActivity(userId, 'ORDER_HELD', `Order ${order.order_number} held as ${holdName}`, null, order.id);
-      return updated;
-    });
-  }
-
-  resumeOrder(cashierSessionId, userId, orderId) {
-    return dbEngine.transaction(() => {
-      const updated = orderRepository.update(orderId, {
-        status: 'DRAFT',
-        cashier_session_id: cashierSessionId,
-        hold_name: null,
-        held_at: null
-      });
-      
-      activityLogService.logActivity(userId, 'ORDER_RESUMED', `Order ${updated.order_number} resumed`, null, orderId);
-      return updated;
-    });
-  }
-
-  getHeldOrders(cashierSessionId) {
-    return orderRepository.findHeldOrders(cashierSessionId);
-  }
-
-  addPayment(orderId, cashierSessionId, userId, paymentData) {
+  /**
+   * Updates an item's quantity or removes if quantity <= 0.
+   */
+  updateItemQuantity(orderId, itemId, newQuantity, actorUserId = 'SYSTEM') {
     return dbEngine.transaction(() => {
       const order = orderRepository.findById(orderId);
-      if (!order) throw new Error('Order not found');
+      orderValidationService.validateItemModification(order, itemId);
 
-      orderRepository.addPayment(orderId, {
-        cashier_session_id: cashierSessionId,
-        payment_method: paymentData.paymentMethod,
-        amount: paymentData.amount
+      if (newQuantity <= 0) {
+        return this.removeItem(orderId, itemId, actorUserId);
+      }
+
+      const item = orderItemRepository.findItemById(itemId);
+      if (!item) throw new Error('Order line item not found.');
+
+      const newSubtotal = item.final_unit_price * newQuantity;
+      let newTaxAmount = 0;
+      if (item.is_tax_inclusive) {
+        newTaxAmount = newSubtotal - (newSubtotal / (1 + item.tax_rate));
+      } else {
+        newTaxAmount = newSubtotal * item.tax_rate;
+      }
+      const newTotalAmount = item.is_tax_inclusive ? newSubtotal : newSubtotal + newTaxAmount;
+
+      orderItemRepository.updateItem(itemId, {
+        quantity: newQuantity,
+        subtotal: newSubtotal,
+        tax_amount: newTaxAmount,
+        total_amount: newTotalAmount
       });
 
-      activityLogService.logActivity(userId, 'PAYMENT_COMPLETED', `Payment of ${paymentData.amount} received via ${paymentData.paymentMethod}`, null, order.id);
+      const updatedOrder = this.recalculateOrderTotals(orderId);
 
-      const totalPayments = orderRepository.getOrderPayments(orderId).reduce((sum, p) => sum + p.amount, 0);
-      
-      if (totalPayments >= order.grand_total) {
-        return this.completeOrder(orderId, userId);
-      }
-      
-      return orderRepository.update(orderId, { status: 'PENDING_PAYMENT' });
+      orderTimelineService.recordEvent(orderId, actorUserId, 'ITEM_QUANTITY_CHANGED', {
+        description: `Updated quantity of ${item.product_name_snapshot} to ${newQuantity}`,
+        metadata: { item_id: itemId, old_qty: item.quantity, new_qty: newQuantity }
+      });
+
+      activityLogService.logActivity(actorUserId, 'QUANTITY_CHANGED', 'ORDER', orderId, {
+        order_number: order.order_number,
+        new_quantity: newQuantity
+      });
+
+      return updatedOrder;
     });
   }
 
-  completeOrder(orderId, userId) {
-    // Expected to be called within a transaction (e.g. from addPayment)
-    const updated = orderRepository.update(orderId, {
-      status: 'COMPLETED'
+  /**
+   * Removes an item from an order.
+   */
+  removeItem(orderId, itemId, actorUserId = 'SYSTEM') {
+    return dbEngine.transaction(() => {
+      const order = orderRepository.findById(orderId);
+      orderValidationService.validateItemModification(order, itemId);
+
+      const item = orderItemRepository.findItemById(itemId);
+      orderItemRepository.removeItem(itemId);
+
+      const updatedOrder = this.recalculateOrderTotals(orderId);
+
+      orderTimelineService.recordEvent(orderId, actorUserId, 'ITEM_REMOVED', {
+        description: `Removed ${item ? item.product_name_snapshot : 'item'} from order ${order.order_number}`,
+        metadata: { item_id: itemId }
+      });
+
+      activityLogService.logActivity(actorUserId, 'ITEM_REMOVED', 'ORDER', orderId, {
+        order_number: order.order_number
+      });
+
+      return updatedOrder;
     });
-    activityLogService.log(userId, 'ORDER_COMPLETED', `Order ${updated.order_number} completed`, null, orderId);
-    return updated;
+  }
+
+  /**
+   * Places an active draft order on hold.
+   */
+  holdOrder(shiftId, userId, holdName) {
+    return dbEngine.transaction(() => {
+      const draft = orderRepository.findDraftBySession(shiftId);
+      if (!draft) throw new Error('No active draft order found to hold.');
+
+      return orderLifecycleService.transition(draft.id, OrderLifecycleState.HELD, {
+        userId,
+        holdName
+      });
+    });
+  }
+
+  /**
+   * Resumes a held order into active draft status.
+   */
+  resumeOrder(shiftId, userId, orderId) {
+    return dbEngine.transaction(() => {
+      const order = orderRepository.findById(orderId);
+      if (!order) throw new Error('Order not found.');
+
+      if (order.lifecycle_state !== OrderLifecycleState.HELD) {
+        throw new Error(`Only HELD orders can be resumed. Order ${order.order_number} is in state ${order.lifecycle_state}.`);
+      }
+
+      // Re-assign shift/cashier if needed and set back to DRAFT
+      orderRepository.update(orderId, {
+        shift_id: shiftId,
+        cashier_user_id: userId
+      });
+
+      return orderLifecycleService.transition(orderId, OrderLifecycleState.DRAFT, {
+        userId,
+        reason: 'Order resumed into active cart'
+      });
+    });
+  }
+
+  /**
+   * Queries held orders.
+   */
+  getHeldOrders(shiftId = null) {
+    const orders = orderRepository.queryHeld(shiftId);
+    return orders.map(o => this._hydrateOrder(o));
+  }
+
+  /**
+   * Centralized state transition delegation.
+   */
+  transitionOrderState(orderId, targetState, context = {}) {
+    return orderLifecycleService.transition(orderId, targetState, context);
   }
 }
 

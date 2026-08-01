@@ -11,7 +11,7 @@ class SyncService {
    * @param {Object} metadata Any additional contextual metadata
    * @param {number} payloadVersion The version number of the entity
    */
-  queueSyncEvent(entityType, entityId, action, metadata = {}, payloadVersion = 1) {
+  queueSyncEvent(entityType, entityId, action, metadata = {}, payloadVersion = 1, options = {}) {
     try {
       const id = crypto.randomUUID();
       const metadataStr = JSON.stringify(metadata);
@@ -29,6 +29,9 @@ class SyncService {
     } catch (error) {
       console.error(`[SyncService] Failed to queue sync event for ${entityType} ${entityId}:`, error.message);
       // We log but do not throw to prevent breaking the main transaction flow for minor sync errors
+      if (options.strict) {
+        throw error;
+      }
     }
   }
 
