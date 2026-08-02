@@ -127,13 +127,14 @@ async function runTests() {
       name: 'Cheese Type',
       min_selection: 0,
       max_selection: 2,
-      is_required: false
+      is_required: false,
+      lifecycle_state: 'ACTIVE'
     });
   }
 
   let modifierCheddar = modifierRepository.findAllModifiers().find(m => m.name === 'Cheddar Cheese');
   if (!modifierCheddar) {
-    modifierCheddar = modifierRepository.createModifier({ name: 'Cheddar Cheese', price_adjustment: 5.00 });
+    modifierCheddar = modifierRepository.createModifier({ name: 'Cheddar Cheese', price_adjustment: 5.00, lifecycle_state: 'ACTIVE' });
     modifierRepository.addOptionToGroup(cheeseGroup.id, modifierCheddar.id, { price_adjustment: 5.00 });
   }
 

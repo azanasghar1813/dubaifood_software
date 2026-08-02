@@ -66,26 +66,41 @@ export default function Dashboard() {
   // Hardware/System Simulation states
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  // Live Table states (Click to toggle occupied status!)
-  const [groundFloorTables, setGroundFloorTables] = useState(
-    Array.from({ length: 12 }, (_, i) => ({ id: `G-${i + 1}`, status: i === 0 || i === 3 ? "Occupied" : "Available" }))
-  )
-  const [familyTables, setFamilyTables] = useState(
-    Array.from({ length: 6 }, (_, i) => ({ id: `F-${i + 1}`, status: i === 1 || i === 4 ? "Occupied" : "Available" }))
-  )
-  const [rooftopTables, setRooftopTables] = useState(
-    Array.from({ length: 8 }, (_, i) => ({ id: `T-${i + 1}`, status: i === 0 ? "Occupied" : "Available" }))
-  )
+  // Live Table states (derived from active orders)
+  const activeTableIds = useMemo(() => {
+    const set = new Set<string>()
+    orders.forEach(o => {
+      if (o.status !== "Completed" && o.status !== "Cancelled" && o.tableNumber) {
+        set.add(o.tableNumber.toString())
+      }
+    })
+    return set
+  }, [orders])
 
-  // Notifications
-  const [alerts, setAlerts] = useState([
-    { id: 1, title: "Receipt Printer Low Paper", type: "warning", time: "2 mins ago" },
-    { id: 2, title: "Internet Latency High (120ms)", type: "info", time: "5 mins ago" },
-    { id: 3, title: "Unpaid Dine In Table F-2 (> 2 hrs)", type: "error", time: "12 mins ago" },
-    { id: 4, title: "Shift Ending for Cashier Ahmed in 30 mins", type: "warning", time: "15 mins ago" }
-  ])
+  const groundFloorTables = useMemo(() => {
+    return Array.from({ length: 12 }, (_, i) => {
+      const id = `G-${i + 1}`
+      return { id, status: activeTableIds.has(id) ? "Occupied" : "Available" }
+    })
+  }, [activeTableIds])
+  
+  const familyTables = useMemo(() => {
+    return Array.from({ length: 6 }, (_, i) => {
+      const id = `F-${i + 1}`
+      return { id, status: activeTableIds.has(id) ? "Occupied" : "Available" }
+    })
+  }, [activeTableIds])
+  
+  const rooftopTables = useMemo(() => {
+    return Array.from({ length: 8 }, (_, i) => {
+      const id = `T-${i + 1}`
+      return { id, status: activeTableIds.has(id) ? "Occupied" : "Available" }
+    })
+  }, [activeTableIds])
 
-  // Activity Timeline log (kept for reference, although commented out state could be here)
+  // Notifications (Now using backend activity feed)
+  // Activity Timeline log
+
 
 
 
@@ -390,36 +405,36 @@ export default function Dashboard() {
           {/* Section: Alert Center */}
           <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Alert Center</h3>
-              {alerts.length > 0 && (
+              <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Activity Feed</h3>
+              {activities.length > 0 && (
                 <button
-                  onClick={() => setAlerts([])}
+                  onClick={() => setActivities([])}
                   className="text-[10px] text-primary hover:underline font-black"
                 >
                   Clear All
                 </button>
               )}
             </div>
-            {alerts.length > 0 ? (
+            {activities.length > 0 ? (
               <div className="space-y-2">
-                {alerts.map(alert => (
+                {activities.map(activity => (
                   <div
-                    key={alert.id}
-                    className={`p-3 rounded-2xl border transition-colors flex gap-2 items-start ${alert.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
-                        alert.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
+                    key={activity.id}
+                    className={`p-3 rounded-2xl border transition-colors flex gap-2 items-start ${activity.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
+                        activity.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
                           'bg-blue-500/10 border-blue-500/20 text-blue-500'
                       }`}
                   >
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                     <div className="flex-1">
-                      <p className="text-xs font-bold leading-normal">{alert.title}</p>
+                      <p className="text-xs font-bold leading-normal">{activity.title}</p>
                       <div className="flex justify-between items-center mt-1">
-                        <span className="text-[9px] font-semibold opacity-75">{alert.time}</span>
+                        <span className="text-[9px] font-semibold opacity-75">{activity.time} | {activity.user}</span>
                         <button
-                          onClick={() => setAlerts(prev => prev.filter(a => a.id !== alert.id))}
+                          onClick={() => setActivities(prev => prev.filter(a => a.id !== activity.id))}
                           className="text-[9px] font-black uppercase tracking-wider hover:opacity-50"
                         >
-                          Resolve
+                          Dismiss
                         </button>
                       </div>
                     </div>
@@ -446,7 +461,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-center border-b border-border pb-4 mb-4">
               <div>
                 <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Floor / Table Status</h3>
-                <p className="text-xs text-muted-foreground font-bold mt-0.5">Interactive table mapping. Click to toggle state.</p>
+                <p className="text-xs text-muted-foreground font-bold mt-0.5">Live table status based on active orders.</p>
               </div>
               <div className="flex gap-4 text-xs font-bold text-muted-foreground">
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Occupied</span>
@@ -461,20 +476,15 @@ export default function Dashboard() {
                 <h4 className="font-black text-xs uppercase text-foreground mb-3 text-center">Ground Floor</h4>
                 <div className="grid grid-cols-3 gap-2">
                   {groundFloorTables.map((t, idx) => (
-                    <button
+                    <div
                       key={t.id}
-                      onClick={() => {
-                        const next = [...groundFloorTables]
-                        next[idx].status = t.status === "Occupied" ? "Available" : "Occupied"
-                        setGroundFloorTables(next)
-                      }}
                       className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${t.status === "Occupied"
                           ? 'bg-red-500/10 text-red-500 border-red-500/30'
-                          : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:border-emerald-500'
+                          : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
                         }`}
                     >
                       {t.id}
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -484,20 +494,15 @@ export default function Dashboard() {
                 <h4 className="font-black text-xs uppercase text-foreground mb-3 text-center">Family Hall</h4>
                 <div className="grid grid-cols-2 gap-2">
                   {familyTables.map((t, idx) => (
-                    <button
+                    <div
                       key={t.id}
-                      onClick={() => {
-                        const next = [...familyTables]
-                        next[idx].status = t.status === "Occupied" ? "Available" : "Occupied"
-                        setFamilyTables(next)
-                      }}
                       className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${t.status === "Occupied"
                           ? 'bg-red-500/10 text-red-500 border-red-500/30'
-                          : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:border-emerald-500'
+                          : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
                         }`}
                     >
                       {t.id}
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -507,20 +512,15 @@ export default function Dashboard() {
                 <h4 className="font-black text-xs uppercase text-foreground mb-3 text-center">Rooftop</h4>
                 <div className="grid grid-cols-3 gap-2">
                   {rooftopTables.map((t, idx) => (
-                    <button
+                    <div
                       key={t.id}
-                      onClick={() => {
-                        const next = [...rooftopTables]
-                        next[idx].status = t.status === "Occupied" ? "Available" : "Occupied"
-                        setRooftopTables(next)
-                      }}
                       className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${t.status === "Occupied"
                           ? 'bg-red-500/10 text-red-500 border-red-500/30'
-                          : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:border-emerald-500'
+                          : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
                         }`}
                     >
                       {t.id}
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>

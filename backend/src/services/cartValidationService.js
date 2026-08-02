@@ -42,7 +42,8 @@ class CartValidationService {
     // 1. Variant Validation
     if (!isDeal) {
       const variants = variantRepository.findByProduct(product.id) || [];
-      const activeVariants = variants.filter(v => v.lifecycle_state !== 'DELETED');
+      const allowedStates = ['ACTIVE', 'UNAVAILABLE', 'HIDDEN'];
+      const activeVariants = variants.filter(v => allowedStates.includes(v.lifecycle_state));
 
       if (activeVariants.length > 0) {
         if (!itemInput.variant_id) {
@@ -61,7 +62,8 @@ class CartValidationService {
       const selectedModifiers = Array.isArray(itemInput.modifiers) ? itemInput.modifiers : [];
 
       for (const group of groups) {
-        if (group.lifecycle_state === 'DELETED') continue;
+        const allowedStates = ['ACTIVE', 'UNAVAILABLE', 'HIDDEN'];
+        if (!allowedStates.includes(group.lifecycle_state)) continue;
 
         // Count how many options from this group were selected
         const groupOptionIds = (group.options || []).map(o => o.id);

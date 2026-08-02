@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { Search, AlertTriangle, Plus, Download, Loader2 } from "lucide-react"
-import { api } from "../services/api"
+import { inventoryService } from "../services/inventoryService"
 
 export default function Inventory() {
   const [inventory, setInventory] = useState<any[]>([])
@@ -9,8 +9,8 @@ export default function Inventory() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const result = await api.getInventory()
-        setInventory(result)
+        const response = await inventoryService.getInventory()
+        setInventory(response.data || response)
       } finally {
         setIsLoading(false)
       }
@@ -69,13 +69,13 @@ export default function Inventory() {
             </thead>
             <tbody className="divide-y divide-border/50">
               {inventory.map((item) => {
-                const isLowStock = item.inStock <= item.minimum
-                const inStockValue = Number(item.inStock) || 0;
-                const costPerUnit = Number(item.costPerUnit) || 0;
+                const isLowStock = item.quantity <= item.min_stock_level
+                const inStockValue = Number(item.quantity) || 0;
+                const costPerUnit = Number(item.unit_cost) || 0;
                 return (
                   <tr key={item.id} className="hover:bg-secondary/30 transition-colors">
-                    <td className="px-6 py-4 font-medium">{item.id || item.sku}</td>
-                    <td className="px-6 py-4 font-bold">{item.ingredient || item.name}</td>
+                    <td className="px-6 py-4 font-medium">{item.sku || item.id}</td>
+                    <td className="px-6 py-4 font-bold">{item.name}</td>
                     <td className="px-6 py-4">
                       <span className={`font-bold ${isLowStock ? "text-destructive" : ""}`}>
                         {inStockValue} {item.unit}

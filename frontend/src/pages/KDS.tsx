@@ -80,14 +80,14 @@ export const KDS: React.FC = () => {
     }
   }
 
-  // Pre-load mock tickets from orderStore if KDS list is empty
+  const { fetchTickets } = useKdsStore()
+
+  // Fetch tickets from backend on load and setup polling
   useEffect(() => {
-    if (tickets.length === 0 && orders.length > 0) {
-      orders.forEach(order => {
-        receiveOrder(order)
-      })
-    }
-  }, [orders, tickets.length])
+    fetchTickets()
+    const interval = setInterval(fetchTickets, 10000) // poll every 10 seconds
+    return () => clearInterval(interval)
+  }, [fetchTickets])
 
   // Watch for ticket changes to sound notifications
   const prevTicketsCount = useRef(tickets.length)

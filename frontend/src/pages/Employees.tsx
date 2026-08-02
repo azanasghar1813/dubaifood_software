@@ -4,125 +4,13 @@ import {
   Search, Filter, Plus, Edit2, 
   Trash2, Download, RefreshCw, Key, Smartphone, 
   Eye, 
-  X, Power, Award, List
+  X, Power, Award, List, Loader2
 } from "lucide-react"
-
-// Mock Predefined employees list
-const initialEmployees = [
-  { 
-    id: "EMP-01", 
-    name: "Ahmed", 
-    role: "Cashier", 
-    phone: "0300-1234567", 
-    email: "ahmed@dubaifood.com",
-    shift: "Morning", 
-    status: "Active", 
-    pin: "1111",
-    pinStatus: "Configured",
-    lastLogin: "Today, 06:15 AM",
-    cnic: "42101-1234567-1",
-    address: "Street 4, Sector 11, Karachi",
-    emergencyContact: "0321-1234567 (Father)",
-    joinedDate: "2024-03-12",
-    assignedCounter: "Counter #1",
-    assignedKitchen: "Fast Food Kitchen",
-    isOnDuty: true,
-    performance: { orders: 64, revenue: 84500, avgBill: 1320, refunds: 1, cancelled: 0, serviceTime: "4.2 min" },
-    permissions: { editOrders: true, cancelOrders: false, refund: false, openDrawer: true, viewReports: false, manageProducts: false, manageUsers: false, changeSettings: false, accessKDS: false, printReports: true },
-    attendance: { clockIn: "06:12 AM", clockOut: "02:15 PM", workingHours: "8 hrs", breakTime: "30 mins", isLate: false }
-  },
-  { 
-    id: "EMP-02", 
-    name: "Umar", 
-    role: "Cashier", 
-    phone: "0333-7654321", 
-    email: "umar@dubaifood.com",
-    shift: "Evening", 
-    status: "Active", 
-    pin: "2222",
-    pinStatus: "Configured",
-    lastLogin: "Yesterday, 02:10 PM",
-    cnic: "42101-9876543-2",
-    address: "Block A, Gulshan, Karachi",
-    emergencyContact: "0334-1234567 (Brother)",
-    joinedDate: "2024-05-18",
-    assignedCounter: "Counter #2",
-    assignedKitchen: "Restaurant Kitchen",
-    isOnDuty: false,
-    performance: { orders: 48, revenue: 51200, avgBill: 1066, refunds: 0, cancelled: 2, serviceTime: "5.1 min" },
-    permissions: { editOrders: true, cancelOrders: false, refund: false, openDrawer: true, viewReports: false, manageProducts: false, manageUsers: false, changeSettings: false, accessKDS: false, printReports: true },
-    attendance: { clockIn: "02:08 PM", clockOut: "10:10 PM", workingHours: "8 hrs", breakTime: "40 mins", isLate: false }
-  },
-  { 
-    id: "EMP-03", 
-    name: "Ali", 
-    role: "Manager", 
-    phone: "0321-9988776", 
-    email: "ali@dubaifood.com",
-    shift: "Morning", 
-    status: "Active", 
-    pin: "1234",
-    pinStatus: "Configured",
-    lastLogin: "Today, 05:45 AM",
-    cnic: "42101-1122334-3",
-    address: "Navy Housing, Karsaz, Karachi",
-    emergencyContact: "0312-9876543 (Spouse)",
-    joinedDate: "2023-01-10",
-    assignedCounter: "All Counters",
-    assignedKitchen: "Both Kitchens",
-    isOnDuty: true,
-    performance: { orders: 12, revenue: 14500, avgBill: 1208, refunds: 4, cancelled: 5, serviceTime: "3.5 min" },
-    permissions: { editOrders: true, cancelOrders: true, refund: true, openDrawer: true, viewReports: true, manageProducts: true, manageUsers: true, changeSettings: true, accessKDS: true, printReports: true },
-    attendance: { clockIn: "05:45 AM", clockOut: "05:00 PM", workingHours: "11.2 hrs", breakTime: "60 mins", isLate: false }
-  },
-  { 
-    id: "EMP-04", 
-    name: "Bilal", 
-    role: "Kitchen Staff", 
-    phone: "0311-2233445", 
-    email: "bilal@dubaifood.com",
-    shift: "Morning", 
-    status: "Active", 
-    pin: "4444",
-    pinStatus: "Configured",
-    lastLogin: "Today, 06:30 AM",
-    cnic: "42101-5566778-4",
-    address: "Federal B Area, Karachi",
-    emergencyContact: "0345-1234567 (Mother)",
-    joinedDate: "2024-01-15",
-    assignedCounter: "N/A",
-    assignedKitchen: "Fast Food Kitchen",
-    isOnDuty: true,
-    performance: { orders: 98, revenue: 112000, avgBill: 1142, refunds: 0, cancelled: 0, serviceTime: "12 min" },
-    permissions: { editOrders: false, cancelOrders: false, refund: false, openDrawer: false, viewReports: false, manageProducts: false, manageUsers: false, changeSettings: false, accessKDS: true, printReports: false },
-    attendance: { clockIn: "06:30 AM", clockOut: "02:30 PM", workingHours: "8 hrs", breakTime: "30 mins", isLate: true }
-  },
-  { 
-    id: "EMP-05", 
-    name: "Hassan", 
-    role: "Waiter", 
-    phone: "0345-9876543", 
-    email: "hassan@dubaifood.com",
-    shift: "Evening", 
-    status: "Inactive", 
-    pin: "5555",
-    pinStatus: "Configured",
-    lastLogin: "Last week, Saturday",
-    cnic: "42101-9988112-5",
-    address: "Nazimabad, Karachi",
-    emergencyContact: "0301-1234567 (Friend)",
-    joinedDate: "2024-06-01",
-    assignedCounter: "N/A",
-    assignedKitchen: "Restaurant Floor",
-    isOnDuty: false,
-    performance: { orders: 0, revenue: 0, avgBill: 0, refunds: 0, cancelled: 0, serviceTime: "0 min" },
-    permissions: { editOrders: false, cancelOrders: false, refund: false, openDrawer: false, viewReports: false, manageProducts: false, manageUsers: false, changeSettings: false, accessKDS: false, printReports: false },
-    attendance: { clockIn: "—", clockOut: "—", workingHours: "—", breakTime: "—", isLate: false }
-  }
-]
+import { employeeService } from "../services/employeeService"
 
 export default function Employees() {
-  const [employees, setEmployees] = useState<any[]>(initialEmployees)
+  const [employees, setEmployees] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [viewMode, setViewMode] = useState<"grid" | "table">("table")
   const [search, setSearch] = useState("")
   
@@ -140,6 +28,23 @@ export default function Employees() {
   const [drawerMode, setDrawerMode] = useState<"view" | "edit" | "add">("view")
 
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  const fetchEmployees = async () => {
+    try {
+      setIsRefreshing(true)
+      const response = await employeeService.getEmployees()
+      setEmployees(response.data || response)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsRefreshing(false)
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchEmployees()
+  }, [])
 
   // Keyboard Shortcuts Listener
   useEffect(() => {
@@ -181,7 +86,16 @@ export default function Employees() {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [isDrawerOpen, selectedEmp])
 
-  // KPIs
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center min-h-[calc(100vh-100px)]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  // Derived Values
+  const roles = ["All", ...Array.from(new Set(employees.map(e => e.role?.name || e.role)))]
   const stats = useMemo(() => {
     const total = employees.length
     const cashiers = employees.filter(e => e.role === "Cashier").length

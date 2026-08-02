@@ -16,22 +16,6 @@ export const api = {
     await delay(300)
     return Mock.ORDERS
   },
-  getInventory: async () => {
-    await delay(300)
-    return Mock.INVENTORY
-  },
-  getCustomers: async () => {
-    await delay(400)
-    return Mock.CUSTOMERS
-  },
-  getExpenses: async () => {
-    await delay(300)
-    return Mock.EXPENSES
-  },
-  getEmployees: async () => {
-    await delay(300)
-    return Mock.EMPLOYEES
-  },
   getReports: async () => {
     await delay(500)
     return Mock.REPORTS

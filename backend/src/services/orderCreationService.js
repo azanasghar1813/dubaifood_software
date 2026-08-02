@@ -222,14 +222,25 @@ class OrderCreationService {
       let subtotal = 0;
       let taxTotal = 0;
       let discountTotal = 0;
+      const isTaxEnabled = options.is_tax_enabled !== false;
+      const deliveryCharges = Number(options.delivery_charges) || 0;
 
       for (const cartItem of cart.items) {
         subtotal += Number(cartItem.subtotal) || 0;
-        taxTotal += Number(cartItem.tax_amount) || 0;
+        if (isTaxEnabled) {
+          taxTotal += Number(cartItem.tax_amount) || 0;
+        }
         discountTotal += Number(cartItem.discount_amount) || 0;
       }
 
-      const grandTotal = subtotal + taxTotal - discountTotal;
+      const financeConfig = configService.getFinanceConfig() || {};
+      const isTaxInclusive = financeConfig.tax_inclusive === true || financeConfig.tax_inclusive === 1;
+
+      let grandTotal = isTaxInclusive 
+        ? subtotal - discountTotal 
+        : subtotal + taxTotal - discountTotal;
+        
+      grandTotal += deliveryCharges;
 
       // ── 3c. Create master orders row ───────────────────────────────────────
       orderRepository.create({
@@ -258,6 +269,8 @@ class OrderCreationService {
       orderMetadataRepository.setMeta(newOrderId, 'source', 'CART_CHECKOUT');
       orderMetadataRepository.setMeta(newOrderId, 'kitchen_notes', kitchenNotes);
       orderMetadataRepository.setMeta(newOrderId, 'business_day', businessDate);
+      orderMetadataRepository.setMeta(newOrderId, 'delivery_charges', deliveryCharges);
+      orderMetadataRepository.setMeta(newOrderId, 'is_tax_enabled', isTaxEnabled);
       orderMetadataRepository.setMeta(newOrderId, 'cart_totals', {
         subtotal,
         tax_total: taxTotal,

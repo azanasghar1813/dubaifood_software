@@ -50,10 +50,9 @@ interface KdsState {
   }
   
   // Actions
-  receiveOrder: (order: Order) => void
-  receiveOrderEdit: (oldOrder: Order, newOrder: Order) => void
-  updateTicketStatus: (ticketId: string, status: KitchenStatus) => void
-  updateItemStatus: (ticketId: string, itemId: string, status: KitchenStatus) => void
+  fetchTickets: () => Promise<void>
+  updateTicketStatus: (ticketId: string, status: KitchenStatus) => Promise<void>
+  updateItemStatus: (ticketId: string, itemId: string, status: KitchenStatus) => Promise<void>
   setFilter: (key: keyof KdsState['filters'], value: string) => void
 }
 
@@ -66,216 +65,93 @@ export const useKdsStore = create<KdsState>((set, get) => ({
     searchQuery: ''
   },
 
-  receiveOrder: (order) => {
-    // Separate items by kitchen
-    const kitchenItems = new Map<string, KitchenItem[]>()
+  fetchTickets: async () => {
+    try {
+      const { kitchenService } = await import('../services/kitchenService')
+      const res = await kitchenService.getQueue()
+      if (res.success && res.data) {
+        const backendTickets = res.data.tickets || res.data // handle both shapes
+        const mappedTickets: KitchenTicket[] = backendTickets.map((row: any) => {
+          // Normalize priority
+          let p = row.priority?.toUpperCase() || 'NORMAL'
+          if (p === 'RUSH') p = 'Rush'
+          if (p === 'NORMAL') p = 'Normal'
 
-    order.items.forEach(item => {
-      // Default to "Fast Food" if kitchen is missing for some reason
-      const kitchen = item.kitchen || 'Fast Food'
-      if (!kitchenItems.has(kitchen)) {
-        kitchenItems.set(kitchen, [])
-      }
-      kitchenItems.get(kitchen)!.push({
-        id: generateId(),
-        cartItemId: item.cartItemId,
-        name: item.name,
-        quantity: item.quantity,
-        modifiers: item.selectedModifiers,
-        notes: item.notes,
-        kitchen,
-        status: 'Waiting',
-        type: 'NORMAL'
-      })
-    })
+          // Normalize Status
+          let s = row.kitchen_state?.toUpperCase() || 'PENDING'
+          if (s === 'PENDING') s = 'Waiting'
+          if (s === 'SENT') s = 'Accepted'
 
-    const newTickets: KitchenTicket[] = []
-    
-    // Determine priority
-    let priority: KitchenPriority = 'Normal'
-    if (order.customerName?.toLowerCase().includes('vip')) priority = 'VIP'
+          return {
+            id: row.id,
+            orderId: row.id,
+            orderNumber: row.order_number,
+            table: row.table_id || 'N/A',
+            customer: row.customer_id || 'Walk-in',
+            orderType: row.order_type,
+            cashier: row.cashier_name || 'System',
+            orderTime: row.created_at,
+            priority: p as KitchenPriority,
+            status: s as KitchenStatus,
+            notes: row.kitchen_notes || row.customer_notes || '',
+            kitchen: 'All', // Handle multiple stations if needed
+            items: row.items.map((item: any) => {
+              let is = item.kitchen_state?.toUpperCase() || 'PENDING'
+              if (is === 'PENDING' || is === 'SENT') is = 'Waiting'
 
-    kitchenItems.forEach((items, kitchen) => {
-      newTickets.push({
-        id: `KDS-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        table: order.tableNumber || 'N/A',
-        customer: order.customerName || 'Walk-in',
-        orderType: order.orderType,
-        cashier: order.cashierName,
-        orderTime: order.timestamp,
-        priority,
-        status: 'Waiting',
-        items,
-        notes: order.notes || '',
-        kitchen
-      })
-    })
-
-    set(state => ({
-      tickets: [...state.tickets, ...newTickets]
-    }))
-  },
-
-  receiveOrderEdit: (oldOrder, newOrder) => {
-    // Diffing logic to find ADDs and REMOVEs
-    const oldItemsMap = new Map(oldOrder.items.map(i => [i.cartItemId, i]))
-    const newItemsMap = new Map(newOrder.items.map(i => [i.cartItemId, i]))
-
-    const adds: KitchenItem[] = []
-    const removes: KitchenItem[] = []
-
-    newOrder.items.forEach(newItem => {
-      const oldItem = oldItemsMap.get(newItem.cartItemId)
-      const kitchen = newItem.kitchen || 'Fast Food'
-
-      if (!oldItem) {
-        // Completely new item
-        adds.push({
-          id: generateId(),
-          cartItemId: newItem.cartItemId,
-          name: newItem.name,
-          quantity: newItem.quantity,
-          modifiers: newItem.selectedModifiers,
-          notes: newItem.notes,
-          kitchen,
-          status: 'Waiting',
-          type: 'ADD'
-        })
-      } else if (newItem.quantity > oldItem.quantity) {
-        // Increased quantity
-        adds.push({
-          id: generateId(),
-          cartItemId: newItem.cartItemId,
-          name: newItem.name,
-          quantity: newItem.quantity - oldItem.quantity,
-          modifiers: newItem.selectedModifiers,
-          notes: newItem.notes,
-          kitchen,
-          status: 'Waiting',
-          type: 'ADD'
-        })
-      } else if (newItem.quantity < oldItem.quantity) {
-        // Decreased quantity
-        removes.push({
-          id: generateId(),
-          cartItemId: newItem.cartItemId,
-          name: newItem.name,
-          quantity: oldItem.quantity - newItem.quantity,
-          modifiers: newItem.selectedModifiers,
-          notes: newItem.notes,
-          kitchen,
-          status: 'Waiting',
-          type: 'REMOVE'
-        })
-      }
-    })
-
-    oldOrder.items.forEach(oldItem => {
-      if (!newItemsMap.has(oldItem.cartItemId)) {
-        const kitchen = oldItem.kitchen || 'Fast Food'
-        removes.push({
-          id: generateId(),
-          cartItemId: oldItem.cartItemId,
-          name: oldItem.name,
-          quantity: oldItem.quantity,
-          modifiers: oldItem.selectedModifiers,
-          notes: oldItem.notes,
-          kitchen,
-          status: 'Waiting',
-          type: 'REMOVE'
-        })
-      }
-    })
-
-    if (adds.length === 0 && removes.length === 0) return
-
-    // Group diff items by kitchen
-    const kitchenDiffs = new Map<string, KitchenItem[]>()
-    
-    adds.forEach(item => {
-      if (!kitchenDiffs.has(item.kitchen)) kitchenDiffs.set(item.kitchen, [])
-      kitchenDiffs.get(item.kitchen)!.push(item)
-    })
-    
-    removes.forEach(item => {
-      if (!kitchenDiffs.has(item.kitchen)) kitchenDiffs.set(item.kitchen, [])
-      kitchenDiffs.get(item.kitchen)!.push(item)
-    })
-
-    const newTickets: KitchenTicket[] = []
-    
-    kitchenDiffs.forEach((items, kitchen) => {
-      newTickets.push({
-        id: `KDS-MOD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        orderId: newOrder.id,
-        orderNumber: newOrder.orderNumber,
-        table: newOrder.tableNumber || 'N/A',
-        customer: newOrder.customerName || 'Walk-in',
-        orderType: newOrder.orderType,
-        cashier: newOrder.cashierName,
-        orderTime: new Date().toISOString(),
-        priority: 'Rush', // Edits are typically Rush
-        status: 'Waiting',
-        items,
-        notes: `EDITED TICKET`,
-        kitchen
-      })
-    })
-
-    set(state => ({
-      tickets: [...state.tickets, ...newTickets]
-    }))
-  },
-
-  updateTicketStatus: (ticketId, status) => {
-    set(state => {
-      const tickets = state.tickets.map(t => 
-        t.id === ticketId ? { ...t, status } : t
-      )
-      const ticket = tickets.find(t => t.id === ticketId)
-      if (ticket) {
-        const orderStore = useOrderStore.getState()
-        const order = orderStore.orders.find(o => o.id === ticket.orderId)
-        if (order) {
-          const newKitchenStatus = status
-          const newPaymentStatus = order.paymentStatus
-          
-          let newOrderStatus = order.status
-          if (newKitchenStatus === 'Served' && newPaymentStatus === 'Paid') {
-            newOrderStatus = 'Completed'
-          } else if (newKitchenStatus === 'Cancelled') {
-            newOrderStatus = 'Cancelled'
+              return {
+                id: item.id,
+                cartItemId: item.id,
+                name: item.product_name_snapshot,
+                quantity: item.quantity,
+                modifiers: item.modifiers?.map((m: any) => ({ name: m.modifier_name_snapshot })) || [],
+                notes: item.notes || null,
+                kitchen: item.kitchen_station_name_snapshot || 'Main Kitchen',
+                status: is as KitchenStatus,
+                type: 'NORMAL'
+              }
+            })
           }
-          
-          orderStore.updateOrder(order.id, { 
-            kitchenStatus: newKitchenStatus,
-            status: newOrderStatus
-          })
-          
-          orderStore.addTimelineEvent(order.id, {
-            event: `Kitchen: ${status}`,
-            cashier: 'Kitchen Station',
-            remarks: `KDS Ticket #${ticket.orderNumber} updated`
-          })
-        }
+        })
+        set({ tickets: mappedTickets })
       }
-      return { tickets }
-    })
+    } catch (error) {
+      console.error('Failed to fetch kitchen tickets', error)
+    }
   },
 
-  updateItemStatus: (ticketId, itemId, status) => {
+  updateTicketStatus: async (ticketId, status) => {
+    // Optimistic update
+    set(state => ({
+      tickets: state.tickets.map(t => t.id === ticketId ? { ...t, status } : t)
+    }))
+    // Optional: map status back to backend values if needed, but not implemented here yet
+    // Backend doesn't have an endpoint for updating entire ticket status directly, usually it's per item
+  },
+
+  updateItemStatus: async (ticketId, itemId, status) => {
+    // Optimistic update
     set(state => ({
       tickets: state.tickets.map(t => 
         t.id === ticketId 
-          ? { 
-              ...t, 
-              items: t.items.map(i => i.id === itemId ? { ...i, status } : i) 
-            } 
+          ? { ...t, items: t.items.map(i => i.id === itemId ? { ...i, status } : i) } 
           : t
       )
     }))
+
+    try {
+      const { kitchenService } = await import('../services/kitchenService')
+      if (status === 'Preparing') await kitchenService.startPreparingItem(itemId)
+      else if (status === 'Ready') await kitchenService.markItemReady(itemId)
+      else if (status === 'Served') await kitchenService.markItemServed(itemId)
+      else if (status === 'Cancelled') await kitchenService.cancelItem(itemId)
+      
+      // Refresh to ensure sync
+      get().fetchTickets()
+    } catch (error) {
+      console.error('Failed to update item status', error)
+      // Rollback optimism could go here
+    }
   },
 
   setFilter: (key, value) => {

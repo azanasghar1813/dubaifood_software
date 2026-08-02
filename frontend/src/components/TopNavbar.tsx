@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from "react"
 import { useUIStore } from "../store/uiStore"
 import { useAuthStore } from "../store/authStore"
-import { Bell, Menu,  LogOut, Users, X, ChevronDown, Lock, User as UserIcon, Wifi, Printer, Clock, RefreshCw, Calendar, Search, Settings, Sun, Moon, Minus, Square } from "lucide-react"
+import { Bell,  LogOut, Users, X, ChevronDown, Lock, User as UserIcon, Wifi, Printer, Clock, RefreshCw, Calendar, Search, Settings, Sun, Moon, Minus, Square } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 
 export default function TopNavbar() {
-  const { toggleSidebar } = useUIStore()
+  const {} = useUIStore()
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   

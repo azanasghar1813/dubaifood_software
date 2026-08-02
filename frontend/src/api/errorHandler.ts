@@ -18,7 +18,7 @@ export const normalizeError = (error: any): ApiError => {
     // that falls out of the range of 2xx
     return {
       status: error.response.status,
-      message: error.response.data?.message || error.message || 'Server Error',
+      message: error.response.data?.error || error.response.data?.message || error.message || 'Server Error',
       code: error.response.data?.code || 'UNKNOWN_ERROR',
       details: error.response.data?.details
     }

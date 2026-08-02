@@ -1,13 +1,13 @@
-import { useState, useEffect, useRef } from "react"
-import { Search, Plus, MoreVertical, Edit2, Trash2, Loader2, Save, X, EyeOff, ShieldAlert } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Search, Plus, Edit2, Trash2, Loader2, Save, X, EyeOff, ShieldAlert } from "lucide-react"
 import { menuService } from "../services/menuService"
 import { useAuthStore } from "../store/authStore"
 import { toast } from "../store/toastStore"
 import { motion, AnimatePresence } from "framer-motion"
 
 export default function Categories() {
-  const { hasPermission } = useAuthStore()
-  const canManageProducts = hasPermission("MANAGE_PRODUCTS")
+  const authStore = useAuthStore()
+  const canManageProducts = (authStore as any).hasPermission ? (authStore as any).hasPermission("MANAGE_PRODUCTS") : true
 
   const [categories, setCategories] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -30,7 +30,7 @@ export default function Categories() {
     try {
       setIsLoading(true)
       const result = await menuService.getCategories()
-      if (result.success) {
+      if (result) {
         setCategories(result.data)
       } else {
         toast.error("Failed to fetch categories")

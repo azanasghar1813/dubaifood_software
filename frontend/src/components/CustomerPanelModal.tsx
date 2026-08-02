@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, User, Phone, MapPin, StickyNote, Star, X, CheckCircle2, Plus } from "lucide-react"
-import { usePosStore, type CustomerProfile } from "../store/posStore"
+import { usePosStore } from "../store/posStore"
+
+import { customerService } from "../services/customerService"
 
 interface CustomerPanelModalProps {
   isOpen: boolean
   onClose: () => void
+  onSuccess?: () => void
 }
 
-export function CustomerPanelModal({ isOpen, onClose }: CustomerPanelModalProps) {
+export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanelModalProps) {
   const { setCustomer } = usePosStore()
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -20,43 +23,130 @@ export function CustomerPanelModal({ isOpen, onClose }: CustomerPanelModalProps)
   const [newNotes, setNewNotes] = useState("")
   const [isVip, setIsVip] = useState(false)
 
-  // Mock Database
-  const [customers, setCustomers] = useState<CustomerProfile[]>([
-    { id: "1", name: "Ahmed", phone: "0501234567", type: "Regular", isVip: true, address: "Marina", history: [{ date: '2023-10-01', amount: 150 }] },
-    { id: "2", name: "Sarah", phone: "0559876543", type: "Regular", isVip: false, address: "JLT" },
-  ])
+  const nameRef = useRef<HTMLInputElement>(null)
+  const phoneRef = useRef<HTMLInputElement>(null)
+  const addressRef = useRef<HTMLTextAreaElement>(null)
+  const notesRef = useRef<HTMLTextAreaElement>(null)
+  
+  const [customers, setCustomers] = useState<any[]>([])
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [activeInput, setActiveInput] = useState<number>(1) // 0: Name, 1: Phone, 2: Address, 3: Notes
+
+  const fetchCustomers = async () => {
+    try {
+      const res = await customerService.getCustomers()
+      if (res.success) {
+        setCustomers(res.data || [])
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
 
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => searchInputRef.current?.focus(), 100)
+      fetchCustomers()
+      setSearchQuery("")
+      setNewName("")
+      setNewPhone("")
+      setNewAddress("")
+      setNewNotes("")
+      setIsVip(false)
+      setSelectedIndex(0)
+      setActiveInput(1)
+      setTimeout(() => phoneRef.current?.focus(), 100)
     }
   }, [isOpen])
 
   const filteredCustomers = customers.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    c.phone.includes(searchQuery)
+    (c.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (c.phone || '').includes(searchQuery)
   )
 
-  const handleSelect = (c: CustomerProfile) => {
-    setCustomer(c)
-    onClose()
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Toggle VIP shortcut
+      if (e.ctrlKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault()
+        setIsVip(v => !v)
+        return
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedIndex(prev => Math.max(0, prev - 1))
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedIndex(prev => Math.min(filteredCustomers.length - 1, prev + 1))
+      } else if (e.key === 'ArrowLeft') {
+        // e.preventDefault() // Don't prevent default, allow text cursor to move if they are typing, just focus if at edges? Actually prompt requested side arrows to move. We'll just shift focus.
+        // It's safer to only move focus if they hold a modifier or we can just move it.
+        setActiveInput(prev => {
+          const next = Math.max(0, prev - 1)
+          focusInput(next)
+          return next
+        })
+      } else if (e.key === 'ArrowRight') {
+        setActiveInput(prev => {
+          const next = Math.min(3, prev + 1)
+          focusInput(next)
+          return next
+        })
+      } else if (e.key === 'Enter') {
+        // if inside the form, let form submit handle it if it's phone input.
+        // if inside search bar or list, select the highlighted customer.
+        if (document.activeElement === searchInputRef.current) {
+          e.preventDefault()
+          if (filteredCustomers[selectedIndex]) {
+            handleSelect(filteredCustomers[selectedIndex])
+          }
+        }
+      } else if (e.key === 'Backspace' && searchQuery === '' && document.activeElement === searchInputRef.current) {
+        e.preventDefault()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, filteredCustomers, selectedIndex, searchQuery, onClose])
+
+  const focusInput = (index: number) => {
+    if (index === 0) nameRef.current?.focus()
+    else if (index === 1) phoneRef.current?.focus()
+    else if (index === 2) addressRef.current?.focus()
+    else if (index === 3) notesRef.current?.focus()
   }
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleSelect = (c: any) => {
+    setCustomer(c)
+    onClose()
+    if (onSuccess) onSuccess()
+  }
+
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newName || !newPhone) return
-    const newCust: CustomerProfile = {
-      id: Date.now().toString(),
-      name: newName,
+    // Name is not mandatory, if empty write Guest
+    const finalName = newName.trim() === '' ? 'Guest' : newName
+    if (!newPhone) return
+    
+    const newCust: any = {
+      name: finalName,
       phone: newPhone,
       address: newAddress,
       notes: newNotes,
-      isVip,
-      type: 'New'
+      is_vip: isVip,
     }
-    setCustomers(prev => [newCust, ...prev])
-    setCustomer(newCust)
-    onClose()
+    try {
+      const res = await customerService.createCustomer(newCust)
+      if (res.success) {
+        setCustomer(res.data)
+        onClose()
+        if (onSuccess) onSuccess()
+      }
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   if (!isOpen) return null
@@ -100,19 +190,19 @@ export function CustomerPanelModal({ isOpen, onClose }: CustomerPanelModalProps)
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {filteredCustomers.map(c => (
+                  {filteredCustomers.map((c, i) => (
                     <button 
-                      key={c.id} 
+                      key={c.id || i} 
                       onClick={() => handleSelect(c)}
-                      className="w-full text-left p-3 rounded-xl hover:bg-secondary transition-colors flex items-center gap-3 group"
+                      className={`w-full text-left p-3 rounded-xl hover:bg-secondary transition-colors flex items-center gap-3 group ${selectedIndex === i ? 'bg-secondary ring-2 ring-orange-500' : ''}`}
                     >
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${c.isVip ? 'bg-orange-500/20 text-orange-500' : 'bg-primary/10 text-primary'}`}>
-                        {c.isVip ? <Star className="w-5 h-5 fill-current" /> : <User className="w-5 h-5" />}
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${c.is_vip || c.isVip ? 'bg-orange-500/20 text-orange-500' : 'bg-primary/10 text-primary'}`}>
+                        {c.is_vip || c.isVip ? <Star className="w-5 h-5 fill-current" /> : <User className="w-5 h-5" />}
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <p className="font-bold text-foreground group-hover:text-orange-500 transition-colors">{c.name}</p>
-                          {c.isVip && <span className="text-[9px] bg-orange-500 text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">VIP</span>}
+                          {(c.is_vip || c.isVip) && <span className="text-[9px] bg-orange-500 text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">VIP</span>}
                         </div>
                         <p className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" /> {c.phone}</p>
                       </div>
@@ -135,17 +225,17 @@ export function CustomerPanelModal({ isOpen, onClose }: CustomerPanelModalProps)
             <form onSubmit={handleCreate} className="flex-1 overflow-y-auto p-6 flex flex-col space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Name *</label>
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Name</label>
                   <div className="relative">
                     <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input required type="text" value={newName} onChange={e => setNewName(e.target.value)} className="w-full h-10 pl-9 pr-4 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold" placeholder="John Doe" />
+                    <input ref={nameRef} onFocus={() => setActiveInput(0)} type="text" value={newName} onChange={e => setNewName(e.target.value)} className="w-full h-10 pl-9 pr-4 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold" placeholder="Guest" />
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone *</label>
                   <div className="relative">
                     <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input required type="text" value={newPhone} onChange={e => setNewPhone(e.target.value)} className="w-full h-10 pl-9 pr-4 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold" placeholder="050..." />
+                    <input ref={phoneRef} onFocus={() => setActiveInput(1)} required type="text" value={newPhone} onChange={e => setNewPhone(e.target.value)} className="w-full h-10 pl-9 pr-4 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold" placeholder="050..." />
                   </div>
                 </div>
               </div>
@@ -154,7 +244,7 @@ export function CustomerPanelModal({ isOpen, onClose }: CustomerPanelModalProps)
                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Address</label>
                 <div className="relative">
                   <MapPin className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
-                  <textarea value={newAddress} onChange={e => setNewAddress(e.target.value)} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none" placeholder="Delivery address..." />
+                  <textarea ref={addressRef} onFocus={() => setActiveInput(2)} value={newAddress} onChange={e => setNewAddress(e.target.value)} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none" placeholder="Delivery address..." />
                 </div>
               </div>
 
@@ -162,7 +252,7 @@ export function CustomerPanelModal({ isOpen, onClose }: CustomerPanelModalProps)
                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Notes</label>
                 <div className="relative">
                   <StickyNote className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
-                  <textarea value={newNotes} onChange={e => setNewNotes(e.target.value)} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none" placeholder="Allergies, preferences..." />
+                  <textarea ref={notesRef} onFocus={() => setActiveInput(3)} value={newNotes} onChange={e => setNewNotes(e.target.value)} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none" placeholder="Allergies, preferences..." />
                 </div>
               </div>
 
@@ -175,7 +265,7 @@ export function CustomerPanelModal({ isOpen, onClose }: CustomerPanelModalProps)
                   <div className="flex items-center gap-3">
                     <Star className={`w-5 h-5 ${isVip ? 'text-orange-500 fill-orange-500' : 'text-muted-foreground'}`} />
                     <div className="text-left">
-                      <p className={`font-bold ${isVip ? 'text-orange-500' : 'text-foreground'}`}>VIP Customer</p>
+                      <p className={`font-bold ${isVip ? 'text-orange-500' : 'text-foreground'}`}>VIP Customer <span className="opacity-50 text-[10px] ml-1">(CTRL + V)</span></p>
                       <p className="text-xs text-muted-foreground">Assign priority routing and loyalty benefits</p>
                     </div>
                   </div>

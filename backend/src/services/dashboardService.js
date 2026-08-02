@@ -42,7 +42,7 @@ export const dashboardService = {
         SUM(grand_total) as todaySales,
         COUNT(id) as ordersCount
       FROM orders
-      WHERE (status = 'COMPLETED' OR status = 'CONFIRMED')
+      WHERE (lifecycle_state = 'COMPLETED' OR lifecycle_state = 'CONFIRMED')
       AND created_at >= ? AND created_at < ?
     `);
     

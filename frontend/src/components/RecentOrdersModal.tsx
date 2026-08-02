@@ -116,7 +116,7 @@ export const RecentOrdersModal: React.FC<RecentOrdersModalProps> = ({ isOpen, on
         o.customerPhone?.toLowerCase().includes(q) ||
         o.tableNumber?.toLowerCase().includes(q) ||
         o.cashierName.toLowerCase().includes(q) ||
-        o.items.some(item => item.name.toLowerCase().includes(q) || item.code.toLowerCase().includes(q))
+        o.items.some(item => item.name.toLowerCase().includes(q) || (item.code || "").toLowerCase().includes(q))
       )
     }
     return result

@@ -33,5 +33,33 @@ export const activityLogService = {
         throw error;
       }
     }
+  },
+
+  /**
+   * Retrieves activity logs with pagination and optional filtering
+   */
+  getLogs: (options = {}) => {
+    const { limit = 100, offset = 0, userId, entityType, action } = options;
+    let query = 'SELECT * FROM activity_logs WHERE 1=1';
+    let params = [];
+    
+    if (userId) {
+      query += ' AND user_id = ?';
+      params.push(userId);
+    }
+    if (entityType) {
+      query += ' AND entity_type = ?';
+      params.push(entityType);
+    }
+    if (action) {
+      query += ' AND action = ?';
+      params.push(action);
+    }
+    
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+    
+    const stmt = dbEngine.db.prepare(query);
+    return stmt.all(...params);
   }
 };

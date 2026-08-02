@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, Clock, X } from "lucide-react"
-import { usePosStore, type Table, type TableStatus } from "../store/posStore"
+import { usePosStore } from "../store/posStore"
+type Table = any;
+type TableStatus = any;
 
 interface TableSelectorModalProps {
   isOpen: boolean
@@ -12,16 +14,19 @@ const GROUND_TABLES = Array.from({ length: 12 }, (_, i) => ({ id: `G${i + 1}`, l
 const FAMILY_TABLES = Array.from({ length: 6 }, (_, i) => ({ id: `F${i + 1}`, label: `F${i + 1}`, zone: 'Family Hall' as const, status: 'Available' as TableStatus }))
 const ROOFTOP_TABLES = Array.from({ length: 8 }, (_, i) => ({ id: `T${i + 1}`, label: `T${i + 1}`, zone: 'Rooftop' as const, status: 'Available' as TableStatus }))
 
-const ALL_TABLES: Table[] = [...GROUND_TABLES, ...FAMILY_TABLES, ...ROOFTOP_TABLES]
+const ALL_TABLES: any[] = [...GROUND_TABLES, ...FAMILY_TABLES, ...ROOFTOP_TABLES]
 
 export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps) {
   const { openOrders, switchOrder, setTableNumber, activeOrderId } = usePosStore()
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement>(null)
 
+  const [selectedIndex, setSelectedIndex] = useState(0)
+
   useEffect(() => {
     if (isOpen) {
       setSearchQuery("")
+      setSelectedIndex(0)
       setTimeout(() => searchInputRef.current?.focus(), 100)
     }
   }, [isOpen])
@@ -40,7 +45,7 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
       if (orderForTable.orderStatus === 'Ready') status = 'Ready'
       if (orderForTable.orderStatus === 'Preparing') status = 'Preparing'
       
-      const sub = orderForTable.cart.reduce((total, item) => total + ((item.price * item.quantity) - item.discount), 0)
+      const sub = orderForTable.cart.reduce((total: number, item: any) => total + ((item.price * item.quantity) - item.discount), 0)
       amount = sub
       elapsed = Math.floor((new Date().getTime() - new Date(orderForTable.startTime).getTime()) / 60000)
       if (orderForTable.customer) customerName = orderForTable.customer.name
@@ -68,7 +73,53 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
         handleSelect(exactMatch)
       }
     }
+    setSelectedIndex(0)
   }, [searchQuery])
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Exit if backspace pressed and search is empty
+      if (e.key === 'Backspace' && searchQuery === '') {
+        e.preventDefault()
+        onClose()
+        return
+      }
+
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        e.preventDefault()
+        searchInputRef.current?.blur()
+
+        if (e.key === 'ArrowRight') {
+          setSelectedIndex(prev => Math.min(prev + 1, filteredTables.length - 1))
+        } else if (e.key === 'ArrowLeft') {
+          setSelectedIndex(prev => Math.max(prev - 1, 0))
+        } else if (e.key === 'ArrowDown') {
+          setSelectedIndex(prev => Math.min(prev + 6, filteredTables.length - 1))
+        } else if (e.key === 'ArrowUp') {
+          setSelectedIndex(prev => Math.max(prev - 6, 0))
+        }
+        return
+      }
+
+      if (e.key === 'Enter') {
+        if (filteredTables[selectedIndex]) {
+          e.preventDefault()
+          handleSelect(filteredTables[selectedIndex])
+        }
+        return
+      }
+
+      // Auto focus search input on typing
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        searchInputRef.current?.focus()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, filteredTables, selectedIndex, searchQuery, onClose])
 
   const handleSelect = (table: Table) => {
     // If we click a table, we check if an order exists for it
@@ -95,6 +146,8 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
     }
   }
 
+  const selectedTableId = filteredTables[selectedIndex]?.id
+
   const TableGrid = ({ title, tables }: { title: string, tables: any[] }) => (
     <div className="mb-6">
       <h3 className="text-sm font-black text-foreground uppercase tracking-wider mb-3">{title}</h3>
@@ -103,7 +156,11 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
           <button
             key={t.id}
             onClick={() => handleSelect(t)}
-            className={`relative flex flex-col p-3 rounded-xl border-2 transition-all h-24 ${getStatusColor(t.status)} ${activeOrderId === t.label ? 'ring-2 ring-orange-500 ring-offset-2 ring-offset-background' : ''}`}
+            className={`relative flex flex-col p-3 rounded-xl border-2 transition-all h-24 ${getStatusColor(t.status)} ${
+              selectedTableId === t.id 
+                ? 'ring-4 ring-blue-500 ring-offset-2 ring-offset-background scale-105 shadow-xl z-10' 
+                : (activeOrderId === t.label ? 'ring-2 ring-orange-500 ring-offset-2 ring-offset-background' : '')
+            }`}
           >
             <div className="flex items-center justify-between w-full mb-auto">
               <span className="font-black text-lg">{t.label}</span>

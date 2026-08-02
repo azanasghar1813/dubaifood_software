@@ -30,14 +30,14 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
           const sessionUser = {
             id: user.id,
             username: user.username || user.name,
-            name: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username,
+            name: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username || "",
             role: user.role,
             permissions: user.permissions || []
           }
           
-          setSession(sessionUser, token, user.cashierSessionId || null)
-          if (user.cashierSessionId) {
-            setCashierSessionId(user.cashierSessionId)
+          setSession(sessionUser, token, (user as any).cashierSessionId || null)
+          if ((user as any).cashierSessionId) {
+            setCashierSessionId((user as any).cashierSessionId)
           }
           
           // 2. Load Business Configuration (Future)

@@ -8,7 +8,7 @@ import { QRCodeSVG } from 'qrcode.react'
 
 export const PrintTemplates: React.FC = () => {
   const { printQueue } = usePrinterStore()
-  const printingJobs = printQueue.filter(j => j.status === 'Printing')
+  const printingJobs = printQueue.filter(j => j.status === ('Printing' as any))
 
   return (
     <div className="hidden print:block absolute inset-0 bg-white z-[9999] w-full">
@@ -20,19 +20,19 @@ export const PrintTemplates: React.FC = () => {
 }
 
 const PrintJobRenderer: React.FC<{ job: PrintJob }> = ({ job }) => {
-  if (job.type === 'Receipt') return <ReceiptTemplate job={job} />
-  if (job.type === 'KitchenTicket') return <KitchenTicketTemplate job={job} />
+  if (job.job_type === 'Receipt') return <ReceiptTemplate job={job} />
+  if ((job as any).type === 'KitchenTicket') return <KitchenTicketTemplate job={job} />
   return null
 }
 
 const ReceiptTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
-  const settings = useSettingsStore(s => s.settings)
+  const settings = useSettingsStore(s => (s as any).settings)
   const printSettings = usePrinterStore(s => s.settings)
   
   // Try to parse the order ID from content
   let orderId = ''
   try {
-    orderId = JSON.parse(job.content).orderId
+    orderId = JSON.parse((job as any).content).orderId
   } catch (e) {
     return null
   }
@@ -135,7 +135,7 @@ const KitchenTicketTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
   
   let ticketId = ''
   try {
-    ticketId = JSON.parse(job.content).ticketId
+    ticketId = JSON.parse((job as any).content).ticketId
   } catch (e) {
     return null
   }

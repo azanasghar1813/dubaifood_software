@@ -1,11 +1,9 @@
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
-  Building2, Receipt, Palette, Cloud, Printer, Keyboard, Save, 
-  CheckCircle2, Server,
-  Clock, DollarSign, Table, Plus, Trash2,
-  Settings as SettingsIcon, AlertTriangle, Key,
-  Calendar, Layers, Moon, Sun, Smartphone, Wifi, Bell, CreditCard
+  Printer, Receipt, Palette,
+  Wifi, Save, CreditCard,
+  Building2, Keyboard, Clock, Server, CheckCircle2, AlertTriangle, DollarSign, Plus, Trash2, Cloud, Table, Key, Settings as SettingsIcon
 } from "lucide-react"
 import { useSettingsStore } from "../store/settingsStore"
 

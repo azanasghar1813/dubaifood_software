@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import {  UserPlus, Phone, Mail, Loader2 } from "lucide-react"
-import { api } from "../services/api"
+import { customerService } from "../services/customerService"
 
 export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([])
@@ -9,8 +9,8 @@ export default function Customers() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const result = await api.getCustomers()
-        setCustomers(result)
+        const response = await customerService.getCustomers()
+        setCustomers(response.data || response)
       } finally {
         setIsLoading(false)
       }
@@ -46,10 +46,10 @@ export default function Customers() {
           <div key={cust.id} className="bg-card/60 backdrop-blur-md border border-border/50 rounded-xl p-5 hover:border-primary/50 transition-colors shadow-sm">
             <div className="flex items-center gap-4 mb-4">
               <div className="w-12 h-12 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-lg">
-                {cust.name.charAt(0)}
+                {(cust.first_name || cust.name || "?").charAt(0)}
               </div>
               <div>
-                <h3 className="font-bold">{cust.name}</h3>
+                <h3 className="font-bold">{cust.first_name} {cust.last_name}</h3>
                 <p className="text-xs text-muted-foreground">{cust.id}</p>
               </div>
             </div>

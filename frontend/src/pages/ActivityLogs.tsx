@@ -1,146 +1,32 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { 
-  Search, Download, Printer, RefreshCw,
-  X, Eye
-} from "lucide-react"
-
-// Mock Audit Logs
-const initialLogs = [
-  { 
-    id: "LOG-001",
-    time: "05:12 PM",
-    date: "Today",
-    user: "Ali Shan",
-    role: "Manager",
-    module: "Orders",
-    action: "Order Cancelled",
-    description: "Cancelled unpaid order #ORD-8012 due to customer change of mind.",
-    device: "Counter PC 1",
-    computerName: "TERMINAL-01",
-    ipAddress: "192.168.1.10",
-    status: "Success",
-    severity: "Critical",
-    oldValue: "Order Status: Confirmed (Unpaid)",
-    newValue: "Order Status: Cancelled (Voided)",
-    reason: "Customer requested cancellation before prep began"
-  },
-  { 
-    id: "LOG-002",
-    time: "05:08 PM",
-    date: "Today",
-    user: "Ahmed Raza",
-    role: "Cashier",
-    module: "POS",
-    action: "Discount Applied",
-    description: "Applied Promo Code 'WELCOME10' (10% Off) on order #ORD-8015.",
-    device: "Counter PC 1",
-    computerName: "TERMINAL-01",
-    ipAddress: "192.168.1.10",
-    status: "Success",
-    severity: "Warning",
-    oldValue: "Discount: Rs. 0",
-    newValue: "Discount: Rs. 240 (10% discount)",
-    reason: "Promotion voucher applied"
-  },
-  { 
-    id: "LOG-003",
-    time: "04:55 PM",
-    date: "Today",
-    user: "Ali Shan",
-    role: "Manager",
-    module: "Permissions",
-    action: "Permission Changed",
-    description: "Granted 'refund' permissions to Cashier role globally.",
-    device: "Manager Office PC",
-    computerName: "MGR-LAPTOP",
-    ipAddress: "192.168.1.100",
-    status: "Success",
-    severity: "Critical",
-    oldValue: "Cashier Refund Permission: False",
-    newValue: "Cashier Refund Permission: True",
-    reason: "Temporary permissions for evening rush hour override"
-  },
-  { 
-    id: "LOG-004",
-    time: "04:30 PM",
-    date: "Today",
-    user: "Umar Farooq",
-    role: "Cashier",
-    module: "Products",
-    action: "Price Changed",
-    description: "Modified retail price of Malai Boti Pizza (Medium) from 1150 to 1200.",
-    device: "Counter PC 2",
-    computerName: "TERMINAL-02",
-    ipAddress: "192.168.1.11",
-    status: "Success",
-    severity: "Warning",
-    oldValue: "Retail Price: Rs. 1,150",
-    newValue: "Retail Price: Rs. 1,200",
-    reason: "Menu markup update"
-  },
-  { 
-    id: "LOG-005",
-    time: "04:12 PM",
-    date: "Today",
-    user: "System",
-    role: "System Sync",
-    module: "Synchronization",
-    action: "Synchronization Completed",
-    description: "Uploaded 12 cached orders to master database mirror.",
-    device: "Local Server Gateway",
-    computerName: "DF-GATEWAY",
-    ipAddress: "192.168.1.1",
-    status: "Success",
-    severity: "Success",
-    oldValue: "Unsynced Local Orders: 12",
-    newValue: "Unsynced Local Orders: 0",
-    reason: "Auto-sync cron interval"
-  },
-  { 
-    id: "LOG-006",
-    time: "03:45 PM",
-    date: "Today",
-    user: "Bilal Hassan",
-    role: "Kitchen Staff",
-    module: "KDS",
-    action: "PIN Failure",
-    description: "Incorrect PIN override entry on Fast Food KDS station (Failed attempts: 3).",
-    device: "FF-KDS Terminal",
-    computerName: "KDS-FASTFOOD",
-    ipAddress: "192.168.1.50",
-    status: "Failed",
-    severity: "Error",
-    oldValue: "Attempt: 2",
-    newValue: "Attempt: 3 (Warning: Account Lockout near)",
-    reason: "Cashier login validation override"
-  },
-  { 
-    id: "LOG-007",
-    time: "02:15 PM",
-    date: "Today",
-    user: "Umar Farooq",
-    role: "Cashier",
-    module: "Backup",
-    action: "Backup Created",
-    description: "Manual database snapshot SQLite snapshot generated successfully.",
-    device: "Counter PC 2",
-    computerName: "TERMINAL-02",
-    ipAddress: "192.168.1.11",
-    status: "Success",
-    severity: "Info",
-    oldValue: "Database State: Active",
-    newValue: "Backup File: db_snapshot_20260728.sqlite",
-    reason: "Pre-shift close backup routine"
-  }
-]
+import { Search, Download, RefreshCw, X, Eye, Printer } from "lucide-react"
+import { activityLogService } from "../services/activityLogService"
 
 export default function ActivityLogs() {
-  const [logs] = useState<any[]>(initialLogs)
+  const [logs, setLogs] = useState<any[]>([])
+  
   const [search, setSearch] = useState("")
   const [filterModule, setFilterModule] = useState("All")
   const [filterSeverity, setFilterSeverity] = useState("All")
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const fetchLogs = async () => {
+    try {
+      setIsRefreshing(true)
+      const response = await activityLogService.getLogs({ limit: 100 })
+      setLogs(response.data || response)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsRefreshing(false)
+      
+    }
+  }
+
+  useEffect(() => {
+    fetchLogs()
+  }, [])
 
   // Drawer states
   const [selectedLog, setSelectedLog] = useState<any | null>(null)
@@ -354,28 +240,28 @@ export default function ActivityLogs() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {filteredLogs.map((log) => (
+            {filteredLogs.map((log) => {
+              const details = log.details ? JSON.parse(log.details) : {};
+              const dateObj = new Date(log.created_at);
+              const time = dateObj.toLocaleTimeString();
+              // const dateStr = dateObj.toLocaleDateString();
+
+              return (
               <tr 
                 key={log.id}
                 onClick={() => handleOpenLog(log)}
                 className="hover:bg-secondary/20 transition-colors cursor-pointer group"
               >
-                <td className="px-6 py-4 font-bold text-muted-foreground text-xs">{log.time}</td>
-                <td className="px-6 py-4 font-black text-foreground">{log.user}</td>
-                <td className="px-6 py-4 text-xs font-semibold text-muted-foreground">{log.role}</td>
-                <td className="px-6 py-4 text-xs font-bold">{log.module}</td>
+                <td className="px-6 py-4 font-bold text-muted-foreground text-xs">{time}</td>
+                <td className="px-6 py-4 font-black text-foreground">{log.user_id || 'System'}</td>
+                <td className="px-6 py-4 text-xs font-semibold text-muted-foreground">User</td>
+                <td className="px-6 py-4 text-xs font-bold">{log.entity_type}</td>
                 <td className="px-6 py-4 text-xs font-black text-primary">{log.action}</td>
-                <td className="px-6 py-4 text-xs text-muted-foreground max-w-xs truncate">{log.description}</td>
-                <td className="px-6 py-4 text-xs text-foreground font-semibold">{log.device}</td>
+                <td className="px-6 py-4 text-xs text-muted-foreground max-w-xs truncate">{JSON.stringify(details)}</td>
+                <td className="px-6 py-4 text-xs text-foreground font-semibold">Web</td>
                 <td className="px-6 py-4">
-                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider border ${
-                    log.severity === "Success" ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
-                    log.severity === "Critical" ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 animate-pulse' :
-                    log.severity === "Warning" ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
-                    log.severity === "Error" ? 'bg-red-500/10 text-red-500 border-red-500/20' :
-                    'bg-blue-500/10 text-blue-500 border-blue-500/20'
-                  }`}>
-                    {log.severity}
+                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider border bg-blue-500/10 text-blue-500 border-blue-500/20`}>
+                    Info
                   </span>
                 </td>
                 <td className="px-6 py-4 text-right" onClick={e=>e.stopPropagation()}>
@@ -387,7 +273,7 @@ export default function ActivityLogs() {
                   </button>
                 </td>
               </tr>
-            ))}
+            )})}
             {filteredLogs.length === 0 && (
               <tr>
                 <td colSpan={9} className="py-12 text-center text-muted-foreground font-bold">No audit records match filters.</td>

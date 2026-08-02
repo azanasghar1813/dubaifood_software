@@ -189,27 +189,8 @@ export default function Reports() {
     return data.map(d => ({ ...d, share: totalRev ? Math.round((d.rev / totalRev) * 100) : 0 }))
   }, [orders, productSortBy, searchQuery, productCategoryFilter, hasData])
 
-  // Trend Chart Mock Data
-  const trendChartData = useMemo(() => {
-    const data = []
-    const days = timeRange === 'This Week' ? 7 : timeRange === 'Yesterday' ? 1 : 12 // 12 hours for today
-
-    let currentGross = reportStats.grossSales / days
-
-    for (let i = days; i >= 1; i--) {
-      const gross = Math.floor(Math.random() * (currentGross * 0.4)) + (currentGross * 0.8)
-      data.push({
-        date: timeRange === 'This Week' ? `${i}d ago` : `${12 - i + 1}h`,
-        Gross: gross,
-        Net: Math.floor(gross * 0.85)
-      })
-    }
-    return data
-  }, [timeRange, reportStats])
-
   void filterPayment
   void currentTime
-  void trendChartData
 
   // Category Sales Data
   const categorySalesData = useMemo(() => {
@@ -900,7 +881,6 @@ export default function Reports() {
                       <th className="p-4 text-xs font-black text-muted-foreground uppercase tracking-wider text-right">Qty Sold</th>
                       <th className="p-4 text-xs font-black text-muted-foreground uppercase tracking-wider text-right">Revenue (Rs)</th>
                       <th className="p-4 text-xs font-black text-muted-foreground uppercase tracking-wider text-right">Revenue share (%)</th>
-                      <th className="p-4 text-xs font-black text-muted-foreground uppercase tracking-wider text-right">Trend</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
@@ -916,11 +896,6 @@ export default function Reports() {
                               <div className="h-full bg-primary rounded-full" style={{ width: `${cat.share}%` }}></div>
                             </div>
                           </div>
-                        </td>
-                        <td className="p-4 text-right">
-                          <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded">
-                            +{(Math.random() * 15 + 1).toFixed(1)}%
-                          </span>
                         </td>
                       </tr>
                     ))}

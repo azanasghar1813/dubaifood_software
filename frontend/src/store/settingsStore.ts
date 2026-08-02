@@ -35,7 +35,7 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'settings-storage',
       version: 2,
-      migrate: (persistedState: any, version: number) => {
+      migrate: (persistedState: any) => {
         // Force taxRate to 7 when migrating from old versions
         return { ...persistedState, taxRate: 7 }
       },

@@ -148,7 +148,7 @@ export const usePrinterStore = create<PrinterState>((set, get) => ({
   printReceipt: async (orderId, cashierUserId) => {
     try {
       const result = await apiClient.post(`/print/receipt/${orderId}`, { cashier_user_id: cashierUserId })
-      if (result.success) {
+      if (result) {
         // Refresh queue after enqueue
         setTimeout(() => get().fetchQueue(), 300)
         return result.data

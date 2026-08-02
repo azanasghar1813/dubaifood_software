@@ -123,7 +123,7 @@ export default function Products() {
     const total = products.length
     const fastFood = products.filter(p => p.kitchen === "Fast Food").length
     const restaurant = products.filter(p => p.kitchen === "Restaurant").length
-    const drinks = products.filter(p => p.category.toLowerCase().includes("drink")).length
+    const drinks = products.filter(p => p.category?.toLowerCase().includes("drink")).length
     const outOfStock = products.filter(p => p.stockStatus === "Out of Stock").length
     const hidden = products.filter(p => p.status === "Hidden").length
     
@@ -293,10 +293,10 @@ export default function Products() {
   const filteredAndSorted = useMemo(() => {
     let result = products.filter(p => {
       const q = search.toLowerCase()
-      const matchSearch = p.name.toLowerCase().includes(q) || 
+      const matchSearch = p.name?.toLowerCase().includes(q) || 
                           p.code.includes(q) || 
                           (p.barcode || '').includes(q) || 
-                          p.category.toLowerCase().includes(q)
+                          p.category?.toLowerCase().includes(q)
       
       const cat = p.category || ""
       const isDeal = cat.toLowerCase().includes("deal")
@@ -567,7 +567,7 @@ export default function Products() {
           {filteredAndSorted.map((product) => {
             const hasModifiers = product.modifiers && product.modifiers.length > 0
             const modCount = product.modifiers?.length || 0
-            const isDeal = product.category.toLowerCase().includes("deal")
+            const isDeal = product.category?.toLowerCase().includes("deal")
 
             return (
               <motion.div
@@ -795,7 +795,7 @@ export default function Products() {
                         </>
                       ) : (
                         <label className="text-center p-4 w-full h-full flex flex-col justify-center items-center cursor-pointer hover:bg-secondary/70 transition-colors">
-                          <Upload className="w-8 h-8 mx-auto mb-2 opacity-35" />
+                          <div className="w-8 h-8 mx-auto mb-2 opacity-35" />
                           <span className="text-xs font-black block">Upload Product Image</span>
                           <span className="text-[10px] text-muted-foreground font-semibold mt-1 block">Supports PNG, JPG (Max 2MB)</span>
                           <input 

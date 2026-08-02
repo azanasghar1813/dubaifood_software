@@ -13,6 +13,10 @@ import paymentRoutes from './paymentRoutes.js';
 import kitchenRoutes from './kitchenRoutes.js';
 import printRoutes from './printRoutes.js';
 import historyRoutes from './historyRoutes.js';
+import customerRoutes from './customerRoutes.js';
+import inventoryRoutes from './inventoryRoutes.js';
+import expenseRoutes from './expenseRoutes.js';
+import activityLogRoutes from './activityLogRoutes.js';
 
 const router = Router();
 
@@ -31,5 +35,9 @@ router.use('/payments', paymentRoutes);
 router.use('/kitchen', kitchenRoutes);
 router.use('/print', printRoutes);
 router.use('/history', historyRoutes);
+router.use('/customers', customerRoutes);
+router.use('/inventory', inventoryRoutes);
+router.use('/expenses', expenseRoutes);
+router.use('/activity-logs', activityLogRoutes);
 
 export default router;

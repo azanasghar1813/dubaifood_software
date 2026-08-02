@@ -23,7 +23,7 @@ class CartCalculationService {
    */
   calculateLineItem(itemInput) {
     const financeConfig = configService.getFinanceConfig() || {};
-    const taxRate = Number(financeConfig.tax_rate !== undefined ? financeConfig.tax_rate : 0.05);
+    const taxRate = Number(financeConfig.tax_rate !== undefined ? financeConfig.tax_rate : 0.07);
     const isTaxInclusive = financeConfig.tax_inclusive === true || financeConfig.tax_inclusive === 1;
     const taxName = financeConfig.tax_name || 'VAT';
 
@@ -202,7 +202,12 @@ class CartCalculationService {
       discountTotal += item.discount_amount || 0;
     }
 
-    const grandTotal = subtotal + taxTotal - discountTotal;
+    const financeConfig = configService.getFinanceConfig() || {};
+    const isTaxInclusive = financeConfig.tax_inclusive === true || financeConfig.tax_inclusive === 1;
+
+    const grandTotal = isTaxInclusive 
+      ? subtotal - discountTotal 
+      : subtotal + taxTotal - discountTotal;
 
     return {
       subtotal: this._round(subtotal),

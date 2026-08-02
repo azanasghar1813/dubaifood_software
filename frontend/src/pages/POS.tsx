@@ -90,6 +90,10 @@ export default function POS() {
 
   const [sizeModalOpen, setSizeModalOpen] = useState(false)
   const [activeProductForSize, setActiveProductForSize] = useState<Product | null>(null)
+  const [sizeSelectedIndex, setSizeSelectedIndex] = useState(0)
+  
+  const [gridSelectedIndex, setGridSelectedIndex] = useState(0)
+  const gridProductsRef = useRef<Product[]>([])
   
   // Edit Mode state
   const [removingCartItemId, setRemovingCartItemId] = useState<string | null>(null)
@@ -109,7 +113,7 @@ export default function POS() {
     cart, addToCart, removeFromCart, updateQuantity, duplicateItem,
     getSubtotal, getTax, getGrandTotal, clearCart, getNetTotal,
     updateItemModifiers, updateItemNotes, orderType, setOrderType,
-    setCustomer, gridDensity, tableNumber,
+    setCustomer, gridDensity, tableNumber, customer,
     isTaxEnabled, toggleTax, menuContext, setMenuContext,
     editingOrderId, clearEditMode, completeOrder,
     deliveryCharges, setDeliveryCharges,
@@ -119,6 +123,15 @@ export default function POS() {
   const { orderCounter } = useOrderStore()
   
   const { user } = useAuthStore()
+
+  const handleProceedToPay = () => {
+    if (cart.length === 0) return
+    if (orderType === 'Delivery' && (!customer || !customer.phone)) {
+      setCustomerModalOpen(true)
+    } else {
+      setCheckoutModalOpen(true)
+    }
+  }
 
   useEffect(() => {
     const fetchData = async () => {
@@ -240,110 +253,43 @@ export default function POS() {
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore shortcuts if we are typing inside an input or textarea
       const activeElement = document.activeElement as HTMLElement
-      const isTyping = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA'
+      const isInput = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA'
+      const inputValue = isInput ? (activeElement as HTMLInputElement).value : ""
+      const isTyping = isInput && inputValue !== ""
 
-      // CTRL + K: Focus Search
-      if (e.ctrlKey && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-      }
-
-      // ESC: Clear Ticket
-      if (e.key === 'Escape') {
-        // Close modals if open, otherwise clear ticket
-        if (checkoutModalOpen) setCheckoutModalOpen(false)
-        else if (customizeModalOpen) setCustomizeModalOpen(false)
-        else if (sizeModalOpen) setSizeModalOpen(false)
-        else if (customerModalOpen) setCustomerModalOpen(false)
-        else if (tableModalOpen) setTableModalOpen(false)
-        else if (recentOrdersModalOpen) setRecentOrdersModalOpen(false)
-        else {
-          e.preventDefault()
-          clearCart()
-        }
-      }
-
-      // CTRL + E: Recent Orders (Edit Mode)
-      if (e.ctrlKey && e.key.toLowerCase() === 'e') {
-        e.preventDefault()
-        setRecentOrdersModalOpen(true)
-      }
-
-      // CTRL + S: Save / Pay
-      if (e.ctrlKey && e.key.toLowerCase() === 's') {
-        e.preventDefault()
-        setCheckoutModalOpen(true)
-      }
-
-      // CTRL + Z: Cancel Edit / Undo
-      if (e.ctrlKey && e.key.toLowerCase() === 'z' && editingOrderId) {
-        e.preventDefault()
-        if (confirm("Cancel editing and discard changes?")) {
-          clearEditMode()
-        }
-      }
-
-      // CTRL + SHIFT + A: Focus Search (Alternative)
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-      }
-
-      // CTRL + SHIFT + N: Edit notes for active cart item (if any) or open general notes
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'n') {
-        e.preventDefault()
-        if (cart.length > 0) {
-          setActiveCartItem(cart[0])
-          setTempNotes(cart[0].notes || "")
-          setTempModifiers(cart[0].selectedModifiers)
-          setCustomizeModalOpen(true)
-        }
-      }
-
-      // F4: Recent Orders Modal — toggle open/close (works even when typing)
-      if (e.key === 'F4') {
-        e.preventDefault()
-        setRecentOrdersModalOpen(prev => !prev)
-      }
-
-      if (isTyping) return
-
-      // ENTER: Checkout
-      if (e.key === 'Enter') {
-        if (isTyping) return // Don't trigger if typing in an input (e.g. search)
-        if (cart.length > 0 && !checkoutModalOpen && !customizeModalOpen && !sizeModalOpen) {
-          e.preventDefault()
-          setCheckoutModalOpen(true)
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [cart.length, checkoutModalOpen, customizeModalOpen, sizeModalOpen, clearCart, recentOrdersModalOpen])
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    searchInputRef.current?.focus()
-    return () => clearInterval(timer)
-  }, [])
-
-  // Keyboard Shortcuts Workflow
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Modal specific shortcuts that override everything
       if (sizeModalOpen && activeProductForSize) {
         if (e.key === "Escape") {
           setSizeModalOpen(false)
           setTimeout(() => searchInputRef.current?.focus(), 100)
           return
         }
+        if (e.key === "ArrowDown") {
+          e.preventDefault()
+          setSizeSelectedIndex(s => Math.min(s + 1, (activeProductForSize.variants?.length || 1) - 1))
+          return
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault()
+          setSizeSelectedIndex(s => Math.max(s - 1, 0))
+          return
+        }
+        if (e.key === "Enter") {
+          e.preventDefault()
+          const matchedSize = activeProductForSize.variants?.[sizeSelectedIndex]
+          if (matchedSize) {
+            addToCart({ ...activeProductForSize, variant_id: matchedSize.id, name: `${activeProductForSize.name} (${matchedSize.name})`, price: matchedSize.price, code: matchedSize.code || activeProductForSize.code });
+            setSizeModalOpen(false);
+            setTimeout(() => searchInputRef.current?.focus(), 100)
+          }
+          return
+        }
         const key = e.key.toLowerCase();
-        const matchedSize = activeProductForSize.variants?.find((s: any) => s.name.charAt(0).toLowerCase() === key);
-        if (matchedSize) {
+        const matchedSizeByLetter = activeProductForSize.variants?.find((s: any) => s.name.charAt(0).toLowerCase() === key);
+        if (matchedSizeByLetter) {
           e.preventDefault();
-          addToCart({ ...activeProductForSize, name: `${activeProductForSize.name} (${matchedSize.name})`, price: matchedSize.price, code: matchedSize.code || activeProductForSize.code });
+          addToCart({ ...activeProductForSize, variant_id: matchedSizeByLetter.id, name: `${activeProductForSize.name} (${matchedSizeByLetter.name})`, price: matchedSizeByLetter.price, code: matchedSizeByLetter.code || activeProductForSize.code });
           setSizeModalOpen(false);
           setTimeout(() => searchInputRef.current?.focus(), 100)
         }
@@ -366,9 +312,120 @@ export default function POS() {
           setCustomizeModalOpen(false)
           setTimeout(() => searchInputRef.current?.focus(), 100)
         }
+        if (e.key === "Enter" && checkoutModalOpen) {
+          e.preventDefault()
+          document.getElementById('confirm-payment-btn')?.click()
+        }
         return
       }
 
+      // 2. Global Shortcuts (Not dependent on isTyping)
+      
+      // CTRL + TAB: Cycle Order Type (Also Alt + O as fallback since browsers intercept Ctrl+Tab)
+      if ((e.ctrlKey && e.key === 'Tab' && !e.shiftKey) || (e.altKey && e.key.toLowerCase() === 'o')) {
+        e.preventDefault()
+        const types: ('Dine In' | 'Takeaway' | 'Delivery')[] = ['Dine In', 'Takeaway', 'Delivery']
+        const currentType = usePosStore.getState().orderType
+        const nextIndex = (types.indexOf(currentType as any) + 1) % types.length
+        usePosStore.getState().setOrderType(types[nextIndex])
+      }
+
+      // CTRL + SHIFT + TAB: Switch Menu Context (Fast Food / Restaurant / Deals)
+      if (e.ctrlKey && e.shiftKey && e.key === 'Tab') {
+        e.preventDefault()
+        const contexts: ('Fast Food' | 'Restaurant' | 'Deals')[] = ['Fast Food', 'Restaurant', 'Deals']
+        const currentContext = usePosStore.getState().menuContext
+        const nextIndex = (contexts.indexOf(currentContext as any) + 1) % contexts.length
+        usePosStore.getState().setMenuContext(contexts[nextIndex])
+        return
+      }
+
+      if (e.ctrlKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      }
+
+      // CTRL + C: Toggle Customer Panel (if not copying text)
+      if (e.ctrlKey && e.key.toLowerCase() === 'c') {
+        if (!window.getSelection()?.toString()) {
+          e.preventDefault()
+          setCustomerModalOpen(prev => !prev)
+        }
+      }
+
+      if (e.ctrlKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault()
+        setRecentOrdersModalOpen(prev => !prev)
+      }
+
+      if (e.ctrlKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault()
+        setIsPaidPrint(prev => !prev)
+      }
+
+      if (e.ctrlKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault()
+        setIsVIP(prev => !prev)
+      }
+
+      if (e.ctrlKey && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        handleProceedToPay()
+      }
+
+      if (e.ctrlKey && e.key.toLowerCase() === 'z' && editingOrderId) {
+        e.preventDefault()
+        if (confirm("Cancel editing and discard changes?")) {
+          clearEditMode()
+        }
+      }
+
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      }
+
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        if (cart.length > 0) {
+          setActiveCartItem(cart[0])
+          setTempNotes(cart[0].notes || "")
+          setTempModifiers(cart[0].selectedModifiers)
+          setCustomizeModalOpen(true)
+        }
+      }
+
+      if (e.ctrlKey || e.metaKey) {
+        switch (e.key.toLowerCase()) {
+          case 't':
+            e.preventDefault()
+            setTableModalOpen(prev => !prev)
+            break
+          case 'd':
+            e.preventDefault()
+            if (cart.length > 0) duplicateItem(cart[0].cartItemId)
+            break
+          case 'n':
+            if (!e.shiftKey) { // we already handled shift+n
+              e.preventDefault()
+              if (cart.length > 0) {
+                setActiveCartItem(cart[0])
+                setTempNotes(cart[0].notes || "")
+                setCustomizeModalOpen(prev => !prev)
+              }
+            }
+            break
+          case 's':
+            e.preventDefault()
+            toggleTax()
+            break
+          case 'h':
+            e.preventDefault()
+            break
+        }
+      }
+
+      // Function keys & Escape
       switch (e.key) {
         case "F1":
           e.preventDefault()
@@ -383,63 +440,129 @@ export default function POS() {
           e.preventDefault()
           searchInputRef.current?.focus()
           break
+        case "F4":
+          e.preventDefault()
+          setRecentOrdersModalOpen(prev => !prev)
+          break
         case "F6":
           e.preventDefault()
-          if (cart.length > 0) setCheckoutModalOpen(prev => !prev)
+          handleProceedToPay()
           break
         case "F7":
           e.preventDefault()
-          setOrderType('Dine In')
+          usePosStore.getState().setOrderType('Dine In')
           break
         case "F8":
           e.preventDefault()
-          setOrderType('Takeaway')
+          usePosStore.getState().setOrderType('Takeaway')
           break
         case "F9":
           e.preventDefault()
-          setOrderType('Delivery')
+          usePosStore.getState().setOrderType('Delivery')
           break
-        default:
+        case "Escape":
+          if (customerModalOpen) setCustomerModalOpen(false)
+          else if (tableModalOpen) setTableModalOpen(false)
+          else if (recentOrdersModalOpen) setRecentOrdersModalOpen(false)
+          else {
+            e.preventDefault()
+            clearCart()
+          }
           break
       }
 
-      // Modifier Keys (Ctrl/Cmd)
-      if (e.ctrlKey || e.metaKey) {
-        switch (e.key.toLowerCase()) {
-          case 't':
-            e.preventDefault()
-            setTableModalOpen(prev => !prev)
-            break
-          case 'd':
-            e.preventDefault()
-            // Duplicate first item as quick action or active if we had selection
-            if (cart.length > 0) duplicateItem(cart[0].cartItemId)
-            break
-          case 'n':
-            e.preventDefault()
-            if (cart.length > 0) {
-              setActiveCartItem(cart[0])
-              setTempNotes(cart[0].notes || "")
-              setCustomizeModalOpen(prev => !prev)
-            }
-            break
-          case 'h':
-            e.preventDefault()
-            // Hold order stub
-            break
+      // 3. Shortcuts that should ONLY run if NOT typing
+      if (isTyping) return
+
+      // Autofocus search on any single character key press
+      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (!checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !recentOrdersModalOpen) {
+          searchInputRef.current?.focus()
         }
       }
-      
+
+      if (e.ctrlKey && e.key === 'Enter') {
+        if (cart.length > 0 && !checkoutModalOpen && !customizeModalOpen && !sizeModalOpen) {
+          e.preventDefault()
+          handleProceedToPay()
+        }
+      }
+
       if (e.key === 'Delete') {
         if (cart.length > 0) {
-           // Delete top item
-           removeFromCart(cart[0].cartItemId)
+           e.preventDefault()
+           clearCart()
+        }
+      }
+
+      if (e.key === 'Backspace' || e.key === '-' || e.key === 'Subtract') {
+        if (e.repeat) return // Prevent holding key from sending multiple requests
+        if (usePosStore.getState().isLoadingOrder) return // Prevent multiple requests if already loading
+        if (cart.length > 0 && !checkoutModalOpen && !customizeModalOpen && !sizeModalOpen) {
+          e.preventDefault()
+          const topItem = cart[0]
+          if (topItem.quantity > 1) {
+            updateQuantity(topItem.cartItemId, topItem.quantity - 1)
+          } else {
+            removeFromCart(topItem.cartItemId)
+          }
+        }
+      }
+
+      // 4. Grid Navigation (if not typing, not in search bar)
+      if (!isTyping && !checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !recentOrdersModalOpen) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault()
+          setGridSelectedIndex(s => Math.min(s + 1, Math.max(0, gridProductsRef.current.length - 1)))
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault()
+          setGridSelectedIndex(s => Math.max(s - 1, 0))
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault()
+          const contexts: ('Fast Food' | 'Restaurant' | 'Deals')[] = ['Fast Food', 'Restaurant', 'Deals']
+          const currentContext = usePosStore.getState().menuContext
+          const nextIndex = (contexts.indexOf(currentContext as any) + 1) % contexts.length
+          usePosStore.getState().setMenuContext(contexts[nextIndex])
+          setGridSelectedIndex(0)
+        } else if (e.key === "ArrowLeft") {
+          e.preventDefault()
+          const contexts: ('Fast Food' | 'Restaurant' | 'Deals')[] = ['Fast Food', 'Restaurant', 'Deals']
+          const currentContext = usePosStore.getState().menuContext
+          const nextIndex = (contexts.indexOf(currentContext as any) - 1 + contexts.length) % contexts.length
+          usePosStore.getState().setMenuContext(contexts[nextIndex])
+          setGridSelectedIndex(0)
+        } else if (e.key === "Enter" && !e.ctrlKey) {
+          e.preventDefault()
+          const selectedProduct = gridProductsRef.current[gridSelectedIndex]
+          if (selectedProduct) {
+            if (selectedProduct.variants && selectedProduct.variants.length > 0) {
+              setActiveProductForSize(selectedProduct)
+              setSizeSelectedIndex(0)
+              setSizeModalOpen(true)
+            } else {
+              addToCart(selectedProduct)
+              scrollToTop()
+            }
+          }
         }
       }
     }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [cart.length, checkoutModalOpen, customizeModalOpen, sizeModalOpen, activeProductForSize, clearCart, setCustomer])
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [
+    cart, checkoutModalOpen, customizeModalOpen, sizeModalOpen, 
+    customerModalOpen, tableModalOpen, recentOrdersModalOpen, 
+    activeProductForSize, clearCart, setCustomer, updateQuantity, 
+    removeFromCart, editingOrderId, clearEditMode, duplicateItem,
+    sizeSelectedIndex, gridSelectedIndex
+  ])
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    searchInputRef.current?.focus()
+    return () => clearInterval(timer)
+  }, [])
 
   // Refocus search if clicking outside inputs
   useEffect(() => {
@@ -495,6 +618,20 @@ export default function POS() {
     return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
   })
 
+  useEffect(() => {
+    gridProductsRef.current = gridFilteredProducts
+    if (gridSelectedIndex >= gridFilteredProducts.length) {
+      setGridSelectedIndex(Math.max(0, gridFilteredProducts.length - 1))
+    }
+  }, [gridFilteredProducts, gridSelectedIndex])
+
+  useEffect(() => {
+    const element = document.getElementById(`grid-item-${gridSelectedIndex}`)
+    if (element) {
+      element.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [gridSelectedIndex])
+
   // Global Search Filtering & Sorting
   const searchResults = useMemo(() => {
     if (!debouncedSearchQuery.trim()) return []
@@ -546,6 +683,7 @@ export default function POS() {
   const handleProductClick = (product: Product) => {
     if (product.variants && product.variants.length > 0) {
       setActiveProductForSize(product)
+      setSizeSelectedIndex(0)
       setSizeModalOpen(true)
     } else {
       addToCart(product)
@@ -654,9 +792,11 @@ export default function POS() {
                     } else if (e.key === "ArrowUp") {
                       e.preventDefault(); setSearchSelectedIndex(s => Math.max(s - 1, 0));
                     } else if (e.key === "Enter" || e.key === "Tab") {
-                      e.preventDefault();
-                      if (searchResults[searchSelectedIndex]) {
-                        handleProductClick(searchResults[searchSelectedIndex])
+                      if (searchQuery) {
+                        e.preventDefault(); e.stopPropagation();
+                        if (searchResults[searchSelectedIndex]) {
+                          handleProductClick(searchResults[searchSelectedIndex])
+                        }
                       }
                     } else if (e.key === "Backspace" && e.ctrlKey) {
                       setSearchQuery("")
@@ -753,14 +893,18 @@ export default function POS() {
                 gridDensity === 'medium' ? 'grid-cols-3 md:grid-cols-4 xl:grid-cols-5' :
                 'grid-cols-2 md:grid-cols-3 xl:grid-cols-4'
               }`}>
-                {gridFilteredProducts.map((product) => (
+                {gridFilteredProducts.map((product, index) => {
+                  const isSelected = index === gridSelectedIndex;
+                  return (
                   <motion.button
+                    id={`grid-item-${index}`}
                     whileHover={{ y: -4 }}
                     whileTap={{ scale: 0.96 }}
                     transition={{ duration: 0.15 }}
                     key={product.id}
+                    onMouseEnter={() => setGridSelectedIndex(index)}
                     onClick={() => handleProductClick(product)}
-                    className={`rounded-[1.25rem] shadow-sm overflow-hidden flex flex-col text-left hover:opacity-90 hover:shadow-[0_8px_30px_rgba(0,0,0,0.15)] transition-all group relative ${getCategoryStyles(product.category || categories.find(c => c.id === product.category_id)?.name)}`}
+                    className={`rounded-[1.25rem] shadow-sm overflow-hidden flex flex-col text-left hover:opacity-90 transition-all group relative ${getCategoryStyles(product.category || categories.find(c => c.id === product.category_id)?.name)} ${isSelected ? 'ring-4 ring-orange-500 shadow-[0_8px_30px_rgba(249,115,22,0.3)] scale-[1.02]' : 'hover:shadow-[0_8px_30px_rgba(0,0,0,0.15)]'}`}
                   >
                     {gridDensity !== 'small' && (
                       <div className={`${gridDensity === 'large' ? 'h-40' : 'h-32'} w-full relative overflow-hidden shrink-0 ${!product.image ? getCategoryGradient(product.category || categories.find(c => c.id === product.category_id)?.name) : ''}`}>
@@ -791,7 +935,7 @@ export default function POS() {
                       </p>
                     </div>
                   </motion.button>
-                ))}
+                )})}
               </div>
               {gridFilteredProducts.length === 0 && (
                 <div className="flex flex-col items-center justify-center text-muted-foreground h-full min-h-[50vh]">
@@ -819,6 +963,15 @@ export default function POS() {
                     <h2 className="font-black tracking-wider uppercase text-muted-foreground text-[10px] mb-2 mt-1">Order #{orderCounter}</h2>
                     <p className="font-black text-lg text-foreground leading-none">{orderType}</p>
                   </div>
+                  
+                  {isVIP && (
+                    <div className="flex flex-col items-center justify-center">
+                      <span className="bg-gradient-to-r from-amber-200 to-yellow-500 text-yellow-950 font-black text-[11px] px-3 py-1 rounded-full uppercase tracking-widest shadow-sm border border-yellow-400/50 flex items-center gap-1">
+                        <Star className="w-3 h-3 fill-yellow-950" /> VIP
+                      </span>
+                    </div>
+                  )}
+
                   <div className="text-right">
                     <div className="mb-1">
                       <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded uppercase border ${
@@ -883,10 +1036,10 @@ export default function POS() {
                         </div>
                       ) : (
                         <AnimatePresence initial={false}>
-                          {cart.map((item) => (
+                          {cart.map((item, index) => (
                             <motion.div 
                               layout
-                              key={item.id} 
+                              key={item.cartItemId || `cart-item-${index}`} 
                               className={`border rounded-xl p-3 flex gap-3 relative group ${
                                 item.editState === 'removed' ? 'bg-background border-border/50 opacity-50' :
                                 item.editState === 'new' ? 'bg-card border-green-500/50 shadow-[0_0_10px_rgba(34,197,94,0.1)]' :
@@ -896,7 +1049,7 @@ export default function POS() {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                   <p className={`font-bold text-sm truncate ${item.editState === 'removed' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                                    {item.product_name || "Unknown Item"}
+                                    {item.name || "Unknown Item"}
                                   </p>
                                   {item.editState === 'new' && <span className="text-[10px] bg-green-500/20 text-green-500 px-1.5 py-0.5 rounded font-bold">NEW</span>}
                                   {item.editState === 'modified' && <span className="text-[10px] bg-orange-500/20 text-orange-500 px-1.5 py-0.5 rounded font-bold">MODIFIED</span>}
@@ -905,19 +1058,19 @@ export default function POS() {
                                   <div className={`flex items-center border border-border rounded-lg bg-secondary ${item.editState === 'removed' ? 'opacity-50 pointer-events-none' : ''}`}>
                                     <button onClick={() => {
                                       if (item.quantity > 1) {
-                                        updateQuantity(item.id, item.quantity - 1)
+                                        updateQuantity(item.cartItemId, item.quantity - 1)
                                       } else {
                                         if (editingOrderId && item.editState !== 'new') {
-                                          setRemovingCartItemId(item.id)
+                                          setRemovingCartItemId(item.cartItemId)
                                         } else {
-                                          removeFromCart(item.id)
+                                          removeFromCart(item.cartItemId)
                                         }
                                       }
                                     }} className="p-1 hover:bg-background rounded">
                                       <Minus className="w-4 h-4 text-foreground" />
                                     </button>
                                     <span className={`w-8 text-center font-bold text-sm ${item.editState === 'removed' ? 'line-through' : ''}`}>{item.quantity}</span>
-                                    <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="p-1 hover:bg-secondary rounded">
+                                    <button onClick={() => updateQuantity(item.cartItemId, item.quantity + 1)} className="p-1 hover:bg-secondary rounded">
                                       <Plus className="w-4 h-4 text-foreground" />
                                     </button>
                                   </div>
@@ -936,9 +1089,9 @@ export default function POS() {
                                   <button 
                                     onClick={() => {
                                       if (editingOrderId && item.editState !== 'new') {
-                                        setRemovingCartItemId(item.id)
+                                        setRemovingCartItemId(item.cartItemId)
                                       } else {
-                                        removeFromCart(item.id)
+                                        removeFromCart(item.cartItemId)
                                       }
                                     }} 
                                     className="text-red-500 hover:text-red-600 mt-2 ml-auto block group"
@@ -970,9 +1123,9 @@ export default function POS() {
                         </div>
 
                         
-                        {orderType === 'Dine In' && getTax() > 0 && (
+                        {orderType === 'Dine In' && isTaxEnabled && (
                           <div className="flex justify-between text-xs font-black text-foreground border-l-2 border-orange-500 pl-2 p-1 -mx-1">
-                            <span>Service Charges</span>
+                            <span>Service Charges (7%)</span>
                             <span>Rs {getTax().toLocaleString()}</span>
                           </div>
                         )}
@@ -999,11 +1152,11 @@ export default function POS() {
 
                       <div className="grid grid-cols-1 gap-2 mb-2">
                         <button 
-                          onClick={() => setCheckoutModalOpen(true)}
+                          onClick={handleProceedToPay}
                           disabled={cart.length === 0}
                           className="w-full py-1.5 bg-[var(--checkout-bg)] hover:bg-[var(--checkout-hover)] text-[var(--checkout-text)] font-black text-base rounded-xl shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
-                          PROCEED TO PAY <span className="bg-white/30 text-white text-[10px] px-1.5 py-0.5 rounded-md ml-1 font-bold">F6</span>
+                          PROCEED TO PAY <span className="bg-white/30 text-white text-[10px] px-1.5 py-0.5 rounded-md ml-1 font-bold">CTRL+ENTER</span>
                         </button>
                       </div>
 
@@ -1033,11 +1186,14 @@ export default function POS() {
                         </button>
                         <button 
                           onClick={toggleTax}
-                          disabled={cart.length === 0}
-                          className={`p-1 bg-secondary/60 hover:bg-secondary font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors border border-transparent hover:border-border ${!isTaxEnabled ? 'text-muted-foreground hover:text-foreground' : 'text-foreground'}`}
+                          className={`p-1 font-black rounded-lg flex flex-col items-center justify-center gap-0.5 transition-colors border ${
+                            isTaxEnabled 
+                              ? 'bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-300' 
+                              : 'bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border-transparent hover:border-border'
+                          }`}
                         >
-                          <Tag className="w-4 h-4 stroke-[1.5]" />
-                          <span className="text-[9px] uppercase text-center leading-tight">Charges</span>
+                          <Tag className={`w-4 h-4 ${isTaxEnabled ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+                          <span className="text-[9px] uppercase text-center leading-tight font-black">Charges</span>
                         </button>
                         <button 
                           onClick={() => console.log('Print KDS')}
@@ -1137,24 +1293,26 @@ export default function POS() {
                 <p className="text-muted-foreground font-bold mt-1">Select Size</p>
               </div>
               <div className="p-6 grid gap-3">
-                {activeProductForSize.variants?.map((size: any) => {
+                {activeProductForSize.variants?.map((size: any, index: number) => {
                   // Determine shortcut based on name
                   const shortcut = size.name.charAt(0).toUpperCase();
+                  const isSelected = index === sizeSelectedIndex;
                   return (
                     <button 
                       key={size.name} 
+                      onMouseEnter={() => setSizeSelectedIndex(index)}
                       onClick={() => {
-                        addToCart({ ...activeProductForSize, name: `${activeProductForSize.name} (${size.name})`, price: size.price, code: size.code || activeProductForSize.code });
+                        addToCart({ ...activeProductForSize, variant_id: size.id, name: `${activeProductForSize.name} (${size.name})`, price: size.price, code: size.code || activeProductForSize.code });
                         setSizeModalOpen(false);
                         setActiveProductForSize(null);
                         setSearchQuery("");
                         searchInputRef.current?.focus();
                         scrollToTop();
                       }} 
-                      className="flex items-center justify-between p-4 rounded-2xl border-2 border-border bg-secondary text-foreground hover:border-orange-500 hover:text-orange-500 font-bold transition-all"
+                      className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${isSelected ? 'border-orange-500 bg-orange-500/10 text-orange-500 shadow-md scale-[1.02]' : 'border-border bg-secondary text-foreground hover:border-orange-500 hover:text-orange-500'} font-bold`}
                     >
                       <div className="flex items-center gap-3">
-                        <span className="w-8 h-8 rounded-lg bg-background flex items-center justify-center text-xs font-black">{shortcut}</span>
+                        <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black ${isSelected ? 'bg-orange-500 text-white' : 'bg-background'}`}>{shortcut}</span>
                         <span className="text-lg">{size.name}</span>
                       </div>
                       <span className="text-lg">Rs {size.price.toLocaleString()}</span>
@@ -1175,14 +1333,14 @@ export default function POS() {
         {checkoutModalOpen && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setCheckoutModalOpen(false)} className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-lg bg-card border border-border shadow-2xl rounded-[2rem] flex flex-col overflow-hidden">
-               <div className="p-6 border-b border-border bg-secondary/30 text-center">
-                 <h2 className="text-2xl font-black mb-1 text-foreground">Complete Payment</h2>
-                 <p className="text-muted-foreground font-bold">Total Amount Due</p>
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-md bg-card border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden">
+               <div className="p-4 border-b border-border bg-secondary/30 text-center">
+                 <h2 className="text-xl font-black mb-1 text-foreground">Complete Payment</h2>
+                 <p className="text-sm text-muted-foreground font-bold">Total Amount Due</p>
                </div>
                
-               <div className="p-8 text-center flex flex-col gap-6">
-                 <p className="text-5xl font-black text-orange-500 tracking-tighter">Rs {getNetTotal().toLocaleString()}</p>
+               <div className="p-5 text-center flex flex-col gap-4">
+                 <p className="text-4xl font-black text-orange-500 tracking-tighter">Rs {getNetTotal().toLocaleString()}</p>
                  
                  <div className="grid grid-cols-3 gap-2">
                    {(["Cash", "Credit Card", "Debit Card", "JazzCash", "EasyPaisa", "Meezan", "Bank Transfer"] as PaymentMethod[]).map(method => (
@@ -1209,7 +1367,7 @@ export default function POS() {
                            type="number"
                            value={amountReceived}
                            onChange={(e) => setAmountReceived(e.target.value)}
-                           className="w-full h-12 pl-10 pr-4 rounded-xl bg-background border border-border focus:border-orange-500 outline-none font-black text-lg text-right"
+                           className="w-full h-10 pl-9 pr-3 rounded-lg bg-background border border-border focus:border-orange-500 outline-none font-black text-base text-right"
                            placeholder={getNetTotal().toString()}
                            autoFocus
                          />
@@ -1217,16 +1375,16 @@ export default function POS() {
                      </div>
                      
                      {Number(amountReceived) >= getNetTotal() && (
-                       <div className="flex items-center justify-between text-emerald-500 bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20">
-                         <span className="font-bold">Change Due:</span>
-                         <span className="font-black text-xl">Rs {(Number(amountReceived) - getNetTotal()).toLocaleString()}</span>
+                       <div className="flex items-center justify-between text-emerald-500 bg-emerald-500/10 p-2.5 rounded-lg border border-emerald-500/20">
+                         <span className="font-bold text-sm">Change Due:</span>
+                         <span className="font-black text-lg">Rs {(Number(amountReceived) - getNetTotal()).toLocaleString()}</span>
                        </div>
                      )}
                      
                      {Number(amountReceived) > 0 && Number(amountReceived) < getNetTotal() && (
-                       <div className="flex items-center justify-between text-destructive bg-destructive/10 p-3 rounded-xl border border-destructive/20">
-                         <span className="font-bold">Remaining:</span>
-                         <span className="font-black text-xl">Rs {(getNetTotal() - Number(amountReceived)).toLocaleString()}</span>
+                       <div className="flex items-center justify-between text-destructive bg-destructive/10 p-2.5 rounded-lg border border-destructive/20">
+                         <span className="font-bold text-sm">Remaining:</span>
+                         <span className="font-black text-lg">Rs {(getNetTotal() - Number(amountReceived)).toLocaleString()}</span>
                        </div>
                      )}
 
@@ -1246,14 +1404,14 @@ export default function POS() {
                  )}
                </div>
 
-               <div className="p-6 bg-secondary/30 border-t border-border flex gap-3">
+               <div className="p-4 bg-secondary/30 border-t border-border flex gap-3">
                  <button 
+                   id="confirm-payment-btn"
                    disabled={selectedPaymentMethod === "Cash" && (Number(amountReceived) < getNetTotal() && amountReceived !== "")}
                    onClick={() => {
                      const amt = amountReceived ? Number(amountReceived) : getNetTotal()
                      
                      completeOrder(
-                       user?.name || "Ahmed",
                        [{ 
                          id: `pay-${Date.now()}`, 
                          method: selectedPaymentMethod, 
@@ -1263,8 +1421,7 @@ export default function POS() {
                          timestamp: new Date().toISOString(),
                          cashier: user?.name || "Ahmed",
                          status: 'Completed'
-                       }],
-                       'Paid'
+                       }]
                      );
                      
                      window.print();
@@ -1277,9 +1434,9 @@ export default function POS() {
                        setAmountReceived("");
                      }, 500);
                    }} 
-                   className="w-full py-5 bg-orange-500 text-white font-black rounded-2xl text-xl hover:bg-orange-400 shadow-lg shadow-orange-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
+                   className="w-full py-3 bg-orange-500 text-white font-black rounded-xl text-base hover:bg-orange-400 shadow-md shadow-orange-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
                  >
-                   <Printer className="w-6 h-6" /> Confirm & Print Receipt
+                   <Printer className="w-5 h-5" /> Confirm & Print Receipt
                  </button>
                </div>
             </motion.div>
@@ -1390,9 +1547,14 @@ export default function POS() {
         {/* Totals */}
         <div className="flex flex-col items-end text-[11px] mb-2 pr-1">
           <div className="mb-1 text-right">Subtotal: Rs {getSubtotal().toFixed(2)}</div>
-          {isTaxEnabled && <div className="mb-1 text-right">Service Charges: Rs {getTax().toFixed(2)}</div>}
+          {orderType === 'Dine In' && getTax() > 0 && (
+            <div className="mb-1 text-right">Service Charges: Rs {getTax().toFixed(2)}</div>
+          )}
+          {orderType === 'Delivery' && deliveryCharges > 0 && (
+            <div className="mb-1 text-right">Delivery Charges: Rs {deliveryCharges.toFixed(2)}</div>
+          )}
           <div className="font-black text-[13px] mt-1 underline decoration-2 underline-offset-2">
-            Total Amount: Rs {getGrandTotal().toFixed(2)}
+            Total Amount: Rs {getNetTotal().toFixed(2)}
           </div>
         </div>
 
@@ -1411,7 +1573,15 @@ export default function POS() {
       </div>
       
       {/* Portals / Global Modals for POS */}
-      <CustomerPanelModal isOpen={customerModalOpen} onClose={() => setCustomerModalOpen(false)} />
+      <CustomerPanelModal 
+        isOpen={customerModalOpen} 
+        onClose={() => setCustomerModalOpen(false)} 
+        onSuccess={() => {
+          if (orderType === 'Delivery' && cart.length > 0) {
+            setCheckoutModalOpen(true)
+          }
+        }}
+      />
       <TableSelectorModal isOpen={tableModalOpen} onClose={() => setTableModalOpen(false)} />
       <RecentOrdersModal 
         isOpen={recentOrdersModalOpen} 

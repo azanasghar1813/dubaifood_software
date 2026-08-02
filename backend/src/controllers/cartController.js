@@ -42,6 +42,7 @@ export const cartController = {
       const updatedCart = cartService.addItem(ctx.sessionId, ctx.userId, ctx.branchId, req.body);
       sendSuccess(res, updatedCart, 'Item added to cart.');
     } catch (error) {
+      console.error("[CART ERROR]", error.message);
       sendError(res, 400, error.message);
     }
   },

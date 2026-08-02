@@ -7,71 +7,71 @@ const PAYMENT_BASE_URL = "/payments"
 export const cartService = {
   async getDraftOrder() {
     const res = await apiClient.get(CART_BASE_URL)
-    return res.data
+    return res
   },
 
   async addItem(itemData: any) {
     const res = await apiClient.post(`${CART_BASE_URL}/items`, itemData)
-    return res.data
+    return res
   },
 
   async updateItemQuantity(itemId: string, quantity: number) {
     const res = await apiClient.put(`${CART_BASE_URL}/items/${itemId}`, { quantity })
-    return res.data
+    return res
   },
 
   async updateItemDetails(itemId: string, itemData: { notes?: string; modifiers?: any[]; addons?: any[]; comboComponents?: any[]; variant_id?: string | null }) {
     const res = await apiClient.patch(`${CART_BASE_URL}/items/${itemId}`, itemData)
-    return res.data
+    return res
   },
 
   async duplicateItem(itemId: string) {
     const res = await apiClient.post(`${CART_BASE_URL}/items/${itemId}/duplicate`, {})
-    return res.data
+    return res
   },
 
   async removeItem(itemId: string) {
     const res = await apiClient.delete(`${CART_BASE_URL}/items/${itemId}`)
-    return res.data
+    return res
   },
 
   async holdOrder(holdName: string) {
     const res = await apiClient.post(`${ORDER_BASE_URL}/draft/hold`, { holdName })
-    return res.data
+    return res
   },
 
   async getHeldOrders() {
     const res = await apiClient.get(`${ORDER_BASE_URL}/held`)
-    return res.data
+    return res
   },
 
   async resumeOrder(orderId: string) {
     const res = await apiClient.post(`${ORDER_BASE_URL}/resume/${orderId}`, {})
-    return res.data
+    return res
   },
 
   async setNotes(notesData: { notes?: string; kitchen_notes?: string }) {
     const res = await apiClient.patch(`${CART_BASE_URL}/notes`, notesData)
-    return res.data
+    return res
   },
 
   async setMeta(metaData: { order_type?: string; customer_id?: string | null; table_id?: string | null }) {
     const res = await apiClient.patch(`${CART_BASE_URL}/meta`, metaData)
-    return res.data
+    return res
   },
 
   async clearCart() {
     const res = await apiClient.delete(CART_BASE_URL)
-    return res.data
+    return res
   },
 
   async checkout(orderData: any) {
     const res = await apiClient.post(`${CART_BASE_URL}/checkout`, orderData)
-    return res.data
+    return res
   },
 
   async addPayment(orderId: string, paymentData: any) {
     const res = await apiClient.post(`${PAYMENT_BASE_URL}/order/${orderId}`, paymentData)
-    return res.data
+    return res
   }
 }

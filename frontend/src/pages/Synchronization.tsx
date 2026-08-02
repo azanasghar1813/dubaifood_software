@@ -8,19 +8,19 @@ export default function Synchronization() {
   const [isSyncing, setIsSyncing] = useState(false)
   const [autoSync, setAutoSync] = useState(true)
   const [syncInterval, setSyncInterval] = useState("30 Seconds")
-  const [isPaused, setIsPaused] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [filterType, setFilterType] = useState("All")
+  const [isPaused] = useState(false)
+  const [] = useState("")
+  const [] = useState("All")
   
   // Register new device form
   const [newDeviceName, setNewDeviceName] = useState("")
   const [newDeviceIp, setNewDeviceIp] = useState("")
-  const [newDeviceRole, setNewDeviceRole] = useState("Counter PC")
+  const [newDeviceRole] = useState("Counter PC")
 
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Network State Simulator
-  const [networkQuality, setNetworkQuality] = useState<"Excellent" | "Good" | "Poor" | "Offline">("Excellent")
+  const [networkQuality] = useState<"Excellent" | "Good" | "Poor" | "Offline">("Excellent")
   const [latency, setLatency] = useState(24)
 
   const [devices, setDevices] = useState([
@@ -55,8 +55,6 @@ export default function Synchronization() {
   // Keyboard Shortcuts Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isInput = document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA" || document.activeElement?.tagName === "SELECT"
-
       // F5 Refresh
       if (e.key === "F5") {
         e.preventDefault()

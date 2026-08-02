@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
-  Wallet, ArrowRightLeft, DollarSign, Clock, 
-  RefreshCw, Download, Printer, 
+  ArrowRightLeft, DollarSign, Clock, 
+  RefreshCw, Printer, 
   CheckCircle2, BarChart, Activity, 
   AlertCircle, Coins, Plus, ShieldAlert, Key, 
   X, Search
@@ -66,10 +66,10 @@ export default function CashierManagement() {
   const [openingFloat, setOpeningFloat] = useState(10000)
   const [cashierName] = useState("Ahmed")
   const [employeeId] = useState("EMP-04")
-  const [role] = useState("Cashier")
+  // const [role] = useState("Cashier")
   const [tillName] = useState("Main Till #1")
-  const [counterNumber] = useState("Register 01")
-  const [loginTime] = useState("2026-07-28T08:00:00")
+  // const [counterNumber] = useState("Register 01")
+  // const [loginTime] = useState("2026-07-28T08:00:00")
   
   // Simulated Time states
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -169,15 +169,7 @@ export default function CashierManagement() {
     return openingFloat + salesSummary.cashSales - salesSummary.refunds - totalCashDrops - totalPaidOuts
   }, [openingFloat, salesSummary, totalCashDrops, totalPaidOuts])
 
-  const paymentBreakdownData = [
-    { name: "Cash", value: salesSummary.cashSales },
-    { name: "Meezan Bank", value: 12400 },
-    { name: "Card", value: 8500 },
-    { name: "JazzCash", value: 5400 },
-    { name: "EasyPaisa", value: 3600 },
-    { name: "Bank Transfer", value: 2500 },
-    { name: "Pending", value: salesSummary.refunds }
-  ]
+
 
   // Live Timer ticks
   useEffect(() => {

@@ -186,7 +186,7 @@ class CartService {
       });
     } else {
       // New unique line item
-      cart.items.push({
+      cart.items.unshift({
         ...calculated,
         _cart_item_id: crypto.randomUUID() // Temporary UUID — never persisted to order tables
       });
@@ -304,7 +304,7 @@ class CartService {
       _cart_item_id: crypto.randomUUID()
     };
 
-    cart.items.push(duplicate);
+    cart.items.unshift(duplicate);
 
     activityLogService.logActivity(cashierUserId || 'SYSTEM', 'CART_ITEM_DUPLICATED', 'CART', sessionId, {
       product_name: duplicate.product_name,

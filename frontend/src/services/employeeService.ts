@@ -1,0 +1,28 @@
+import { apiClient } from '../api/client'
+
+export const employeeService = {
+  getEmployees: () => {
+    return apiClient.get('/users')
+  },
+  getEmployeeById: (id: string) => {
+    return apiClient.get(`/users/${id}`)
+  },
+  createEmployee: (data: any) => {
+    return apiClient.post('/users', data)
+  },
+  updateEmployee: (id: string, data: any) => {
+    return apiClient.put(`/users/${id}`, data)
+  },
+  updateStatus: (id: string, isActive: boolean) => {
+    return apiClient.patch(`/users/${id}/status`, { is_active: isActive ? 1 : 0 })
+  },
+  resetPin: (id: string, newPin: string) => {
+    return apiClient.post(`/users/${id}/reset-pin`, { pin_code: newPin })
+  },
+  getRoles: () => {
+    return apiClient.get('/roles')
+  },
+  getPermissions: () => {
+    return apiClient.get('/permissions')
+  }
+}

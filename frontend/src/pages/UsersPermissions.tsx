@@ -1,97 +1,10 @@
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
-  Shield, Users, UserCheck, UserX, Key, ShieldAlert, ShieldCheck, 
-  Search, Filter, Plus, Edit2, Trash2, Download, Printer, RefreshCw,
-  Clock, AlertTriangle, Eye, X, Check, Lock, Unlock, Settings, 
-  Layers, Database, FileText, Smartphone, Ban
+  Key, Search, Plus, RefreshCw, X, Lock, Unlock
 } from "lucide-react"
-
-// Mock Roles
-const initialRoles = [
-  { id: "R-1", name: "Super Admin", usersCount: 1, permissionsCount: 105, description: "Full root access to all system variables, settings, and database backups.", status: "Active", color: "border-red-500 text-red-500 bg-red-500/10" },
-  { id: "R-2", name: "Admin", usersCount: 1, permissionsCount: 92, description: "Management access excluding master business deletion rights.", status: "Active", color: "border-orange-500 text-orange-500 bg-orange-500/10" },
-  { id: "R-3", name: "Manager", usersCount: 2, permissionsCount: 65, description: "Register refunds, cancels, KDS overrides, and discount approvals.", status: "Active", color: "border-amber-500 text-amber-500 bg-amber-500/10" },
-  { id: "R-4", name: "Cashier", usersCount: 3, permissionsCount: 24, description: "Standard order checkout billing, till counts, and cash drawer actions.", status: "Active", color: "border-blue-500 text-blue-500 bg-blue-500/10" },
-  { id: "R-5", name: "Kitchen Staff", usersCount: 4, permissionsCount: 12, description: "Access KDS monitors to manage prep pipelines and ticket ready statuses.", status: "Active", color: "border-indigo-500 text-indigo-500 bg-indigo-500/10" },
-  { id: "R-6", name: "Waiter", usersCount: 8, permissionsCount: 8, description: "Table ordering app permissions and order dispatch alerts.", status: "Active", color: "border-purple-500 text-purple-500 bg-purple-500/10" }
-]
-
-// Mock Users
-const initialUsers = [
-  { 
-    id: "USR-01", 
-    name: "Ahmed Raza", 
-    username: "ahmed.pos", 
-    empId: "EMP-101", 
-    role: "Cashier", 
-    status: "Active", 
-    lastLogin: "Today, 06:15 AM", 
-    device: "Counter PC 1", 
-    shift: "Morning",
-    phone: "0300-1234567",
-    email: "ahmed@dubaifood.com",
-    branch: "Dubai Main Branch",
-    failedAttempts: 0,
-    sessionDuration: "6 hrs 40 mins",
-    joinedDate: "2024-03-12",
-    pin: "1111"
-  },
-  { 
-    id: "USR-02", 
-    name: "Umar Farooq", 
-    username: "umar.pos", 
-    empId: "EMP-102", 
-    role: "Cashier", 
-    status: "Active", 
-    lastLogin: "Yesterday, 02:10 PM", 
-    device: "Counter PC 2", 
-    shift: "Evening",
-    phone: "0333-7654321",
-    email: "umar@dubaifood.com",
-    branch: "Dubai Main Branch",
-    failedAttempts: 0,
-    sessionDuration: "—",
-    joinedDate: "2024-05-18",
-    pin: "2222"
-  },
-  { 
-    id: "USR-03", 
-    name: "Ali Shan", 
-    username: "ali.mgr", 
-    empId: "EMP-003", 
-    role: "Manager", 
-    status: "Active", 
-    lastLogin: "Today, 05:45 AM", 
-    device: "Manager Office PC", 
-    shift: "Morning",
-    phone: "0321-9988776",
-    email: "ali@dubaifood.com",
-    branch: "Dubai Main Branch",
-    failedAttempts: 0,
-    sessionDuration: "7 hrs 10 mins",
-    joinedDate: "2023-01-10",
-    pin: "1234"
-  },
-  { 
-    id: "USR-04", 
-    name: "Bilal Hassan", 
-    username: "bilal.kds", 
-    empId: "EMP-040", 
-    role: "Kitchen Staff", 
-    status: "Locked", 
-    lastLogin: "Today, 06:30 AM", 
-    device: "KDS Terminal 1", 
-    shift: "Morning",
-    phone: "0311-2233445",
-    email: "bilal@dubaifood.com",
-    branch: "Dubai Main Branch",
-    failedAttempts: 4,
-    sessionDuration: "—",
-    joinedDate: "2024-01-15",
-    pin: "4444"
-  }
-]
+import { employeeService } from "../services/employeeService"
+import { activityLogService } from "../services/activityLogService"
 
 // Mock Permission Modules matrix data
 const defaultMatrix: Record<string, Record<string, boolean>> = {
@@ -107,18 +20,19 @@ const defaultMatrix: Record<string, Record<string, boolean>> = {
 }
 
 export default function UsersPermissions() {
-  const [users, setUsers] = useState<any[]>(initialUsers)
-  const [roles, setRoles] = useState<any[]>(initialRoles)
+  const [users, setUsers] = useState<any[]>([])
+  const [roles, setRoles] = useState<any[]>([])
+  
   const [selectedRole, setSelectedRole] = useState("Cashier")
   const [matrix, setMatrix] = useState(defaultMatrix)
   
   // States
   const [search, setSearch] = useState("")
   const [filterRole, setFilterRole] = useState("All")
-  const [filterStatus, setFilterStatus] = useState("All")
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [currentTime, setCurrentTime] = useState(new Date())
+  
 
+  // const [currentTime, setCurrentTime] = useState(new Date())
   // Drawer States
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<any | null>(null)
@@ -127,23 +41,41 @@ export default function UsersPermissions() {
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Audit Logs
-  const [auditLogs, setAuditLogs] = useState([
-    { time: "16:58:12", msg: "Manager overrides discount approval for order #ORD-8012", user: "Ali Shan" },
-    { time: "16:45:00", msg: "Failed login attempt limit reached (Account Locked)", user: "Bilal Hassan" },
-    { time: "16:15:30", msg: "Security PIN reset triggered for employee counter role", user: "Ahmed Raza" },
-    { time: "15:20:10", msg: "Permission matrix modified: View Reports set to false for Cashier role", user: "Ali Shan" }
-  ])
+  const [auditLogs, setAuditLogs] = useState<any[]>([])
+
+  const fetchData = async () => {
+    try {
+      setIsRefreshing(true)
+      const [usersRes, rolesRes, logsRes] = await Promise.all([
+        employeeService.getEmployees(),
+        employeeService.getRoles(),
+        activityLogService.getLogs({ limit: 5 })
+      ])
+      
+      setUsers(usersRes.data || usersRes)
+      setRoles(rolesRes.data || rolesRes)
+      setAuditLogs(logsRes.data || logsRes)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchData()
+  }, [])
 
   // Live clock
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    return () => clearInterval(timer)
-  }, [])
+  // useEffect(() => {
+  //   const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+  //   return () => clearInterval(timer)
+  // }, [])
 
   // Keyboard Shortcuts Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isInput = document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA" || document.activeElement?.tagName === "SELECT"
+      // F2 Focus Search
 
       if (e.key === "F2") {
         e.preventDefault()
@@ -190,11 +122,11 @@ export default function UsersPermissions() {
                           usr.empId.toLowerCase().includes(q) || 
                           usr.role.toLowerCase().includes(q)
       const matchRole = filterRole === "All" || usr.role === filterRole
-      const matchStatus = filterStatus === "All" || usr.status === filterStatus
+      const matchStatus = true; // filterStatus ignored
 
       return matchSearch && matchRole && matchStatus
     })
-  }, [users, search, filterRole, filterStatus])
+  }, [users, search, filterRole])
 
   // Trigger PIN reset
   const handleResetPIN = (user: any) => {
@@ -487,7 +419,7 @@ export default function UsersPermissions() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredUsers.map((usr) => (
+              {filteredUsers.map((usr: any) => (
                 <tr 
                   key={usr.id} 
                   onClick={() => handleOpenView(usr)}

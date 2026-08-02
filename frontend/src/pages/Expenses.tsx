@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { Plus,  Filter,  Loader2 } from "lucide-react"
-import { api } from "../services/api"
+import { expenseService } from "../services/expenseService"
 
 export default function Expenses() {
   const [expenses, setExpenses] = useState<any[]>([])
@@ -9,8 +9,8 @@ export default function Expenses() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const result = await api.getExpenses()
-        setExpenses(result)
+        const response = await expenseService.getExpenses()
+        setExpenses(response.data || response)
       } finally {
         setIsLoading(false)
       }
@@ -76,18 +76,16 @@ export default function Expenses() {
                 const amount = Number(expense.amount) || 0;
                 return (
                 <tr key={expense.id} className="hover:bg-secondary/30 transition-colors">
-                  <td className="px-6 py-4 font-medium">{expense.id}</td>
-                  <td className="px-6 py-4">{expense.date}</td>
+                  <td className="px-6 py-4 font-medium">{expense.id.substring(0, 8)}...</td>
+                  <td className="px-6 py-4">{new Date(expense.expense_date || expense.created_at).toLocaleDateString()}</td>
                   <td className="px-6 py-4">
                     <span className="bg-secondary px-2.5 py-1 rounded-full text-xs font-medium border border-border/50">{expense.category}</span>
                   </td>
                   <td className="px-6 py-4 font-medium">{expense.description}</td>
                   <td className="px-6 py-4 font-bold">${amount.toFixed(2)}</td>
                   <td className="px-6 py-4 text-right">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
-                      expense.status === "Paid" ? "bg-green-500/10 text-green-500 border-green-500/20" : "bg-orange-500/10 text-orange-500 border-orange-500/20"
-                    }`}>
-                      {expense.status}
+                    <span className="px-2.5 py-1 rounded-full text-xs font-medium border bg-green-500/10 text-green-500 border-green-500/20">
+                      Recorded
                     </span>
                   </td>
                 </tr>
