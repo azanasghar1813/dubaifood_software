@@ -58,7 +58,7 @@ export default function Sidebar() {
 
       <motion.aside
         initial={false}
-        animate={{ width: isSidebarOpen ? 260 : 72 }}
+        animate={{ width: isSidebarOpen ? 180 : 72 }}
         className={`fixed md:relative h-full bg-card border-r border-border/50 flex flex-col z-30 shadow-xl transition-transform duration-300 ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}

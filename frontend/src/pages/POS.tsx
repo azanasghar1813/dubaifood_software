@@ -70,6 +70,7 @@ export default function POS() {
   // Refs
   const searchInputRef = useRef<HTMLInputElement>(null)
   const cartTopRef = useRef<HTMLDivElement>(null)
+  const orderNotesRef = useRef<HTMLInputElement>(null)
   
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<any[]>([])
@@ -250,13 +251,15 @@ export default function POS() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
+
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeElement = document.activeElement as HTMLElement
       const isInput = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA'
       const inputValue = isInput ? (activeElement as HTMLInputElement).value : ""
-      const isTyping = isInput && inputValue !== ""
+      const isSearchInput = activeElement === searchInputRef.current
+      const isTyping = isInput && (isSearchInput ? inputValue !== "" : true)
 
       // 1. Modal specific shortcuts that override everything
       if (sizeModalOpen && activeProductForSize) {
@@ -408,11 +411,7 @@ export default function POS() {
           case 'n':
             if (!e.shiftKey) { // we already handled shift+n
               e.preventDefault()
-              if (cart.length > 0) {
-                setActiveCartItem(cart[0])
-                setTempNotes(cart[0].notes || "")
-                setCustomizeModalOpen(prev => !prev)
-              }
+              orderNotesRef.current?.focus()
             }
             break
           case 's':
@@ -674,6 +673,14 @@ export default function POS() {
     })
   }, [products, debouncedSearchQuery])
 
+  useEffect(() => {
+    if (isSearchFocused && searchResults.length > 0) {
+      const activeEl = document.getElementById(`search-item-${searchSelectedIndex}`)
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: 'nearest' })
+      }
+    }
+  }, [searchSelectedIndex, isSearchFocused, searchResults.length])
   const scrollToTop = () => {
     setTimeout(() => {
       cartTopRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -735,7 +742,7 @@ export default function POS() {
       <PanelGroup id="pos-main-layout" orientation="horizontal" className="flex-1 overflow-hidden bg-background">
           
           {/* Left Panel: Categories */}
-          <Panel defaultSize="15%" minSize="10%" maxSize="25%" className="flex flex-col z-10 border-r border-border bg-card">
+          <Panel defaultSize="18%" minSize="15%" maxSize="30%" className="flex flex-col z-10 border-r border-border bg-card">
             <div className="flex-1 overflow-y-auto p-3 custom-scrollbar space-y-2">
               {categories.filter(c => c.menuContext === 'all' || !c.menuContext || c.menuContext === menuContext).map(cat => {
                 const isActive = activeCategory === cat.name;
@@ -767,7 +774,7 @@ export default function POS() {
           <PanelResizeHandle className="w-1 bg-border/50 hover:bg-orange-500/50 transition-colors cursor-col-resize z-50" />
 
           {/* Center Panel: Product Grid & Search */}
-          <Panel defaultSize="55%" minSize="40%" className="flex flex-col bg-background relative">
+          <Panel defaultSize="52%" minSize="40%" className="flex flex-col bg-background relative">
             
             {/* Center Header: Search & Filters */}
             <div className="p-4 shrink-0 flex items-center justify-between gap-4">
@@ -828,6 +835,7 @@ export default function POS() {
                             return (
                               <button
                                 type="button"
+                                id={`search-item-${index}`}
                                 key={product.id}
                                 onMouseEnter={() => setSearchSelectedIndex(index)}
                                 onClick={() => handleProductClick(product)}
@@ -1165,6 +1173,7 @@ export default function POS() {
                           <Edit2 className="w-4 h-4" />
                         </div>
                         <input 
+                          ref={orderNotesRef}
                           type="text"
                           placeholder="Add Order Notes / Special Instructions."
                           value={orderNotes}

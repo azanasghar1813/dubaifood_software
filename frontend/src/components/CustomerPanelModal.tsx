@@ -36,7 +36,11 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
     try {
       const res = await customerService.getCustomers()
       if (res.success) {
-        setCustomers(res.data || [])
+        const mapped = (res.data || []).map((c: any) => ({
+          ...c,
+          name: c.name || [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Guest'
+        }))
+        setCustomers(mapped)
       }
     } catch (e) {
       console.error(e)
@@ -131,7 +135,8 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
     if (!newPhone) return
     
     const newCust: any = {
-      name: finalName,
+      first_name: finalName,
+      name: finalName, // Keep name for frontend state
       phone: newPhone,
       address: newAddress,
       notes: newNotes,
