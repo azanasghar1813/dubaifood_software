@@ -70,7 +70,7 @@ class ProductRepository {
       'category_id', 'product_code', 'name', 'display_name', 'short_name',
       'description', 'price', 'cost', 'barcode', 'track_inventory',
       'kitchen_printer_id', 'keywords', 'preparation_time', 'is_popular', 'is_suggested',
-      'visibility', 'status'
+      'visibility', 'status', 'lifecycle_state'
     ];
 
     allowedFields.forEach(field => {
@@ -94,7 +94,11 @@ class ProductRepository {
   softDelete(id) {
     dbEngine.prepare(`
       UPDATE products 
-      SET lifecycle_state = 'DELETED', version = version + 1, updated_at = CURRENT_TIMESTAMP 
+      SET lifecycle_state = 'DELETED', 
+          product_code = product_code || '_del_' || substr(id, 1, 8),
+          barcode = CASE WHEN barcode IS NOT NULL THEN barcode || '_del_' || substr(id, 1, 8) ELSE NULL END,
+          version = version + 1, 
+          updated_at = CURRENT_TIMESTAMP 
       WHERE id = ?
     `).run(id);
   }

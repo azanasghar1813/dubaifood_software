@@ -1,6 +1,7 @@
 import { productRepository } from '../repositories/productRepository.js';
 import { dbEngine } from '../database/sqlite.js';
 import { modifierRepository } from '../repositories/modifierRepository.js';
+import { variantRepository } from '../repositories/variantRepository.js';
 import { menuCacheService } from './menuCacheService.js';
 import { globalSearchService } from './search/globalSearchService.js';
 import { activityLogService } from './activityLogService.js';
@@ -50,7 +51,20 @@ class ProductService {
         });
       }
 
-      // 4. Log the action
+      // 4. Handle Variants if provided
+      if (data.variants && Array.isArray(data.variants)) {
+        data.variants.forEach((v, idx) => {
+          variantRepository.create({
+            product_id: product.id,
+            name: v.name,
+            price: v.price || 0,
+            display_order: idx,
+            lifecycle_state: 'ACTIVE'
+          });
+        });
+      }
+
+      // 5. Log the action
       activityLogService.logActivity(
         userId,
         'PRODUCT_CREATED',
@@ -59,10 +73,10 @@ class ProductService {
         { code: product.product_code }
       );
 
-      // 5. Queue Sync
+      // 6. Queue Sync
       syncService.queueSyncEvent('PRODUCT', product.id, 'CREATED', { code: product.product_code }, 1);
 
-      // 6. Refresh RAM cache
+      // 7. Refresh RAM cache
       menuCacheService.refresh();
 
       return this.getProductById(product.id);
@@ -80,6 +94,19 @@ class ProductService {
       }
 
       const product = productRepository.update(id, data);
+
+      if (data.variants && Array.isArray(data.variants)) {
+        dbEngine.prepare(`DELETE FROM product_variants WHERE product_id = ?`).run(product.id);
+        data.variants.forEach((v, idx) => {
+          variantRepository.create({
+            product_id: product.id,
+            name: v.name,
+            price: v.price || 0,
+            display_order: idx,
+            lifecycle_state: 'ACTIVE'
+          });
+        });
+      }
 
       activityLogService.logActivity(
         userId,

@@ -158,11 +158,30 @@ export default function POS() {
         const allFetchedCats = flattenCategories(catsRes.data || []);
         const activeCats = allFetchedCats.filter((c: any) => c.status === "Active" || c.lifecycle_state === "ACTIVE")
         
-        const loadedProducts = (prodsRes.data || []).map((p: any) => ({
-          ...p,
-          code: p.code || p.product_code,
-          category: activeCats.find(c => c.id === p.category_id)?.name || 'Unknown'
-        }))
+        const loadedProducts = (prodsRes.data || []).map((p: any) => {
+          const primaryImage = p.images?.find((img: any) => img.is_primary === 1)?.image_path || p.images?.[0]?.image_path || null;
+          let imagePath = p.image || primaryImage;
+          if (imagePath && !imagePath.startsWith('http')) {
+            const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1').replace('/api/v1', '');
+            imagePath = `${baseUrl}${imagePath}`;
+          }
+
+          let displayPrice = p.price || 0;
+          if (p.variants && p.variants.length > 0) {
+            const minVariantPrice = Math.min(...p.variants.map((v: any) => v.price || 0));
+            if (minVariantPrice > 0) {
+              displayPrice = minVariantPrice;
+            }
+          }
+
+          return {
+            ...p,
+            code: p.code || p.product_code,
+            category: activeCats.find((c: any) => c.id === p.category_id)?.name || 'Unknown',
+            image: imagePath,
+            displayPrice: displayPrice
+          }
+        })
         
         const loadedDeals = (dealsRes.data || []).map((deal: any) => ({
           ...deal,
@@ -939,7 +958,7 @@ export default function POS() {
                         {product.name}
                       </h4>
                       <p className={`text-orange-500 font-black mt-2 ${gridDensity === 'large' ? 'text-2xl' : 'text-lg'}`}>
-                        Rs {product.price.toLocaleString()}
+                        Rs {product.displayPrice !== undefined ? product.displayPrice.toLocaleString() : product.price.toLocaleString()}
                       </p>
                     </div>
                   </motion.button>

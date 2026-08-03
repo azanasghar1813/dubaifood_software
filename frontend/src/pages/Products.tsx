@@ -12,13 +12,19 @@ import { toast } from "../store/toastStore"
 
 // Categories matching options
 
+const getImageUrl = (path?: string) => {
+  if (!path) return undefined;
+  if (path.startsWith('http')) return path;
+  const baseUrl = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace('/api/v1', '') : 'http://localhost:5000';
+  return `${baseUrl}${path}`;
+}
 
 export default function Products() {
   const { user } = useAuthStore()
   const canManageProducts = user?.permissions?.includes("MANAGE_PRODUCTS") ?? false
 
   const [products, setProducts] = useState<any[]>([])
-  const [categoriesList, setCategoriesList] = useState<string[]>([])
+  const [categoriesList, setCategoriesList] = useState<any[]>([])
   const [, setIsLoadingData] = useState(true)
 
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid")
@@ -26,15 +32,16 @@ export default function Products() {
   const [selectedCategory, setSelectedCategory] = useState("All")
   const [selectedKitchen, setSelectedKitchen] = useState("All")
   const [selectedStatus, setSelectedStatus] = useState("All")
-  const [sortBy, setSortBy] = useState("NameA-Z")
+  const [sortBy, setSortBy] = useState("Code")
   const [showFilters, setShowFilters] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [mainTab, setMainTab] = useState<"All" | "Fast Food" | "Restaurant" | "Deals" | "Drinks">("All")
+  const [mainTab, setMainTab] = useState<"Fast Food" | "Restaurant" | "Deals" | "Drinks">("Fast Food")
 
   // Drawer States
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null)
   const [drawerMode, setDrawerMode] = useState<"view" | "edit" | "add">("view")
+  const [isSaving, setIsSaving] = useState(false)
 
   // Refs for shortcuts
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -43,17 +50,67 @@ export default function Products() {
   const fetchProductsAndCategories = async () => {
     try {
       setIsLoadingData(true)
-      const [prodRes, catRes] = await Promise.all([
+      const [prodRes, catRes, dealsRes] = await Promise.all([
         menuService.getProducts(),
-        menuService.getCategories()
+        menuService.getCategories(),
+        menuService.getDeals()
       ])
       
-      if (prodRes.data) {
-        setProducts(prodRes.data)
+      const flattenCategories = (cats: any[]): any[] => {
+        let result: any[] = [];
+        cats.forEach(cat => {
+          result.push(cat);
+          if (cat.sub_categories && cat.sub_categories.length > 0) {
+            result = result.concat(flattenCategories(cat.sub_categories));
+          }
+        });
+        return result;
       }
+      
+      const allFetchedCats = flattenCategories(catRes.data || [])
+      const activeCats = allFetchedCats.filter((c: any) => c.status === "Active" || c.lifecycle_state === "ACTIVE")
+      
+      const getContext = (cat: any): string | null => {
+        if (cat.name === 'Fast Food' || cat.name === 'Restaurant' || cat.name === 'Deals') return cat.name;
+        if (cat.parent_id) {
+          const parent = activeCats.find((p: any) => p.id === cat.parent_id);
+          if (parent) return getContext(parent);
+        }
+        return null;
+      }
+
+      const catsWithContext = activeCats.map((c: any) => ({
+        ...c,
+        menuContext: getContext(c)
+      })).filter((c: any) => !(c.sub_categories && c.sub_categories.length > 0));
+
       if (catRes.data) {
-        setCategoriesList(catRes.data.map((c: any) => c.name))
+        setCategoriesList(catsWithContext)
       }
+
+      const loadedProducts = (prodRes.data || []).map((p: any) => {
+        const cat = catsWithContext.find((c: any) => c.id === p.category_id)
+        const primaryImage = p.images?.find((img: any) => img.is_primary === 1)?.image_path || p.images?.[0]?.image_path || null;
+        return {
+          ...p,
+          code: p.code || p.product_code,
+          category: cat?.name || 'Unknown',
+          menuContext: cat?.menuContext || 'all',
+          image: p.image || primaryImage
+        }
+      })
+
+      const loadedDeals = (dealsRes.data || []).map((deal: any) => ({
+        ...deal,
+        isDeal: true,
+        category: 'Deals',
+        id: deal.id,
+        name: deal.name,
+        price: deal.price,
+        code: deal.code || deal.product_code,
+      }))
+
+      setProducts([...loadedProducts, ...loadedDeals])
     } catch (error) {
       toast.error("Failed to load catalog data")
       console.error(error)
@@ -121,16 +178,15 @@ export default function Products() {
   // KPIs
   const stats = useMemo(() => {
     const total = products.length
-    const fastFood = products.filter(p => p.kitchen === "Fast Food").length
-    const restaurant = products.filter(p => p.kitchen === "Restaurant").length
-    const drinks = products.filter(p => p.category?.toLowerCase().includes("drink")).length
-    const outOfStock = products.filter(p => p.stockStatus === "Out of Stock").length
-    const hidden = products.filter(p => p.status === "Hidden").length
+    const fastFood = products.filter(p => p.menuContext === "Fast Food" && !p.isDeal).length
+    const restaurant = products.filter(p => p.menuContext === "Restaurant" && !p.isDeal).length
+    const drinks = products.filter(p => (p.category?.toLowerCase().includes("drink") || p.category?.toLowerCase().includes("beverage") || p.category?.toLowerCase().includes("tea") || p.category?.toLowerCase().includes("ice cream")) && !p.isDeal).length
+    const deals = products.filter(p => p.isDeal).length
     
     // Average price calculation
-    const avgPrice = total > 0 ? Math.round(products.reduce((sum, p) => sum + p.price, 0) / total) : 0
+    const avgPrice = total > 0 ? Math.round(products.reduce((sum, p) => sum + (p.price || 0), 0) / total) : 0
     
-    return { total, fastFood, restaurant, drinks, outOfStock, hidden, avgPrice }
+    return { total, fastFood, restaurant, drinks, deals, avgPrice }
   }, [products])
 
   // Handler: Save / Update Product
@@ -142,26 +198,61 @@ export default function Products() {
     }
 
     try {
+      setIsSaving(true)
+      // Find the category_id from the categoriesList based on the selected category name
+      const categoryObj = categoriesList.find(c => c.name === selectedProduct.category)
+      // We will explicitly map to the backend's expected schema
+      const payload = {
+        name: selectedProduct.name,
+        product_code: selectedProduct.code,
+        price: selectedProduct.price,
+        cost: 0,
+        description: selectedProduct.description,
+        status: selectedProduct.status === "Active" ? "AVAILABLE" : "UNAVAILABLE",
+        lifecycle_state: selectedProduct.status === "Active" ? "ACTIVE" : selectedProduct.status === "Hidden" ? "HIDDEN" : "DRAFT",
+        category_id: categoryObj ? categoryObj.id : undefined,
+        kitchen_printer_id: selectedProduct.kitchen,
+        variants: selectedProduct.variants || [],
+      }
+
+      const formatResponseProduct = (data: any) => {
+        const cat = categoriesList.find((c: any) => c.id === data.category_id)
+        const primaryImage = data.images?.find((img: any) => img.is_primary === 1)?.image_path || data.images?.[0]?.image_path || null;
+        return {
+          ...data,
+          code: data.code || data.product_code,
+          category: cat?.name || 'Unknown',
+          menuContext: cat?.menuContext || 'all',
+          kitchen: data.kitchen_printer_id || "Main Kitchen",
+          status: data.status === "AVAILABLE" ? "Active" : data.status === "HIDDEN" ? "Hidden" : data.status === "DRAFT" ? "Draft" : "Hidden",
+          image: data.image || primaryImage
+        }
+      }
+
       if (drawerMode === "add") {
-        const res = await menuService.createProduct(selectedProduct)
+        const res = await menuService.createProduct(payload)
         if (res.data) {
           toast.success("Product created")
           setDrawerMode("view")
+          setIsDrawerOpen(false)
           // Set the created ID so we can upload image if needed
-          setSelectedProduct(res.data)
+          setSelectedProduct(formatResponseProduct(res.data))
           fetchProductsAndCategories()
         }
       } else if (drawerMode === "edit") {
-        const res = await menuService.updateProduct(selectedProduct.id, selectedProduct)
+        const res = await menuService.updateProduct(selectedProduct.id, payload)
         if (res.data) {
           toast.success("Product updated")
           setDrawerMode("view")
-          setSelectedProduct(res.data)
+          setIsDrawerOpen(false)
+          setSelectedProduct(formatResponseProduct(res.data))
           fetchProductsAndCategories()
         }
       }
     } catch (error: any) {
       toast.error(error.response?.data?.error || "Failed to save product")
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -175,10 +266,16 @@ export default function Products() {
 
     const file = e.target.files[0]
     try {
-      const res = await menuService.uploadProductImage(selectedProduct.id, file)
-      if (res.data) {
+      const res: any = await menuService.uploadProductImage(selectedProduct.id, file)
+      const path = res?.data?.path || res?.path
+      if (path) {
         toast.success("Image uploaded successfully")
-        setSelectedProduct(res.data)
+        // The backend returns { id, path }. Update just the image field on the product
+        setSelectedProduct({ ...selectedProduct, image: path })
+        fetchProductsAndCategories()
+      } else {
+        // Just in case it succeeded but response is malformed
+        toast.success("Image uploaded successfully")
         fetchProductsAndCategories()
       }
     } catch (error: any) {
@@ -202,8 +299,7 @@ export default function Products() {
       isPopular: false,
       isFavorite: false,
       description: "",
-      preparationTime: 15,
-      modifiers: [],
+      variants: [],
       sizes: []
     })
     setDrawerMode("add")
@@ -270,23 +366,23 @@ export default function Products() {
     setIsRefreshing(false)
   }
 
-  // Modifiers config inside form helper
-  const handleAddModifier = () => {
-    const name = prompt("Enter modifier name (e.g. Extra Cheese, Spicy, Large):")
+  // Variants config inside form helper
+  const handleAddVariant = () => {
+    const name = prompt("Enter variant name (e.g. Extra Cheese, Spicy, Large):")
     if (!name) return
     const priceStr = prompt("Enter price adjustment (e.g. 50, 100) or leave blank for 0:")
     const price = priceStr ? parseFloat(priceStr) : 0
     
     setSelectedProduct({
       ...selectedProduct,
-      modifiers: [...(selectedProduct.modifiers || []), { name, price }]
+      variants: [...(selectedProduct.variants || []), { name, price }]
     })
   }
 
-  const handleRemoveModifier = (idx: number) => {
-    const next = [...(selectedProduct.modifiers || [])]
+  const handleRemoveVariant = (idx: number) => {
+    const next = [...(selectedProduct.variants || [])]
     next.splice(idx, 1)
-    setSelectedProduct({ ...selectedProduct, modifiers: next })
+    setSelectedProduct({ ...selectedProduct, variants: next })
   }
 
   // Filters logic
@@ -302,15 +398,12 @@ export default function Products() {
       const isDeal = cat.toLowerCase().includes("deal")
       const isDrink = cat.toLowerCase().includes("drink") || cat.toLowerCase().includes("ice cream") || cat.toLowerCase().includes("tea")
       
-      const fastFoodCats = ["Pizza", "Premium Pizza", "Square Pizza", "Burgers", "Pratha Rolls", "Special Rolls", "Pasta", "Appetizers", "Sandwich", "Shawarma"]
-      const restaurantCats = ["Broast", "Starters", "Soups", "Bar-B-Q Platters", "Salads", "Tandoor", "Rices", "Chinese Gravy", "Noodles", "Mutton", "Beef", "Chicken", "Bar BQ"]
-      
-      const isFastFood = fastFoodCats.includes(cat) || (p.kitchen === "Fast Food" && !restaurantCats.includes(cat))
-      const isRestaurant = restaurantCats.includes(cat) || (p.kitchen === "Restaurant" && !fastFoodCats.includes(cat))
+      const catObj = categoriesList.find(c => c.name === p.category)
+      const context = catObj?.menuContext || 'all'
 
       let matchMainTab = true
-      if (mainTab === "Fast Food") matchMainTab = isFastFood && !isDeal && !isDrink
-      else if (mainTab === "Restaurant") matchMainTab = isRestaurant && !isDeal && !isDrink
+      if (mainTab === "Fast Food") matchMainTab = (p.menuContext === "Fast Food" || p.kitchen === "Fast Food") && !isDeal && !isDrink
+      else if (mainTab === "Restaurant") matchMainTab = (p.menuContext === "Restaurant" || p.kitchen === "Restaurant") && !isDeal && !isDrink
       else if (mainTab === "Deals") matchMainTab = isDeal
       else if (mainTab === "Drinks") matchMainTab = isDrink
 
@@ -336,7 +429,7 @@ export default function Products() {
     })
 
     return result
-  }, [products, search, selectedCategory, selectedKitchen, selectedStatus, sortBy])
+  }, [products, search, selectedCategory, selectedKitchen, selectedStatus, sortBy, mainTab, categoriesList])
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto text-foreground pb-12">
@@ -385,14 +478,13 @@ export default function Products() {
       {/* ==================================================
           KPI TOP CARDS
           ================================================== */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
           { label: "Total Products", val: stats.total, sub: "All database items", color: "text-blue-500" },
           { label: "Fast Food Products", val: stats.fastFood, sub: "Pizzas, burgers", color: "text-amber-500" },
           { label: "Restaurant", val: stats.restaurant, sub: "Mutton, BBQ, Rices", color: "text-rose-500" },
           { label: "Drinks / Bevs", val: stats.drinks, sub: "Tin pack, margarita", color: "text-sky-500" },
-          { label: "Out of Stock", val: stats.outOfStock, sub: "Needs raw supply", color: "text-red-500" },
-          { label: "Hidden / Drafts", val: stats.hidden, sub: "Inactive on menu", color: "text-zinc-500" },
+          { label: "Deals", val: stats.deals, sub: "Promotional combos", color: "text-orange-500" },
           { label: "Avg Price", val: `Rs. ${stats.avgPrice}`, sub: "Average item cost", color: "text-emerald-500" }
         ].map((card, i) => (
           <div key={i} className="p-4 bg-card border border-border/50 rounded-2xl flex flex-col justify-between shadow-sm">
@@ -462,19 +554,7 @@ export default function Products() {
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden grid grid-cols-2 md:grid-cols-5 gap-3 pt-2 border-t border-border/50"
             >
-              <div>
-                <label className="text-[10px] uppercase font-black text-muted-foreground">Category</label>
-                <select 
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full h-9 rounded-lg bg-secondary border border-border text-xs font-bold px-2 mt-1 focus:outline-none"
-                >
-                  <option value="All">All Categories</option>
-                  {categoriesList.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
+
 
               <div>
                 <label className="text-[10px] uppercase font-black text-muted-foreground">Kitchen Assign</label>
@@ -525,9 +605,9 @@ export default function Products() {
                     setSelectedCategory("All")
                     setSelectedKitchen("All")
                     setSelectedStatus("All")
-                    setSortBy("NameA-Z")
+                    setSortBy("Code")
                     setSearch("")
-                    setMainTab("All")
+                    setMainTab("Fast Food")
                   }}
                   className="w-full h-9 rounded-lg border border-border hover:bg-secondary text-xs font-black uppercase text-center transition-colors"
                 >
@@ -541,7 +621,7 @@ export default function Products() {
 
         {/* Main Categories Segmented Control */}
         <div className="flex gap-2 p-1.5 bg-secondary/80 border border-border rounded-2xl overflow-x-auto custom-scrollbar shadow-sm">
-          {["All", "Fast Food", "Restaurant", "Deals", "Drinks"].map((tab) => (
+          {["Fast Food", "Restaurant", "Deals", "Drinks"].map((tab) => (
             <button
               key={tab}
               onClick={() => setMainTab(tab as any)}
@@ -560,13 +640,50 @@ export default function Products() {
       {/* ==================================================
           PRODUCT VIEW MODE CONTAINER
           ================================================== */}
+      <div className="flex flex-col lg:flex-row gap-6 items-start h-[calc(100vh-280px)] pb-4">
+        {/* Left Side Category Bar */}
+        <div className="w-full lg:w-52 shrink-0 bg-card border border-border rounded-3xl p-4 shadow-sm flex flex-col gap-2 h-full overflow-y-auto custom-scrollbar">
+          <h3 className="text-xs font-black uppercase text-muted-foreground mb-2 px-2">Categories</h3>
+          <button
+            onClick={() => setSelectedCategory("All")}
+            className={`w-full flex items-center p-3 rounded-2xl transition-all duration-200 text-left ${
+              selectedCategory === "All"
+                ? "bg-orange-500 text-white shadow-md shadow-orange-500/20"
+                : "bg-transparent text-muted-foreground hover:bg-secondary hover:text-foreground"
+            }`}
+          >
+            <span className="font-bold text-sm tracking-wide truncate">All Categories</span>
+          </button>
+          
+          {categoriesList
+            .filter((c) => (c.menuContext as any) === mainTab || (mainTab === 'Drinks' && (c.name.toLowerCase().includes('drink') || c.name.toLowerCase().includes('beverage'))))
+            .map((cat) => {
+            const isActive = selectedCategory === cat.name;
+            return (
+              <button
+                key={cat.id || cat.name}
+                onClick={() => setSelectedCategory(cat.name)}
+                title={cat.name}
+                className={`w-full flex items-center p-3 rounded-2xl transition-all duration-200 text-left ${
+                  isActive 
+                    ? "bg-orange-500 text-white shadow-md shadow-orange-500/20" 
+                    : "bg-transparent text-muted-foreground hover:bg-secondary hover:text-foreground"
+                }`}
+              >
+                <span className="font-bold text-sm tracking-wide truncate">{cat.name}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="flex-1 w-full min-w-0 h-full overflow-y-auto custom-scrollbar pr-2 pb-8">
       {viewMode === "grid" ? (
         
         // GRID VIEW LAYOUT
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
           {filteredAndSorted.map((product) => {
-            const hasModifiers = product.modifiers && product.modifiers.length > 0
-            const modCount = product.modifiers?.length || 0
+            const hasVariants = product.variants && product.variants.length > 0
+            const varCount = product.variants?.length || 0
             const isDeal = product.category?.toLowerCase().includes("deal")
 
             return (
@@ -574,15 +691,15 @@ export default function Products() {
                 layout
                 key={product.id}
                 onClick={() => handleOpenView(product)}
-                className="bg-card hover:bg-secondary/40 border border-border/60 hover:border-primary/50 rounded-3xl p-4 shadow-sm hover:shadow-xl hover:-translate-y-1 cursor-pointer transition-all duration-300 flex flex-col justify-between relative group overflow-hidden"
+                className="bg-card hover:bg-secondary/40 border border-border/60 hover:border-primary/50 rounded-2xl p-2.5 shadow-sm hover:shadow-xl hover:-translate-y-1 cursor-pointer transition-all duration-300 flex flex-col justify-between relative group overflow-hidden"
               >
                 <div>
                   {/* Thumbnail / Image Simulation */}
-                  <div className="w-full h-32 bg-secondary/30 rounded-2xl overflow-hidden border border-border/50 flex items-center justify-center text-muted-foreground relative mb-4 shrink-0 group-hover:border-primary/30 transition-colors">
+                  <div className="w-full h-24 bg-secondary/30 rounded-xl overflow-hidden border border-border/50 flex items-center justify-center text-muted-foreground relative mb-2.5 shrink-0 group-hover:border-primary/30 transition-colors">
                     {product.image ? (
-                      <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                      <img src={getImageUrl(product.image)} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                     ) : (
-                      <Package className="w-8 h-8 opacity-20 group-hover:scale-110 group-hover:opacity-40 transition-all duration-300" />
+                      <Package className="w-6 h-6 opacity-20 group-hover:scale-110 group-hover:opacity-40 transition-all duration-300" />
                     )}
                     
                     {product.isPopular && (
@@ -595,33 +712,51 @@ export default function Products() {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-black tracking-widest text-muted-foreground/80 uppercase">#{product.code}</span>
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-black uppercase tracking-wider border leading-none ${
-                      product.status === "Active" 
-                        ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
-                        : 'bg-red-500/10 text-red-500 border-red-500/20'
-                    }`}>
-                      {product.status}
-                    </span>
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span className="text-[9px] font-black tracking-widest text-muted-foreground/80 uppercase truncate">#{product.code}</span>
+                    <span 
+                      title={product.status === "Active" ? "Available" : "Not Available"}
+                      className={`w-2 h-2 rounded-full shrink-0 ${product.status === "Active" ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]'}`} 
+                    />
                   </div>
                   
-                  <h4 className="text-[13px] font-black text-foreground mt-1.5 leading-snug group-hover:text-primary transition-colors line-clamp-2">{product.name}</h4>
+                  <h4 className="text-[11px] font-black text-foreground mt-1 leading-snug group-hover:text-primary transition-colors line-clamp-2">{product.name}</h4>
                   
-                  <div className="flex gap-2 mt-1.5 items-center">
-                    <span className="text-[10px] text-muted-foreground font-semibold px-2 py-0.5 bg-secondary rounded-md">{product.category}</span>
-                    <span className="text-[10px] text-muted-foreground font-semibold px-2 py-0.5 bg-secondary rounded-md">{product.kitchen}</span>
+                  <div className="flex flex-wrap gap-1 mt-1.5 items-center">
+                    <span className="text-[9px] text-muted-foreground font-semibold px-1.5 py-0.5 bg-secondary rounded">{product.category}</span>
                   </div>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-border/40 flex items-center justify-between">
-                  <span className="text-sm font-black text-primary">Rs. {product.price.toLocaleString()}</span>
+                <div className="mt-3 pt-2 border-t border-border/40 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-primary">Rs. {product.price.toLocaleString()}</span>
+                    
+                    {hasVariants && (
+                      <span className="text-[8px] bg-sky-500/10 text-sky-500 border border-sky-500/20 px-1.5 py-0.5 rounded font-black flex items-center gap-0.5">
+                        <Plus className="w-2.5 h-2.5" /> {varCount}
+                      </span>
+                    )}
+                  </div>
                   
-                  {hasModifiers && (
-                    <span className="text-[9px] bg-sky-500/10 text-sky-500 border border-sky-500/20 px-2 py-1 rounded-md font-black flex items-center gap-1">
-                      <Plus className="w-3 h-3" /> {modCount}
-                    </span>
-                  )}
+                  {/* Grid Action Buttons */}
+                  <div className="flex justify-end items-center gap-1.5 pt-1.5 border-t border-border/30" onClick={e => e.stopPropagation()}>
+                    <button 
+                      onClick={() => handleOpenView(product)}
+                      className="p-1.5 bg-secondary text-foreground hover:bg-border border border-border rounded-lg transition-colors flex justify-center items-center shadow-sm"
+                      title="View"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                    {canManageProducts && (
+                      <button 
+                        onClick={() => handleDeleteProduct(product.id)}
+                        className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20 rounded-lg transition-colors flex justify-center items-center shadow-sm"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </motion.div>
             )
@@ -637,19 +772,18 @@ export default function Products() {
 
         // TABLE VIEW LAYOUT
         <div className="bg-card border border-border rounded-3xl shadow-sm overflow-hidden">
-          <table className="w-full text-sm text-left border-collapse">
-            <thead className="bg-secondary/30 text-muted-foreground text-xs uppercase font-bold border-b border-border">
+          <table className="w-full text-xs text-left border-collapse">
+            <thead className="bg-secondary/30 text-muted-foreground text-[10px] uppercase font-bold border-b border-border">
               <tr>
-                <th className="px-6 py-4">Image</th>
-                <th className="px-6 py-4">Code</th>
-                <th className="px-6 py-4">Product Name</th>
-                <th className="px-6 py-4">Category</th>
-                <th className="px-6 py-4">Kitchen</th>
-                <th className="px-6 py-4">Price</th>
-                <th className="px-6 py-4">Stock Status</th>
-                <th className="px-6 py-4 text-center">Modifiers</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Actions</th>
+                <th className="px-4 py-3">Image</th>
+                <th className="px-4 py-3">Code</th>
+                <th className="px-4 py-3">Product Name</th>
+                <th className="px-4 py-3">Category</th>
+                <th className="px-4 py-3">Kitchen</th>
+                <th className="px-4 py-3">Price</th>
+                <th className="px-4 py-3 text-center">Variants</th>
+                <th className="px-4 py-3 text-center">Status</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -659,58 +793,48 @@ export default function Products() {
                   onClick={() => handleOpenView(product)}
                   className="hover:bg-secondary/20 transition-colors cursor-pointer group"
                 >
-                  <td className="px-6 py-3">
-                    <div className="w-10 h-10 rounded-lg bg-secondary/50 overflow-hidden border border-border flex items-center justify-center text-muted-foreground">
+                  <td className="px-4 py-2">
+                    <div className="w-8 h-8 rounded-lg bg-secondary/50 overflow-hidden border border-border flex items-center justify-center text-muted-foreground">
                       {product.image ? (
-                        <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                        <img src={getImageUrl(product.image)} alt={product.name} className="w-full h-full object-cover" />
                       ) : (
-                        <Package className="w-5 h-5 opacity-30" />
+                        <Package className="w-4 h-4 opacity-30" />
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 font-bold text-muted-foreground">#{product.code}</td>
-                  <td className="px-6 py-4 font-black text-foreground">{product.name}</td>
-                  <td className="px-6 py-4 text-xs font-semibold text-muted-foreground">{product.category}</td>
-                  <td className="px-6 py-4 text-xs font-bold text-foreground">{product.kitchen}</td>
-                  <td className="px-6 py-4 font-black text-primary">Rs. {product.price}</td>
-                  <td className="px-6 py-4">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${product.stockStatus === 'In Stock' ? 'text-emerald-500 bg-emerald-500/10' : 'text-red-500 bg-red-500/10'}`}>
-                      {product.stockStatus || "In Stock"}
-                    </span>
+                  <td className="px-4 py-2 font-bold text-muted-foreground text-[11px]">#{product.code}</td>
+                  <td className="px-4 py-2 font-black text-foreground text-xs">{product.name}</td>
+                  <td className="px-4 py-2 text-[10px] font-semibold text-muted-foreground">{product.category}</td>
+                  <td className="px-4 py-2 text-[10px] font-bold text-foreground">{product.kitchen}</td>
+                  <td className="px-4 py-2 font-black text-primary text-xs">Rs. {product.price}</td>
+                  <td className="px-4 py-2 text-center font-bold text-[11px] text-foreground">
+                    {product.variants?.length || 0}
                   </td>
-                  <td className="px-6 py-4 text-center font-bold text-xs text-foreground">
-                    {product.modifiers?.length || 0}
+                  <td className="px-4 py-2 text-center">
+                    <div className="flex justify-center items-center">
+                      <span 
+                        title={product.status === "Active" ? "Available" : "Not Available"}
+                        className={`w-2.5 h-2.5 rounded-full ${product.status === "Active" ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'}`} 
+                      />
+                    </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className={`text-[9px] px-2 py-0.5 rounded font-black border uppercase tracking-wider ${
-                      product.status === "Active" ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'
-                    }`}>
-                      {product.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
+                  <td className="px-4 py-2 text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex justify-end gap-1.5">
                       <button 
                         onClick={() => handleOpenView(product)}
-                        className="p-2 bg-secondary text-foreground hover:bg-border border border-border rounded-xl transition-colors"
+                        className="p-1.5 bg-secondary text-foreground hover:bg-border border border-border rounded-lg transition-colors shadow-sm"
+                        title="View"
                       >
                         <Eye className="w-3.5 h-3.5" />
                       </button>
                       {canManageProducts && (
-                        <>
-                          <button 
-                            onClick={() => handleDuplicateProduct(product)}
-                            className="p-2 bg-secondary text-foreground hover:bg-border border border-border rounded-xl transition-colors"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteProduct(product.id)}
-                            className="p-2 bg-secondary/80 text-red-500 hover:bg-red-500 hover:text-white border border-border rounded-xl transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </>
+                        <button 
+                          onClick={() => handleDeleteProduct(product.id)}
+                          className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20 rounded-lg transition-colors shadow-sm"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       )}
                     </div>
                   </td>
@@ -718,7 +842,7 @@ export default function Products() {
               ))}
               {filteredAndSorted.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-muted-foreground font-bold">
+                  <td colSpan={9} className="py-12 text-center text-muted-foreground font-bold">
                     No products matching search criteria.
                   </td>
                 </tr>
@@ -728,9 +852,11 @@ export default function Products() {
         </div>
 
       )}
+        </div>
+      </div>
 
       {/* ==================================================
-          PRODUCT DETAILS & EDIT DRAWER (RIGHT-SIDE)
+          RIGHT DRAWER (ADD / EDIT / VIEW)ER (RIGHT-SIDE)
           ================================================== */}
       {createPortal(
         <AnimatePresence>
@@ -784,7 +910,7 @@ export default function Products() {
                     <div className="w-full h-44 bg-secondary border-2 border-dashed border-border rounded-2xl overflow-hidden flex flex-col items-center justify-center relative text-muted-foreground">
                       {selectedProduct.image ? (
                         <>
-                          <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
+                          <img src={getImageUrl(selectedProduct.image)} alt={selectedProduct.name} className="w-full h-full object-cover" />
                           <button 
                             type="button" 
                             onClick={() => setSelectedProduct({ ...selectedProduct, image: undefined })}
@@ -827,14 +953,17 @@ export default function Products() {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs uppercase font-black text-muted-foreground">Barcode / SKU</label>
-                      <input 
+                      <label className="text-xs uppercase font-black text-muted-foreground">Kitchen Assignment</label>
+                      <select 
                         disabled={drawerMode === "view"}
-                        type="text"
-                        value={selectedProduct.barcode || ""}
-                        onChange={e => setSelectedProduct({ ...selectedProduct, barcode: e.target.value })}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-black text-foreground disabled:opacity-60"
-                      />
+                        value={selectedProduct.kitchen}
+                        onChange={e => setSelectedProduct({ ...selectedProduct, kitchen: e.target.value })}
+                        className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-bold text-foreground disabled:opacity-60"
+                      >
+                        <option value="Fast Food">Fast Food Kitchen</option>
+                        <option value="Restaurant">Restaurant Kitchen</option>
+                        <option value="Drinks">Drinks Bar</option>
+                      </select>
                     </div>
                     <div className="col-span-2 space-y-1">
                       <label className="text-xs uppercase font-black text-muted-foreground">Product Name</label>
@@ -860,73 +989,38 @@ export default function Products() {
                         className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-bold text-foreground disabled:opacity-60"
                       >
                         {categoriesList.map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
+                          <option key={cat.id || cat.name} value={cat.name}>{cat.name}</option>
                         ))}
                       </select>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs uppercase font-black text-muted-foreground">Kitchen Assignment</label>
-                      <select 
-                        disabled={drawerMode === "view"}
-                        value={selectedProduct.kitchen}
-                        onChange={e => setSelectedProduct({ ...selectedProduct, kitchen: e.target.value })}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-bold text-foreground disabled:opacity-60"
-                      >
-                        <option value="Fast Food">Fast Food Kitchen</option>
-                        <option value="Restaurant">Restaurant Kitchen</option>
-                        <option value="Drinks">Drinks Bar</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs uppercase font-black text-muted-foreground">Retail Price (Rs.)</label>
-                      <input 
-                        required
-                        disabled={drawerMode === "view"}
-                        type="number"
-                        value={selectedProduct.price}
-                        onChange={e => setSelectedProduct({ ...selectedProduct, price: parseFloat(e.target.value) || 0 })}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-black text-primary disabled:opacity-60"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs uppercase font-black text-muted-foreground">Cost Price (Rs.)</label>
-                      <input 
-                        disabled={drawerMode === "view"}
-                        type="number"
-                        value={selectedProduct.costPrice || 0}
-                        onChange={e => setSelectedProduct({ ...selectedProduct, costPrice: parseFloat(e.target.value) || 0 })}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-black text-muted-foreground disabled:opacity-60"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Status & Stock */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs uppercase font-black text-muted-foreground">Menu Status</label>
+                      <label className="text-xs uppercase font-black text-muted-foreground">Availability</label>
                       <select 
                         disabled={drawerMode === "view"}
                         value={selectedProduct.status}
                         onChange={e => setSelectedProduct({ ...selectedProduct, status: e.target.value })}
                         className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-bold text-foreground disabled:opacity-60"
                       >
-                        <option value="Active">Active</option>
-                        <option value="Hidden">Hidden</option>
+                        <option value="Active">Available (Active)</option>
+                        <option value="Hidden">Not Available (Hidden)</option>
                       </select>
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs uppercase font-black text-muted-foreground">Stock Availability</label>
-                      <select 
-                        disabled={drawerMode === "view"}
-                        value={selectedProduct.stockStatus || "In Stock"}
-                        onChange={e => setSelectedProduct({ ...selectedProduct, stockStatus: e.target.value })}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-bold text-foreground disabled:opacity-60"
-                      >
-                        <option value="In Stock">In Stock</option>
-                        <option value="Out of Stock">Out of Stock</option>
-                      </select>
-                    </div>
+                    {(!selectedProduct.variants || selectedProduct.variants.length === 0) && (
+                      <div className="space-y-1">
+                        <label className="text-xs uppercase font-black text-muted-foreground">Price (Rs.)</label>
+                        <input 
+                          required
+                          disabled={drawerMode === "view"}
+                          type="number"
+                          value={selectedProduct.price}
+                          onChange={e => setSelectedProduct({ ...selectedProduct, price: parseFloat(e.target.value) || 0 })}
+                          className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-black text-primary disabled:opacity-60"
+                        />
+                      </div>
+                    )}
                   </div>
+
+
 
                   {/* Description */}
                   <div className="space-y-1">
@@ -940,45 +1034,78 @@ export default function Products() {
                     />
                   </div>
 
-                  {/* Modifiers Builder Section */}
+                  {/* Variants Builder Section */}
                   <div className="space-y-3 border-t border-border pt-4">
                     <div className="flex justify-between items-center">
-                      <h4 className="text-xs uppercase font-black tracking-wider text-muted-foreground">Modifiers / Add-ons</h4>
+                      <h4 className="text-xs uppercase font-black tracking-wider text-muted-foreground">Product Variants</h4>
                       {drawerMode !== "view" && (
                         <button 
                           type="button" 
-                          onClick={handleAddModifier}
+                          onClick={() => setSelectedProduct({...selectedProduct, variants: [...(selectedProduct.variants || []), {name: "", price: 0}]})}
                           className="text-[10px] text-primary hover:underline font-black flex items-center gap-1"
                         >
-                          <Plus className="w-3 h-3" /> Add Mod
+                          <Plus className="w-3 h-3" /> Add Variant
                         </button>
                       )}
                     </div>
                     
                     <div className="space-y-2">
-                      {selectedProduct.modifiers && selectedProduct.modifiers.length > 0 ? (
-                        selectedProduct.modifiers.map((mod: any, idx: number) => (
-                          <div key={idx} className="flex justify-between items-center p-3 bg-secondary/50 border border-border rounded-xl">
-                            <div>
-                              <p className="text-xs font-black text-foreground">{mod.name}</p>
-                              <span className="text-[10px] text-muted-foreground font-semibold">
-                                Price Adjustment: +Rs. {mod.price || 0}
-                              </span>
+                      {selectedProduct.variants && selectedProduct.variants.length > 0 ? (
+                        selectedProduct.variants.map((variant: any, idx: number) => (
+                          <div key={idx} className="flex justify-between items-center p-3 bg-secondary/50 border border-border rounded-xl gap-3">
+                            <div className="flex-1 space-y-2">
+                              {drawerMode === "view" ? (
+                                <>
+                                  <p className="text-xs font-black text-foreground">{variant.name}</p>
+                                  <span className="text-[10px] text-muted-foreground font-semibold">
+                                    Price: Rs. {variant.price || 0}
+                                  </span>
+                                </>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <input 
+                                    type="text" 
+                                    value={variant.name}
+                                    placeholder="Variant Name"
+                                    onChange={(e) => {
+                                      const next = [...selectedProduct.variants]
+                                      next[idx].name = e.target.value
+                                      setSelectedProduct({ ...selectedProduct, variants: next })
+                                    }}
+                                    className="flex-1 h-8 px-2 rounded bg-background border border-border text-xs font-bold focus:border-orange-500 outline-none"
+                                  />
+                                  <input 
+                                    type="number" 
+                                    value={variant.price}
+                                    placeholder="Price (Rs)"
+                                    onChange={(e) => {
+                                      const next = [...selectedProduct.variants]
+                                      next[idx].price = parseFloat(e.target.value) || 0
+                                      setSelectedProduct({ ...selectedProduct, variants: next })
+                                    }}
+                                    className="w-24 h-8 px-2 rounded bg-background border border-border text-xs font-bold focus:border-orange-500 outline-none"
+                                  />
+                                </div>
+                              )}
                             </div>
                             {drawerMode !== "view" && (
                               <button 
                                 type="button" 
-                                onClick={() => handleRemoveModifier(idx)}
-                                className="p-1 text-red-500 hover:bg-red-500/10 rounded"
+                                onClick={() => {
+                                  const next = [...selectedProduct.variants]
+                                  next.splice(idx, 1)
+                                  setSelectedProduct({ ...selectedProduct, variants: next })
+                                }}
+                                className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
                               >
-                                <X className="w-3.5 h-3.5" />
+                                <X className="w-4 h-4" />
                               </button>
                             )}
                           </div>
                         ))
                       ) : (
                         <p className="text-[10px] text-muted-foreground font-semibold italic text-center py-4 bg-secondary/20 rounded-xl border border-dashed border-border">
-                          No customized modifiers defined. Default categories apply.
+                          No variants defined for this product.
                         </p>
                       )}
                     </div>
@@ -1007,66 +1134,54 @@ export default function Products() {
 
                 </div>
 
-                {/* Footer Buttons */}
-                <div className="p-6 border-t border-border bg-card grid grid-cols-2 gap-2 shrink-0">
+                {/* Drawer Footer Actions */}
+                <div className="p-6 border-t border-border bg-card flex justify-end gap-3 shrink-0">
                   {drawerMode === "view" ? (
-                    <>
-                      {canManageProducts && (
-                        <>
-                          <button 
-                            type="button" 
-                            onClick={() => setDrawerMode("edit")}
-                            className="py-3 bg-primary text-white hover:bg-primary/95 font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md shadow-primary/10"
-                          >
-                            <Edit2 className="w-4 h-4" /> Edit Item
-                          </button>
-                          <button 
-                            type="button" 
-                            onClick={() => handleDuplicateProduct(selectedProduct)}
-                            className="py-3 bg-secondary hover:bg-border border border-border text-foreground font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
-                          >
-                            <Copy className="w-4 h-4" /> Duplicate
-                          </button>
-                          <button 
-                            type="button" 
-                            onClick={async () => {
-                              const status = selectedProduct.status === "Active" ? "Hidden" : "Active"
-                              try {
-                                const res = await menuService.updateProduct(selectedProduct.id, { status })
-                                if (res.data) {
-                                  setSelectedProduct(res.data)
-                                  fetchProductsAndCategories()
-                                  toast.success(`Product status changed to: ${status}`)
-                                }
-                              } catch (err: any) {
-                                toast.error("Failed to update status")
+                    canManageProducts && (
+                      <>
+                        <button 
+                          type="button" 
+                          onClick={() => setDrawerMode("edit")}
+                          className="h-10 px-6 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-black transition-colors flex items-center gap-2 shadow-md shadow-primary/10"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" /> Edit Product
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={async () => {
+                            const newStatusUI = selectedProduct.status === "Active" ? "Hidden" : "Active"
+                            const status = newStatusUI === "Active" ? "AVAILABLE" : "UNAVAILABLE"
+                            const lifecycle_state = newStatusUI === "Active" ? "ACTIVE" : "HIDDEN"
+                            try {
+                              const res = await menuService.updateProduct(selectedProduct.id, { status, lifecycle_state })
+                              if (res.data) {
+                                // Refresh using the new formatted version
+                                fetchProductsAndCategories()
+                                toast.success(`Product status changed to: ${newStatusUI}`)
+                                setIsDrawerOpen(false)
                               }
-                            }}
-                            className="col-span-2 py-3 bg-secondary hover:bg-border border border-border text-foreground font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
-                          >
-                            {selectedProduct.status === "Active" ? <EyeOff className="w-4 h-4 text-zinc-500" /> : <Eye className="w-4 h-4 text-primary" />}
-                            {selectedProduct.status === "Active" ? "Hide Product" : "Restore Product"}
-                          </button>
-                          <button 
-                            type="button" 
-                            onClick={() => handleDeleteProduct(selectedProduct.id)}
-                            className="col-span-2 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
-                          >
-                            <Trash2 className="w-4.5 h-4.5" /> Delete Product
-                          </button>
-                        </>
-                      )}
-                    </>
+                            } catch (err: any) {
+                              toast.error("Failed to update status")
+                            }
+                          }}
+                          className="h-10 px-4 bg-secondary hover:bg-border border border-border text-foreground font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                        >
+                          {selectedProduct.status === "Active" ? <EyeOff className="w-4 h-4 text-zinc-500" /> : <Eye className="w-4 h-4 text-primary" />}
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={() => handleDeleteProduct(selectedProduct.id)}
+                          className="h-10 px-4 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )
                   ) : (
                     <>
                       <button 
-                        type="submit"
-                        className="py-3 bg-primary text-white hover:bg-primary/95 font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md shadow-primary/10"
-                      >
-                        Save Product
-                      </button>
-                      <button 
-                        type="button" 
+                        type="button"
+                        disabled={isSaving}
                         onClick={() => {
                           if (drawerMode === "add") {
                             setIsDrawerOpen(false)
@@ -1076,9 +1191,22 @@ export default function Products() {
                             setSelectedProduct(products.find(p => p.id === selectedProduct.id))
                           }
                         }}
-                        className="py-3 bg-secondary hover:bg-border border border-border text-foreground font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                        className="h-10 px-6 rounded-xl bg-secondary text-foreground text-xs font-black hover:bg-border transition-colors border border-border disabled:opacity-50"
                       >
                         Cancel
+                      </button>
+                      <button 
+                        type="submit"
+                        disabled={isSaving}
+                        className="h-10 px-6 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-black transition-colors flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                      >
+                        {isSaving ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving...
+                          </>
+                        ) : (
+                          "Save Product"
+                        )}
                       </button>
                     </>
                   )}

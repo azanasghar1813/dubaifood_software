@@ -38,5 +38,19 @@ export const runSettingsSeeder = (db) => {
     if (res.changes > 0) inserted++;
   }
 
-  return { name: 'Settings', inserted };
+  // Insert default printers for UI kitchen selections
+  const insertPrinter = db.prepare('INSERT OR IGNORE INTO printers (id, name, type, station_type) VALUES (?, ?, ?, ?)');
+  const defaultPrinters = [
+    { id: 'Fast Food', name: 'Fast Food Station', type: 'Fast Food', station: 'FAST_FOOD' },
+    { id: 'Restaurant', name: 'Restaurant Station', type: 'Restaurant', station: 'RESTAURANT' },
+    { id: 'Drinks', name: 'Drinks Station', type: 'Receipt', station: 'RECEIPT' },
+    { id: 'Main Kitchen', name: 'Main Kitchen Station', type: 'Kitchen', station: 'KITCHEN' }
+  ];
+
+  for (const printer of defaultPrinters) {
+    const res = insertPrinter.run(printer.id, printer.name, printer.type, printer.station);
+    if (res.changes > 0) inserted++;
+  }
+
+  return { name: 'Settings/Printers', inserted };
 };
