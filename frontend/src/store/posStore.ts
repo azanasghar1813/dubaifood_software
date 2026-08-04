@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { cartService } from '../services/posServices/cartService'
+import { apiClient } from '../api/client'
+import { useOrderStore } from './orderStore'
 
 export interface OrderItem {
   id: string
@@ -137,7 +139,13 @@ export const usePosStore = create<POSState>((set, get) => ({
   loadOrderForEdit: (order) => {
     set({
       activeOrder: order,
-      cart: (order?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] })),
+      cart: (order?.items || []).map((item: any) => ({ 
+        ...item, 
+        name: item.variant_name ? `${item.product_name_snapshot || item.product_name || item.name} (${item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Unknown'), 
+        price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, 
+        cartItemId: item._cart_item_id || item.cartItemId || item.id, 
+        selectedModifiers: item.modifiers || item.selectedModifiers || [] 
+      })),
       editingOrderId: order?.id || null,
       orderType: order?.orderType || order?.order_type || get().orderType,
       tableNumber: order?.tableNumber || order?.table_id || null,
@@ -148,17 +156,36 @@ export const usePosStore = create<POSState>((set, get) => ({
   addToCart: async (product, quantity = 1, selectedModifiers = [], notes = "") => {
     set({ isLoadingOrder: true })
     try {
-      const res = await cartService.addItem({
-        product_id: product.id,
-        variant_id: product.variant_id,
-        quantity,
-        modifiers: selectedModifiers,
-        notes
-      })
+      const state = get()
+      let res: any;
+      if (state.editingOrderId) {
+        res = await apiClient.post(`/orders/${state.editingOrderId}/items`, {
+          product_id: product.id,
+          variant_id: product.variant_id,
+          quantity,
+          modifiers: selectedModifiers,
+          notes
+        })
+      } else {
+        res = await cartService.addItem({
+          product_id: product.id,
+          variant_id: product.variant_id,
+          quantity,
+          modifiers: selectedModifiers,
+          notes
+        })
+      }
+      
       if (res.success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))
+          cart: (res.data?.items || []).map((item: any) => ({ 
+            ...item, 
+            name: item.variant_name ? `${item.product_name_snapshot || item.product_name || item.name} (${item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Unknown'), 
+            price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, 
+            cartItemId: item._cart_item_id || item.cartItemId || item.id, 
+            selectedModifiers: item.modifiers || item.selectedModifiers || [] 
+          }))
         })
       }
     } catch (e) {
@@ -168,14 +195,27 @@ export const usePosStore = create<POSState>((set, get) => ({
     }
   },
 
-  removeFromCart: async (cartItemId) => {
+  removeFromCart: async (cartItemId, reason?: string) => {
     set({ isLoadingOrder: true })
     try {
-      const res = await cartService.removeItem(cartItemId)
+      const state = get()
+      let res: any;
+      if (state.editingOrderId) {
+        res = await apiClient.delete(`/orders/${state.editingOrderId}/items/${cartItemId}`, { data: { reason } })
+      } else {
+        res = await cartService.removeItem(cartItemId)
+      }
+      
       if (res.success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))
+          cart: (res.data?.items || []).map((item: any) => ({ 
+            ...item, 
+            name: item.variant_name ? `${item.product_name_snapshot || item.product_name || item.name} (${item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Unknown'), 
+            price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, 
+            cartItemId: item._cart_item_id || item.cartItemId || item.id, 
+            selectedModifiers: item.modifiers || item.selectedModifiers || [] 
+          }))
         })
       }
     } catch (e) {
@@ -188,11 +228,24 @@ export const usePosStore = create<POSState>((set, get) => ({
   updateQuantity: async (cartItemId, quantity) => {
     set({ isLoadingOrder: true })
     try {
-      const res = await cartService.updateItemQuantity(cartItemId, quantity)
+      const state = get()
+      let res: any;
+      if (state.editingOrderId) {
+        res = await apiClient.put(`/orders/${state.editingOrderId}/items/${cartItemId}`, { quantity })
+      } else {
+        res = await cartService.updateItemQuantity(cartItemId, quantity)
+      }
+      
       if (res.success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))
+          cart: (res.data?.items || []).map((item: any) => ({ 
+            ...item, 
+            name: item.variant_name ? `${item.product_name_snapshot || item.product_name || item.name} (${item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Unknown'), 
+            price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, 
+            cartItemId: item._cart_item_id || item.cartItemId || item.id, 
+            selectedModifiers: item.modifiers || item.selectedModifiers || [] 
+          }))
         })
       }
     } catch (e) {
@@ -322,9 +375,10 @@ export const usePosStore = create<POSState>((set, get) => ({
           notes: p.notes || null
         })
       }
-      // Draft order is now completed. Fetch a new draft order.
-      set({ activeOrder: null, cart: [] })
+      // Draft order is now completed. Fetch a new draft order and sync history.
+      set({ activeOrder: null, cart: [], editingOrderId: null })
       await get().fetchDraftOrder()
+      useOrderStore.getState().syncOrdersFromBackend()
     } catch (e) {
       console.error(e)
     } finally {
@@ -334,10 +388,10 @@ export const usePosStore = create<POSState>((set, get) => ({
 
   clearCart: () => {
     void cartService.clearCart().then(() => {
-      set({ activeOrder: null, cart: [] })
+      set({ activeOrder: null, cart: [], editingOrderId: null })
       void get().fetchDraftOrder()
     }).catch(() => {
-      set({ activeOrder: null, cart: [] })
+      set({ activeOrder: null, cart: [], editingOrderId: null })
       void get().fetchDraftOrder()
     })
   },

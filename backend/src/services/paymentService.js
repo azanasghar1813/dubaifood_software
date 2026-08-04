@@ -126,11 +126,16 @@ class PaymentService {
 
       const newPaymentState = isFullyPaid
         ? PaymentState.PAID
-        : PaymentState.PARTIALLY_PAID;
+        : PaymentState.UNPAID; // PARTIALLY_PAID was removed per user request
 
-      const newLifecycleState = isFullyPaid && order.lifecycle_state === OrderLifecycleState.DRAFT
-        ? OrderLifecycleState.PAID
-        : order.lifecycle_state; // Only auto-advance DRAFT → PAID; other states stay
+      let newLifecycleState = order.lifecycle_state;
+      if (isFullyPaid) {
+        if (order.kitchen_state === 'COMPLETED' || order.kitchen_state === 'SERVED') {
+          newLifecycleState = OrderLifecycleState.COMPLETED;
+        } else if (order.lifecycle_state === OrderLifecycleState.DRAFT || order.lifecycle_state === OrderLifecycleState.HELD) {
+          newLifecycleState = OrderLifecycleState.ACTIVE;
+        }
+      }
 
       // ── 3c. Update order record ──────────────────────────────────────────
       const orderUpdates = {

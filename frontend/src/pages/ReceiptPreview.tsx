@@ -61,7 +61,7 @@ export default function ReceiptPreview({ order }: ReceiptPreviewProps) {
 
           <div className="flex justify-between text-xs mb-4">
             <div>
-              <p>Order: <span className="font-bold">#{orderNumber}</span></p>
+              <p>Order: <span className="font-bold">{orderNumber}</span></p>
               <p>Date: {date}</p>
             </div>
             <div className="text-right">

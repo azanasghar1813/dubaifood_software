@@ -2,9 +2,9 @@ import { create } from 'zustand'
 import type { CartItem } from './posStore'
 import { fetchOrders, fetchOrderDetail, type HistoryOrderRow, type HistoryOrderDetail } from '../api/historyApi'
 
-export type OrderStatus = 'Draft' | 'Confirmed' | 'Completed' | 'Cancelled'
-export type KitchenStatus = 'Waiting' | 'Accepted' | 'Preparing' | 'Ready' | 'Served' | 'Cancelled'
-export type PaymentStatus = 'Unpaid' | 'Partial Paid' | 'Paid' | 'Refunded'
+export type OrderStatus = 'Draft' | 'Held' | 'Active' | 'Completed' | 'Cancelled' | 'Refunded'
+export type KitchenStatus = 'Pending' | 'Sent' | 'Preparing' | 'Ready' | 'Served' | 'Completed' | 'Cancelled'
+export type PaymentStatus = 'Unpaid' | 'Paid' | 'Refunded'
 export type PaymentMethod = 'Cash' | 'JazzCash' | 'EasyPaisa' | 'Meezan' | 'Bank Transfer' | 'Debit Card' | 'Credit Card' | 'QR' | 'Store Credit' | 'Mixed'
 
 export interface PaymentRecord {
@@ -30,7 +30,7 @@ export interface AuditLogEntry {
   id: string
   who: string
   when: string
-  actionType: 'Added Item' | 'Removed Item' | 'Changed Quantity' | 'Changed Table' | 'Changed Customer' | 'Discount Applied' | 'Order Cancelled' | 'Kitchen Reprinted' | 'Other'
+  actionType: string
   oldValue: string
   newValue: string
   reason: string
@@ -74,6 +74,8 @@ export interface Order {
   payments: PaymentRecord[]
   splits?: SplitRecord[]
   roundOffAdjustment?: number
+  syncStatus?: 'Pending' | 'Synced' | 'Failed'
+  receiptReprints?: number
 }
 
 interface OrderState {
@@ -92,36 +94,46 @@ interface OrderState {
 
 const mapLifecycleState = (state: string): OrderStatus => {
   const normalized = String(state || '').toUpperCase()
-  if (normalized.includes('CANCEL')) return 'Cancelled'
-  if (normalized.includes('COMPLETE') || normalized.includes('PAID')) return 'Completed'
-  if (normalized.includes('CONFIRM') || normalized.includes('OPEN')) return 'Confirmed'
+  if (normalized === 'DRAFT') return 'Draft'
+  if (normalized === 'HELD') return 'Held'
+  if (normalized === 'ACTIVE') return 'Active'
+  if (normalized === 'COMPLETED') return 'Completed'
+  if (normalized === 'CANCELLED') return 'Cancelled'
+  if (normalized === 'REFUNDED') return 'Refunded'
   return 'Draft'
 }
 
 const mapKitchenState = (state: string): KitchenStatus => {
   const normalized = String(state || '').toUpperCase()
-  if (normalized.includes('CANCEL')) return 'Cancelled'
-  if (normalized.includes('SERV')) return 'Served'
-  if (normalized.includes('READY')) return 'Ready'
-  if (normalized.includes('PREP')) return 'Preparing'
-  if (normalized.includes('ACC')) return 'Accepted'
-  return 'Waiting'
+  if (normalized === 'PENDING') return 'Pending'
+  if (normalized === 'SENT') return 'Sent'
+  if (normalized === 'PREPARING') return 'Preparing'
+  if (normalized === 'READY') return 'Ready'
+  if (normalized === 'SERVED') return 'Served'
+  return 'Pending'
 }
 
 const mapPaymentState = (state: string): PaymentStatus => {
   const normalized = String(state || '').toUpperCase()
-  if (normalized.includes('REFUND')) return 'Refunded'
-  if (normalized.includes('PART')) return 'Partial Paid'
-  if (normalized.includes('PAID')) return 'Paid'
+  if (normalized === 'PAID') return 'Paid'
+  if (normalized === 'REFUNDED') return 'Refunded'
   return 'Unpaid'
+}
+
+const formatName = (nameOrId?: string): string => {
+  if (!nameOrId) return 'Staff'
+  if (nameOrId.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)) {
+    return 'Staff'
+  }
+  return nameOrId
 }
 
 const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOrderDetail): Order => {
   const items = (detail?.items || []).map((item: any, index: number) => ({
     cartItemId: item.id || `${row.id}-item-${index}`,
     id: item.product_id || item.id || `${row.id}-product-${index}`,
-    name: item.product_name || item.name || 'Item',
-    price: Number(item.unit_price ?? item.price ?? 0),
+    name: item.product_name_snapshot || item.product_name || item.name || 'Item',
+    price: Number(item.final_unit_price ?? item.unit_price ?? item.price ?? 0),
     quantity: Number(item.quantity ?? 1),
     category: item.category || item.category_name || 'Unknown',
     code: item.code || item.product_code || '',
@@ -139,20 +151,20 @@ const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOrderDeta
     received: payment.amount_received ?? payment.received,
     change: payment.change_amount ?? payment.change,
     timestamp: payment.created_at || row.updated_at,
-    cashier: payment.cashier_name || row.cashier_user_id || 'Cashier',
+    cashier: formatName(payment.cashier_name || row.cashier_user_id),
     status: payment.status || 'Completed'
   })) as PaymentRecord[]
 
   const timeline = (detail?.timeline || []).map((event: any) => ({
     event: event.event_type || event.notes || 'Event',
-    timestamp: event.created_at,
-    cashier: event.actor_user_id || 'System',
-    remarks: event.notes || ''
+    timestamp: event.created_at ? (event.created_at.includes('Z') ? event.created_at : event.created_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
+    cashier: formatName(event.user_id || event.actor_user_id),
+    remarks: event.description || event.notes || ''
   }))
 
   const auditLog = (detail?.audit_trail || []).map((entry: any) => ({
     id: entry.id,
-    who: entry.user_id || 'System',
+    who: formatName(entry.user_id),
     when: entry.created_at,
     actionType: (entry.action || 'Other') as AuditLogEntry['actionType'],
     oldValue: typeof entry.old_value === 'string' ? entry.old_value : JSON.stringify(entry.old_value ?? ''),
@@ -162,8 +174,8 @@ const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOrderDeta
 
   return {
     id: row.id,
-    orderNumber: row.order_number,
-    cashierName: row.cashier_user_id || 'Cashier',
+    orderNumber: row.order_number.replace('POS-', '').replace(new RegExp(`^\\d{8}-`), ''),
+    cashierName: formatName(row.cashier_user_id),
     customerName: row.customer_id || 'Walk-in',
     customerPhone: undefined,
     isVip: false,
@@ -179,8 +191,8 @@ const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOrderDeta
     status: mapLifecycleState(row.lifecycle_state),
     kitchenStatus: mapKitchenState(row.kitchen_state),
     paymentStatus: mapPaymentState(row.payment_state),
-    timestamp: row.created_at,
-    lastEdited: row.updated_at,
+    timestamp: row.created_at ? (row.created_at.includes('Z') ? row.created_at : row.created_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
+    lastEdited: row.updated_at ? (row.updated_at.includes('Z') ? row.updated_at : row.updated_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
     editedBy: undefined,
     isLocked: false,
     lockedBy: undefined,
@@ -190,7 +202,9 @@ const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOrderDeta
     kitchenNotes: undefined,
     payments,
     splits: undefined,
-    roundOffAdjustment: 0
+    roundOffAdjustment: 0,
+    syncStatus: 'Synced',
+    receiptReprints: 0
   }
 }
 

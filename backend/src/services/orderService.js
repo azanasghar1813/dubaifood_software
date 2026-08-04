@@ -306,7 +306,7 @@ class OrderService {
   /**
    * Removes an item from an order.
    */
-  removeItem(orderId, itemId, actorUserId = 'SYSTEM') {
+  removeItem(orderId, itemId, actorUserId = 'SYSTEM', reason = null) {
     return dbEngine.transaction(() => {
       const order = orderRepository.findById(orderId);
       orderValidationService.validateItemModification(order, itemId);
@@ -316,13 +316,23 @@ class OrderService {
 
       const updatedOrder = this.recalculateOrderTotals(orderId);
 
+      // If the order has already been sent to kitchen, we should log a reason
+      const isSent = order.kitchen_state !== 'PENDING';
+      const description = `Removed ${item ? item.product_name_snapshot : 'item'} from order ${order.order_number}`;
+      
       orderTimelineService.recordEvent(orderId, actorUserId, 'ITEM_REMOVED', {
-        description: `Removed ${item ? item.product_name_snapshot : 'item'} from order ${order.order_number}`,
-        metadata: { item_id: itemId }
+        description: description + (reason ? ` - Reason: ${reason}` : ''),
+        metadata: { item_id: itemId, reason }
       });
 
+      if (isSent && reason) {
+        const orderAuditLogService = require('./orderAuditLogService').orderAuditLogService;
+        orderAuditLogService.logChange(orderId, actorUserId, 'ITEM_VOID', item.product_name_snapshot, 'REMOVED', reason);
+      }
+
       activityLogService.logActivity(actorUserId, 'ITEM_REMOVED', 'ORDER', orderId, {
-        order_number: order.order_number
+        order_number: order.order_number,
+        reason: reason
       });
 
       return updatedOrder;
@@ -377,11 +387,33 @@ class OrderService {
     return orders.map(o => this._hydrateOrder(o));
   }
 
-  /**
-   * Centralized state transition delegation.
-   */
   transitionOrderState(orderId, targetState, context = {}) {
     return orderLifecycleService.transition(orderId, targetState, context);
+  }
+
+  /**
+   * Deletes an order permanently from the database.
+   */
+  deleteOrder(orderId, userId) {
+    return dbEngine.transaction(() => {
+      const order = orderRepository.findById(orderId);
+      if (!order) throw new Error('Order not found.');
+
+      activityLogService.logActivity(
+        userId,
+        'ORDER_DELETED',
+        'ORDER',
+        orderId,
+        { orderNumber: order.order_number, reason: 'Order permanently deleted' }
+      );
+
+      const success = orderRepository.delete(orderId);
+      if (!success) throw new Error('Failed to delete order.');
+      
+      orderCacheService.invalidate(orderId);
+      syncService.queueSyncEvent('ORDER_DELETED', orderId, { order_number: order.order_number });
+      return { success: true, message: 'Order deleted successfully' };
+    });
   }
 }
 

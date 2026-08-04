@@ -18,7 +18,7 @@ import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "reac
 import { menuService } from "../services/menuService"
 import { CustomerPanelModal } from "../components/CustomerPanelModal"
 import { TableSelectorModal } from "../components/TableSelectorModal"
-import { RecentOrdersModal } from "../components/RecentOrdersModal"
+import { ActiveOrdersSidebar } from "../components/ActiveOrdersSidebar"
 import type { PaymentMethod } from "../store/orderStore"
 
 type Product = any
@@ -303,7 +303,10 @@ export default function POS() {
           if (matchedSize) {
             addToCart({ ...activeProductForSize, variant_id: matchedSize.id, name: `${activeProductForSize.name} (${matchedSize.name})`, price: matchedSize.price, code: matchedSize.code || activeProductForSize.code });
             setSizeModalOpen(false);
-            setTimeout(() => searchInputRef.current?.focus(), 100)
+            setActiveProductForSize(null);
+            setSearchQuery("");
+            searchInputRef.current?.focus();
+            scrollToTop();
           }
           return
         }
@@ -313,7 +316,10 @@ export default function POS() {
           e.preventDefault();
           addToCart({ ...activeProductForSize, variant_id: matchedSizeByLetter.id, name: `${activeProductForSize.name} (${matchedSizeByLetter.name})`, price: matchedSizeByLetter.price, code: matchedSizeByLetter.code || activeProductForSize.code });
           setSizeModalOpen(false);
-          setTimeout(() => searchInputRef.current?.focus(), 100)
+          setActiveProductForSize(null);
+          setSearchQuery("");
+          searchInputRef.current?.focus();
+          scrollToTop();
         }
         return
       }
@@ -377,7 +383,9 @@ export default function POS() {
 
       if (e.ctrlKey && e.key.toLowerCase() === 'e') {
         e.preventDefault()
-        setRecentOrdersModalOpen(prev => !prev)
+        if (!recentOrdersModalOpen) {
+          setRecentOrdersModalOpen(true)
+        }
       }
 
       if (e.ctrlKey && e.key.toLowerCase() === 'p') {
@@ -818,6 +826,7 @@ export default function POS() {
                     } else if (e.key === "ArrowUp") {
                       e.preventDefault(); setSearchSelectedIndex(s => Math.max(s - 1, 0));
                     } else if (e.key === "Enter" || e.key === "Tab") {
+                      if (sizeModalOpen) return; // let global listener handle size selection
                       if (searchQuery) {
                         e.preventDefault(); e.stopPropagation();
                         if (searchResults[searchSelectedIndex]) {
@@ -1440,7 +1449,7 @@ export default function POS() {
                      const amt = amountReceived ? Number(amountReceived) : getNetTotal()
                      
                      completeOrder(
-                       [{ 
+                       isPaidPrint ? [{ 
                          id: `pay-${Date.now()}`, 
                          method: selectedPaymentMethod, 
                          amount: getNetTotal(),
@@ -1449,7 +1458,7 @@ export default function POS() {
                          timestamp: new Date().toISOString(),
                          cashier: user?.name || "Ahmed",
                          status: 'Completed'
-                       }]
+                       }] : []
                      );
                      
                      window.print();
@@ -1611,7 +1620,7 @@ export default function POS() {
         }}
       />
       <TableSelectorModal isOpen={tableModalOpen} onClose={() => setTableModalOpen(false)} />
-      <RecentOrdersModal 
+      <ActiveOrdersSidebar 
         isOpen={recentOrdersModalOpen} 
         onClose={() => setRecentOrdersModalOpen(false)} 
       />

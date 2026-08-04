@@ -1,11 +1,7 @@
 export const OrderLifecycleState = Object.freeze({
   DRAFT: 'DRAFT',
   HELD: 'HELD',
-  PENDING_PAYMENT: 'PENDING_PAYMENT',
-  PAID: 'PAID',
-  PREPARING: 'PREPARING',
-  READY: 'READY',
-  SERVED: 'SERVED',
+  ACTIVE: 'ACTIVE',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
   REFUNDED: 'REFUNDED',
@@ -24,9 +20,23 @@ export const KitchenState = Object.freeze({
 
 export const PaymentState = Object.freeze({
   UNPAID: 'UNPAID',
-  PARTIALLY_PAID: 'PARTIALLY_PAID',
   PAID: 'PAID',
   REFUNDED: 'REFUNDED'
+});
+
+export const DeliveryState = Object.freeze({
+  WAITING_RIDER: 'WAITING_RIDER',
+  OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
+  DELIVERED: 'DELIVERED'
+});
+
+export const TableState = Object.freeze({
+  FREE: 'FREE',
+  OCCUPIED: 'OCCUPIED',
+  ORDERING: 'ORDERING',
+  DINING: 'DINING',
+  AWAITING_BILL: 'AWAITING_BILL',
+  CLEANING: 'CLEANING'
 });
 
 export const OrderType = Object.freeze({
@@ -40,46 +50,20 @@ export const OrderType = Object.freeze({
 export const AllowedLifecycleTransitions = Object.freeze({
   [OrderLifecycleState.DRAFT]: [
     OrderLifecycleState.HELD,
-    OrderLifecycleState.PENDING_PAYMENT,
-    OrderLifecycleState.PAID,
+    OrderLifecycleState.ACTIVE,
+    OrderLifecycleState.COMPLETED,
     OrderLifecycleState.CANCELLED
   ],
   [OrderLifecycleState.HELD]: [
     OrderLifecycleState.DRAFT,
-    OrderLifecycleState.PENDING_PAYMENT,
-    OrderLifecycleState.PAID,
+    OrderLifecycleState.ACTIVE,
+    OrderLifecycleState.COMPLETED,
     OrderLifecycleState.CANCELLED
   ],
-  [OrderLifecycleState.PENDING_PAYMENT]: [
+  [OrderLifecycleState.ACTIVE]: [
     OrderLifecycleState.DRAFT,
     OrderLifecycleState.HELD,
-    OrderLifecycleState.PAID,
-    OrderLifecycleState.CANCELLED
-  ],
-  [OrderLifecycleState.PAID]: [
-    OrderLifecycleState.PREPARING,
-    OrderLifecycleState.READY,
-    OrderLifecycleState.SERVED,
     OrderLifecycleState.COMPLETED,
-    OrderLifecycleState.REFUNDED,
-    OrderLifecycleState.CANCELLED
-  ],
-  [OrderLifecycleState.PREPARING]: [
-    OrderLifecycleState.READY,
-    OrderLifecycleState.SERVED,
-    OrderLifecycleState.COMPLETED,
-    OrderLifecycleState.CANCELLED,
-    OrderLifecycleState.REFUNDED
-  ],
-  [OrderLifecycleState.READY]: [
-    OrderLifecycleState.SERVED,
-    OrderLifecycleState.COMPLETED,
-    OrderLifecycleState.CANCELLED,
-    OrderLifecycleState.REFUNDED
-  ],
-  [OrderLifecycleState.SERVED]: [
-    OrderLifecycleState.COMPLETED,
-    OrderLifecycleState.REFUNDED,
     OrderLifecycleState.CANCELLED
   ],
   [OrderLifecycleState.COMPLETED]: [
@@ -107,8 +91,7 @@ export const AllowedKitchenTransitions = Object.freeze({
 });
 
 export const AllowedPaymentTransitions = Object.freeze({
-  [PaymentState.UNPAID]: [PaymentState.PARTIALLY_PAID, PaymentState.PAID],
-  [PaymentState.PARTIALLY_PAID]: [PaymentState.PAID, PaymentState.UNPAID, PaymentState.REFUNDED],
+  [PaymentState.UNPAID]: [PaymentState.PAID],
   [PaymentState.PAID]: [PaymentState.REFUNDED],
   [PaymentState.REFUNDED]: []
 });
@@ -117,5 +100,5 @@ export const AllowedPaymentTransitions = Object.freeze({
 export const EditableLifecycleStates = [
   OrderLifecycleState.DRAFT,
   OrderLifecycleState.HELD,
-  OrderLifecycleState.PENDING_PAYMENT
+  OrderLifecycleState.ACTIVE
 ];

@@ -42,7 +42,7 @@ const paymentStatusColors: Record<string, string> = {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { orders } = useOrderStore()
+  const { orders, syncOrdersFromBackend } = useOrderStore()
   const { loadOrderForEdit, clearCart } = usePosStore()
   const { user } = useAuthStore()
 
@@ -153,8 +153,12 @@ export default function Dashboard() {
   // Auto refresh
   useEffect(() => {
     fetchDashboardData()
+    syncOrdersFromBackend()
     // Poll every 60 seconds
-    const interval = setInterval(fetchDashboardData, 60000)
+    const interval = setInterval(() => {
+      fetchDashboardData()
+      syncOrdersFromBackend()
+    }, 60000)
     return () => clearInterval(interval)
   }, [])
 
@@ -311,7 +315,7 @@ export default function Dashboard() {
                   >
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-black text-foreground">Order #{order.orderNumber}</span>
+                        <span className="font-black text-foreground">Order {order.orderNumber}</span>
                         <span className="text-[10px] bg-secondary border border-border text-muted-foreground px-1.5 py-0.5 rounded font-black">{order.orderType}</span>
                         {isOverdue && (
                           <span className="text-[9px] bg-red-500 text-white px-2 py-0.5 rounded font-black uppercase tracking-wider animate-bounce">OVERDUE</span>

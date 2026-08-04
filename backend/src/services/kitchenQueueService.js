@@ -86,7 +86,7 @@ class KitchenQueueService {
     const cached = this.cache.get(key);
     if (cached) return cached.payload;
 
-    const activeOrderStates = ['PENDING_PAYMENT', 'PAID', 'PREPARING', 'READY', 'SERVED'];
+    const activeOrderStates = ['ACTIVE'];
     const activeItemStates = ['PENDING', 'SENT', 'PREPARING', 'READY', 'SERVED'];
     const params = [];
 

@@ -51,22 +51,65 @@ export const dashboardService = {
     const ordersCount = result.ordersCount || 0;
     const aov = ordersCount > 0 ? Math.round(todaySales / ordersCount) : 0;
 
-    // Fast Food vs Restaurant vs Deals logic can be complex in pure SQL right now
-    // We'll return 0s since there's no data yet.
+    const paidStmt = dbEngine.db.prepare(`
+      SELECT COUNT(id) as paid
+      FROM orders
+      WHERE payment_state = 'PAID'
+      AND created_at >= ? AND created_at < ?
+    `);
+    const paid = paidStmt.get(start, end)?.paid || 0;
+
+    const unpaidStmt = dbEngine.db.prepare(`
+      SELECT COUNT(id) as unpaid
+      FROM orders
+      WHERE payment_state != 'PAID'
+      AND created_at >= ? AND created_at < ?
+    `);
+    const unpaid = unpaidStmt.get(start, end)?.unpaid || 0;
+
+    const cashStmt = dbEngine.db.prepare(`
+      SELECT SUM(amount) as cashInDrawer
+      FROM order_payments
+      WHERE (payment_method = 'CASH' OR payment_method = 'Cash')
+      AND created_at >= ? AND created_at < ?
+    `);
+    const cashInDrawer = cashStmt.get(start, end)?.cashInDrawer || 0;
+
+    const custStmt = dbEngine.db.prepare(`
+      SELECT COUNT(DISTINCT customer_id) as customers
+      FROM orders
+      WHERE customer_id IS NOT NULL
+      AND created_at >= ? AND created_at < ?
+    `);
+    const customers = custStmt.get(start, end)?.customers || 0;
+
+    const typeStmt = dbEngine.db.prepare(`
+      SELECT order_type, COUNT(id) as count
+      FROM orders
+      WHERE created_at >= ? AND created_at < ?
+      GROUP BY order_type
+    `);
+    const types = typeStmt.all(start, end);
+    let restaurant = 0, fastFood = 0, deals = 0;
+    for (const t of types) {
+      if (t.order_type === 'DINE_IN') restaurant += t.count;
+      else if (t.order_type === 'TAKEAWAY' || t.order_type === 'DELIVERY') fastFood += t.count;
+    }
+
     return {
       todaySales,
       ordersCount,
       preparing: 0, // Migrated to operations
       ready: 0,
       served: 0,
-      paid: 0,
-      unpaid: 0,
+      paid,
+      unpaid,
       aov,
-      customers: 0,
-      fastFood: 0,
-      restaurant: 0,
-      deals: 0,
-      cashInDrawer: todaySales * 0.72 // Simple simulation for now
+      customers,
+      fastFood,
+      restaurant,
+      deals,
+      cashInDrawer
     };
   },
 
@@ -105,29 +148,71 @@ export const dashboardService = {
   },
 
   getRevenueAnalytics: () => {
-    // Normally this queries group by hour for today's orders
-    // Since db is empty, we return a flat template 
-    // to prevent frontend from crashing, while satisfying the requirement.
-    return [
-      { hour: "06:00 AM", sales: 0 },
-      { hour: "08:00 AM", sales: 0 },
-      { hour: "10:00 AM", sales: 0 },
-      { hour: "12:00 PM", sales: 0 },
-      { hour: "02:00 PM", sales: 0 },
-      { hour: "04:00 PM", sales: 0 },
-      { hour: "06:00 PM", sales: 0 },
-      { hour: "08:00 PM", sales: 0 },
-      { hour: "10:00 PM", sales: 0 },
-      { hour: "12:00 AM", sales: 0 },
-      { hour: "02:00 AM", sales: 0 },
-      { hour: "04:00 AM", sales: 0 }
+    const { start, end } = dashboardService.getBusinessDayBounds();
+    const stmt = dbEngine.db.prepare(`
+      SELECT created_at, grand_total
+      FROM orders
+      WHERE created_at >= ? AND created_at < ?
+    `);
+    const results = stmt.all(start, end);
+    
+    const buckets = [
+      { hourStr: "06:00 AM", h: 6 },
+      { hourStr: "08:00 AM", h: 8 },
+      { hourStr: "10:00 AM", h: 10 },
+      { hourStr: "12:00 PM", h: 12 },
+      { hourStr: "02:00 PM", h: 14 },
+      { hourStr: "04:00 PM", h: 16 },
+      { hourStr: "06:00 PM", h: 18 },
+      { hourStr: "08:00 PM", h: 20 },
+      { hourStr: "10:00 PM", h: 22 },
+      { hourStr: "12:00 AM", h: 0 },
+      { hourStr: "02:00 AM", h: 2 },
+      { hourStr: "04:00 AM", h: 4 },
     ];
+    const mapped = buckets.map(b => ({ hour: b.hourStr, sales: 0 }));
+    
+    for (const r of results) {
+      if (!r.created_at) continue;
+      const dt = r.created_at.includes('Z') ? new Date(r.created_at) : new Date(r.created_at.replace(' ', 'T') + 'Z');
+      const h = dt.getHours(); 
+      
+      let bucketIndex = 0;
+      if (h >= 6 && h < 8) bucketIndex = 0;
+      else if (h >= 8 && h < 10) bucketIndex = 1;
+      else if (h >= 10 && h < 12) bucketIndex = 2;
+      else if (h >= 12 && h < 14) bucketIndex = 3;
+      else if (h >= 14 && h < 16) bucketIndex = 4;
+      else if (h >= 16 && h < 18) bucketIndex = 5;
+      else if (h >= 18 && h < 20) bucketIndex = 6;
+      else if (h >= 20 && h < 22) bucketIndex = 7;
+      else if (h >= 22 && h < 24) bucketIndex = 8;
+      else if (h >= 0 && h < 2) bucketIndex = 9;
+      else if (h >= 2 && h < 4) bucketIndex = 10;
+      else if (h >= 4 && h < 6) bucketIndex = 11;
+      
+      mapped[bucketIndex].sales += (r.grand_total || 0);
+    }
+    
+    return mapped;
   },
 
   getPopularProducts: () => {
-    // In future, this queries order_items grouped by product_id
-    // Returning empty array so frontend shows "No data" elegantly
-    return [];
+    const { start, end } = dashboardService.getBusinessDayBounds();
+    const stmt = dbEngine.db.prepare(`
+      SELECT oi.product_name_snapshot as name, SUM(oi.quantity) as sales, oi.product_id as id
+      FROM order_items oi
+      JOIN orders o ON oi.order_id = o.id
+      WHERE o.created_at >= ? AND o.created_at < ?
+      GROUP BY oi.product_id, oi.product_name_snapshot
+      ORDER BY sales DESC
+      LIMIT 5
+    `);
+    return stmt.all(start, end).map(row => ({
+      id: row.id || Math.random().toString(36).substr(2, 9),
+      name: row.name || 'Unknown',
+      sales: row.sales || 0
+    }));
   },
 
   getActivityFeed: (limit = 10) => {

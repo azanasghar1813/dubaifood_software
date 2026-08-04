@@ -58,13 +58,14 @@ class KitchenStatusService {
 
     switch (aggregateKitchenState) {
       case KitchenState.PREPARING:
-        return OrderLifecycleState.PREPARING;
       case KitchenState.READY:
-        return OrderLifecycleState.READY;
       case KitchenState.SERVED:
-        return OrderLifecycleState.SERVED;
+        return OrderLifecycleState.ACTIVE;
       case KitchenState.COMPLETED:
-        return OrderLifecycleState.COMPLETED;
+        if (order.payment_state === 'PAID') {
+          return OrderLifecycleState.COMPLETED;
+        }
+        return OrderLifecycleState.ACTIVE;
       default:
         return order.lifecycle_state;
     }

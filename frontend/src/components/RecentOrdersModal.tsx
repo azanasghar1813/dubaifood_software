@@ -42,7 +42,7 @@ const paymentStatusColors: Record<string, string> = {
 }
 
 export const RecentOrdersModal: React.FC<RecentOrdersModalProps> = ({ isOpen, onClose }) => {
-  const { orders, lockOrder, unlockOrder } = useOrderStore()
+  const { orders, lockOrder, unlockOrder, syncOrdersFromBackend } = useOrderStore()
   const { loadOrderForEdit, clearCart, editingOrderId } = usePosStore()
   const { user } = useAuthStore()
   
@@ -54,6 +54,13 @@ export const RecentOrdersModal: React.FC<RecentOrdersModalProps> = ({ isOpen, on
 
   const searchInputRef = useRef<HTMLInputElement>(null)
 
+  // Fetch orders when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      syncOrdersFromBackend()
+    }
+  }, [isOpen])
+
   // Sync selectedOrder when orders store updates (e.g. after locking)
   useEffect(() => {
     if (selectedOrder) {
@@ -61,24 +68,6 @@ export const RecentOrdersModal: React.FC<RecentOrdersModalProps> = ({ isOpen, on
       if (updated) setSelectedOrder(updated)
     }
   }, [orders])
-
-  // Keyboard Shortcuts
-  useEffect(() => {
-    if (!isOpen) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (overrideModalOrder) { setOverrideModalOrder(null); return }
-        handleClose()
-      }
-      if (e.ctrlKey && e.key === 'f') { e.preventDefault(); searchInputRef.current?.focus() }
-      if (e.ctrlKey && e.key === 'e' && selectedOrder) {
-        e.preventDefault()
-        handleEditOrder(selectedOrder)
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, selectedOrder, onClose, overrideModalOrder])
 
   const handleClose = () => {
     // Unlock any order locked by this session when closing without editing
@@ -122,26 +111,49 @@ export const RecentOrdersModal: React.FC<RecentOrdersModalProps> = ({ isOpen, on
     return result
   }, [orders, searchQuery, filter])
 
+  // Keyboard Shortcuts
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (overrideModalOrder) { setOverrideModalOrder(null); return }
+        handleClose()
+      }
+      if (e.ctrlKey && e.key === 'f') { e.preventDefault(); searchInputRef.current?.focus() }
+      if (e.ctrlKey && e.key.toLowerCase() === 'e' && selectedOrder) {
+        e.preventDefault()
+        e.stopPropagation()
+        handleEditOrder(selectedOrder)
+      }
+      
+      // Arrow Key Navigation
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        if (filteredOrders.length === 0) return
+        if (!selectedOrder) {
+          setSelectedOrder(filteredOrders[0])
+          return
+        }
+        const idx = filteredOrders.findIndex(o => o.id === selectedOrder.id)
+        if (e.key === 'ArrowUp' && idx > 0) {
+          setSelectedOrder(filteredOrders[idx - 1])
+        } else if (e.key === 'ArrowDown' && idx >= 0 && idx < filteredOrders.length - 1) {
+          setSelectedOrder(filteredOrders[idx + 1])
+        }
+      }
+      
+      if (e.key === 'Enter' && selectedOrder) {
+        e.preventDefault()
+        e.stopPropagation()
+        handleEditOrder(selectedOrder)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, selectedOrder, onClose, overrideModalOrder, filteredOrders])
+
   const handleEditOrder = (order: Order) => {
     const cashierName = user?.name || 'Cashier'
-
-    // Rule: Editing a Paid order requires manager PIN approval
-    if (order.paymentStatus === 'Paid') {
-      const pin = prompt("Editing a Paid order requires Manager Authorization. Enter PIN (1234):")
-      if (pin !== '1234') {
-        alert("Unauthorized Manager PIN.")
-        return
-      }
-    }
-
-    // Rule: Cancelled orders cannot move back to active states without authorization
-    if (order.status === 'Cancelled') {
-      const pin = prompt("Modifying a Cancelled order requires Manager Authorization. Enter PIN (1234):")
-      if (pin !== '1234') {
-        alert("Unauthorized Manager PIN.")
-        return
-      }
-    }
 
     // If locked by someone else → show override modal
     if (order.isLocked && order.lockedBy !== cashierName) {
@@ -238,7 +250,7 @@ export const RecentOrdersModal: React.FC<RecentOrdersModalProps> = ({ isOpen, on
                 >
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-lg font-black text-foreground">#{order.orderNumber}</span>
+                      <span className="text-lg font-black text-foreground">{order.orderNumber}</span>
                       {order.isLocked && (
                         <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-500 border border-red-500/20 uppercase font-bold flex items-center gap-0.5">
                           <Lock className="w-2.5 h-2.5" /> {order.lockedBy === (user?.name || 'Cashier') ? 'You' : order.lockedBy}
@@ -416,7 +428,7 @@ export const RecentOrdersModal: React.FC<RecentOrdersModalProps> = ({ isOpen, on
                         <span>Subtotal</span><span>Rs {selectedOrder.subtotal.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between text-sm font-bold text-muted-foreground">
-                        <span>Tax</span><span>Rs {selectedOrder.tax.toLocaleString()}</span>
+                        <span>{selectedOrder.orderType === 'Delivery' ? 'Delivery Charges' : 'Service Charges'}</span><span>Rs {selectedOrder.tax.toLocaleString()}</span>
                       </div>
                       {selectedOrder.serviceCharge > 0 && (
                         <div className="flex justify-between text-sm font-bold text-muted-foreground">

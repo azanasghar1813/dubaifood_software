@@ -89,7 +89,7 @@ export const orderController = {
     const ctx = resolveSessionContext(req, res, { requireShift: false });
     if (!ctx) return;
     try {
-      const updatedOrder = orderService.removeItem(req.params.orderId, req.params.itemId, ctx.userId);
+      const updatedOrder = orderService.removeItem(req.params.orderId, req.params.itemId, ctx.userId, req.body.reason);
       sendSuccess(res, updatedOrder, 'Item removed from order');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -142,6 +142,18 @@ export const orderController = {
       );
       sendSuccess(res, updatedOrder, 'Order state updated');
     } catch (error) {
+      sendError(res, 400, error.message);
+    }
+  },
+
+  deleteOrder: (req, res) => {
+    const ctx = resolveSessionContext(req, res, { requireShift: false });
+    if (!ctx) return;
+    try {
+      const result = orderService.deleteOrder(req.params.orderId, ctx.userId);
+      sendSuccess(res, result, 'Order deleted successfully');
+    } catch (error) {
+      console.error('Delete Order Error:', error);
       sendError(res, 400, error.message);
     }
   },

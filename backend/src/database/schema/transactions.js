@@ -13,6 +13,7 @@ export const transactionsSchema = `
     lifecycle_state TEXT NOT NULL DEFAULT 'DRAFT',
     kitchen_state TEXT NOT NULL DEFAULT 'PENDING',
     payment_state TEXT NOT NULL DEFAULT 'UNPAID',
+    delivery_state TEXT DEFAULT NULL,
     subtotal REAL NOT NULL DEFAULT 0,
     tax_total REAL NOT NULL DEFAULT 0,
     discount_total REAL NOT NULL DEFAULT 0,

@@ -219,3 +219,10 @@ export async function fetchPrintJobs(orderId: string): Promise<{ success: boolea
 export async function fetchReprintLog(orderId: string): Promise<{ success: boolean; data: any[] }> {
   return apiClient.get(`/print/reprint-log/${orderId}`);
 }
+
+/**
+ * Delete an order permanently.
+ */
+export async function deleteOrder(orderId: string): Promise<{ success: boolean; message?: string }> {
+  return apiClient.delete(`/orders/${orderId}`);
+}

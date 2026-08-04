@@ -5,13 +5,13 @@ class OrderRepository {
     dbEngine.prepare(`
       INSERT INTO orders (
         id, order_number, business_date, branch_id, cashier_user_id, shift_id,
-        customer_id, table_id, order_type, lifecycle_state, kitchen_state, payment_state,
+        customer_id, table_id, order_type, lifecycle_state, kitchen_state, payment_state, delivery_state,
         subtotal, tax_total, discount_total, tip_total, delivery_fee, grand_total,
         paid_total, due_total, hold_name, held_at, notes, sync_status, sync_version,
         created_at, updated_at
       ) VALUES (
         @id, @order_number, @business_date, @branch_id, @cashier_user_id, @shift_id,
-        @customer_id, @table_id, @order_type, @lifecycle_state, @kitchen_state, @payment_state,
+        @customer_id, @table_id, @order_type, @lifecycle_state, @kitchen_state, @payment_state, @delivery_state,
         @subtotal, @tax_total, @discount_total, @tip_total, @delivery_fee, @grand_total,
         @paid_total, @due_total, @hold_name, @held_at, @notes, @sync_status, @sync_version,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
@@ -29,6 +29,7 @@ class OrderRepository {
       lifecycle_state: orderData.lifecycle_state || 'DRAFT',
       kitchen_state: orderData.kitchen_state || 'PENDING',
       payment_state: orderData.payment_state || 'UNPAID',
+      delivery_state: orderData.delivery_state || null,
       subtotal: orderData.subtotal || 0,
       tax_total: orderData.tax_total || 0,
       discount_total: orderData.discount_total || 0,
@@ -95,7 +96,7 @@ class OrderRepository {
     return dbEngine.prepare(`
       SELECT * FROM orders 
       WHERE branch_id = ? 
-        AND lifecycle_state IN ('DRAFT', 'HELD', 'PENDING_PAYMENT', 'PAID', 'PREPARING', 'READY')
+        AND lifecycle_state IN ('DRAFT', 'HELD', 'ACTIVE')
       ORDER BY updated_at DESC
     `).all(branchId);
   }
@@ -128,6 +129,20 @@ class OrderRepository {
         AND business_date <= ?
       ORDER BY created_at DESC
     `).all(branchId, startDate, endDate);
+  }
+
+  delete(id) {
+    return dbEngine.transaction(() => {
+      dbEngine.prepare('DELETE FROM order_item_modifiers WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').run(id);
+      dbEngine.prepare('DELETE FROM order_item_addons WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').run(id);
+      dbEngine.prepare('DELETE FROM order_item_variants WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').run(id);
+      dbEngine.prepare('DELETE FROM order_items WHERE order_id = ?').run(id);
+      dbEngine.prepare('DELETE FROM order_payments WHERE order_id = ?').run(id);
+      dbEngine.prepare('DELETE FROM order_timeline WHERE order_id = ?').run(id);
+      dbEngine.prepare('DELETE FROM order_metadata WHERE order_id = ?').run(id);
+      const res = dbEngine.prepare('DELETE FROM orders WHERE id = ?').run(id);
+      return res.changes > 0;
+    });
   }
 }
 

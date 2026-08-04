@@ -53,7 +53,7 @@ class OrderCacheService {
 
   getKitchenOrders() {
     return Array.from(this.cache.values()).filter(
-      o => [OrderLifecycleState.PAID, OrderLifecycleState.PREPARING, OrderLifecycleState.READY].includes(o.lifecycle_state)
+      o => [OrderLifecycleState.ACTIVE].includes(o.lifecycle_state)
     );
   }
 

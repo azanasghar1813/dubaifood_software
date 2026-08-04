@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 
 export const KDS: React.FC = () => {
-  const { tickets, updateTicketStatus, receiveOrder } = useKdsStore()
+  const { tickets, updateTicketStatus } = useKdsStore()
   const { orders } = useOrderStore()
   
   // Local KDS State
@@ -515,7 +515,7 @@ export const KDS: React.FC = () => {
                   >
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xl font-black text-foreground">Order #{ticket.orderNumber}</span>
+                        <span className="text-xl font-black text-foreground">Order {ticket.orderNumber}</span>
                         {isEdit && (
                           <span className="bg-amber-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider animate-pulse">MODIFIED</span>
                         )}
@@ -732,7 +732,7 @@ export const KDS: React.FC = () => {
                 <div className="p-5 bg-card border border-border rounded-[2rem] font-mono text-xs text-foreground">
                   <div className="text-center pb-3 border-b border-dashed border-border mb-3">
                     <h4 className="font-black uppercase">KITCHEN DUPLICATE</h4>
-                    <p className="text-[10px] text-muted-foreground mt-1">Order #{selectedTicket.orderNumber}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Order {selectedTicket.orderNumber}</p>
                   </div>
                   
                   <div className="space-y-3">

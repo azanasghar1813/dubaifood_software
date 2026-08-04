@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, User, Phone, MapPin, StickyNote, Star, X, CheckCircle2, Plus } from "lucide-react"
 import { usePosStore } from "../store/posStore"
+import toast from "react-hot-toast"
 
 import { customerService } from "../services/customerService"
 
@@ -34,8 +35,8 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
 
   const fetchCustomers = async () => {
     try {
-      const res = await customerService.getCustomers()
-      if (res.success) {
+      const res: any = await customerService.getCustomers()
+      if (res.success || res.data?.success || res.status === 200) {
         const mapped = (res.data || []).map((c: any) => ({
           ...c,
           name: c.name || [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Guest'
@@ -98,14 +99,14 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
           return next
         })
       } else if (e.key === 'Enter') {
-        // if inside the form, let form submit handle it if it's phone input.
-        // if inside search bar or list, select the highlighted customer.
+        // if inside search bar, select the highlighted customer.
         if (document.activeElement === searchInputRef.current) {
           e.preventDefault()
           if (filteredCustomers[selectedIndex]) {
             handleSelect(filteredCustomers[selectedIndex])
           }
         }
+        // If focused on other inputs (phone, name, address), allow the default form submission to handle it.
       } else if (e.key === 'Backspace' && searchQuery === '' && document.activeElement === searchInputRef.current) {
         e.preventDefault()
         onClose()
@@ -143,14 +144,17 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
       is_vip: isVip,
     }
     try {
-      const res = await customerService.createCustomer(newCust)
-      if (res.success) {
-        setCustomer(res.data)
+      const res: any = await customerService.createCustomer(newCust)
+      if (res.success || res.data?.success || res.id || res.data?.id) {
+        setCustomer(res.data || res)
         onClose()
         if (onSuccess) onSuccess()
+      } else {
+        toast.error("Failed to create customer")
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
+      toast.error(err?.response?.data?.error || err?.message || "Error saving customer")
     }
   }
 
@@ -240,7 +244,14 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone *</label>
                   <div className="relative">
                     <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input ref={phoneRef} onFocus={() => setActiveInput(1)} required type="text" value={newPhone} onChange={e => setNewPhone(e.target.value)} className="w-full h-10 pl-9 pr-4 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold" placeholder="050..." />
+                    <input ref={phoneRef} onFocus={() => setActiveInput(1)} required type="text" value={newPhone} onChange={e => {
+                      let val = e.target.value.replace(/[^0-9]/g, '');
+                      val = val.slice(0, 11);
+                      if (val.length > 4) {
+                        val = val.slice(0, 4) + '-' + val.slice(4);
+                      }
+                      setNewPhone(val);
+                    }} className="w-full h-10 pl-9 pr-4 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold" placeholder="03XX-XXXXXXX" maxLength={12} />
                   </div>
                 </div>
               </div>

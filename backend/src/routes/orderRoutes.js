@@ -33,4 +33,7 @@ router.post('/draft/hold', validate(holdOrderSchema), orderController.holdOrder)
 router.post('/resume/:orderId', orderController.resumeOrder);
 router.post('/:orderId/transition', validate(transitionStateSchema), orderController.transitionState);
 
+// Delete order
+router.delete('/:orderId', orderController.deleteOrder);
+
 export default router;

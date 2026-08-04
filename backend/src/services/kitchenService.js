@@ -38,7 +38,7 @@ class KitchenService {
     const releaseMode = String(config.kitchen_release_mode || 'PAYMENT').toUpperCase();
 
     if (releaseMode === 'CONFIRMATION') {
-      return [OrderLifecycleState.PENDING_PAYMENT, OrderLifecycleState.PAID].includes(order.lifecycle_state);
+      return [OrderLifecycleState.ACTIVE].includes(order.lifecycle_state);
     }
 
     return order.payment_state === 'PAID';

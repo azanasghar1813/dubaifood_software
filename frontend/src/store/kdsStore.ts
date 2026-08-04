@@ -85,12 +85,12 @@ export const useKdsStore = create<KdsState>((set, get) => ({
           return {
             id: row.id,
             orderId: row.id,
-            orderNumber: row.order_number,
+            orderNumber: row.order_number ? row.order_number.replace('POS-', '').replace(new RegExp(`^\\d{8}-`), '') : '',
             table: row.table_id || 'N/A',
             customer: row.customer_id || 'Walk-in',
             orderType: row.order_type,
             cashier: row.cashier_name || 'System',
-            orderTime: row.created_at,
+            orderTime: row.created_at ? (row.created_at.includes('Z') ? row.created_at : row.created_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
             priority: p as KitchenPriority,
             status: s as KitchenStatus,
             notes: row.kitchen_notes || row.customer_notes || '',
@@ -98,17 +98,26 @@ export const useKdsStore = create<KdsState>((set, get) => ({
             items: row.items.map((item: any) => {
               let is = item.kitchen_state?.toUpperCase() || 'PENDING'
               if (is === 'PENDING' || is === 'SENT') is = 'Waiting'
+              
+              let type = 'NORMAL'
+              if (item.created_at && row.created_at) {
+                const itemTime = new Date(item.created_at.includes('Z') ? item.created_at : item.created_at.replace(' ', 'T') + 'Z').getTime()
+                const orderTime = new Date(row.created_at.includes('Z') ? row.created_at : row.created_at.replace(' ', 'T') + 'Z').getTime()
+                if (itemTime > orderTime + 2000) {
+                  type = 'ADD'
+                }
+              }
 
               return {
                 id: item.id,
                 cartItemId: item.id,
-                name: item.product_name_snapshot,
+                name: item.product_name_snapshot || item.product_name || 'Item',
                 quantity: item.quantity,
                 modifiers: item.modifiers?.map((m: any) => ({ name: m.modifier_name_snapshot })) || [],
                 notes: item.notes || null,
                 kitchen: item.kitchen_station_name_snapshot || 'Main Kitchen',
                 status: is as KitchenStatus,
-                type: 'NORMAL'
+                type: type as 'ADD' | 'NORMAL' | 'REMOVE'
               }
             })
           }
@@ -123,10 +132,31 @@ export const useKdsStore = create<KdsState>((set, get) => ({
   updateTicketStatus: async (ticketId, status) => {
     // Optimistic update
     set(state => ({
-      tickets: state.tickets.map(t => t.id === ticketId ? { ...t, status } : t)
+      tickets: state.tickets.map(t => t.id === ticketId ? { 
+        ...t, 
+        status,
+        items: t.items.map(i => ({ ...i, status })) // Cascade status to items visually
+      } : t)
     }))
-    // Optional: map status back to backend values if needed, but not implemented here yet
-    // Backend doesn't have an endpoint for updating entire ticket status directly, usually it's per item
+    
+    // Backend doesn't have a batch order status endpoint, so we update each item
+    try {
+      const { kitchenService } = await import('../services/kitchenService')
+      const ticket = get().tickets.find(t => t.id === ticketId)
+      if (ticket) {
+        const promises = ticket.items.map(item => {
+          if (status === 'Preparing') return kitchenService.startPreparingItem(item.id)
+          if (status === 'Ready') return kitchenService.markItemReady(item.id)
+          if (status === 'Served') return kitchenService.markItemServed(item.id)
+          if (status === 'Cancelled') return kitchenService.cancelItem(item.id)
+          return Promise.resolve()
+        })
+        await Promise.allSettled(promises)
+      }
+      get().fetchTickets()
+    } catch (e) {
+      console.error('Failed to update ticket status', e)
+    }
   },
 
   updateItemStatus: async (ticketId, itemId, status) => {
