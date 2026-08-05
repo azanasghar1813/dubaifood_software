@@ -14,7 +14,7 @@ import { motion } from "framer-motion"
 const COLORS = ['#f97316', '#3b82f6', '#10b981', '#8b5cf6', '#a855f7', '#ec4899', '#f43f5e']
 
 export default function Reports() {
-  const { orders } = useOrderStore()
+  const { orders, syncOrdersFromBackend } = useOrderStore()
 
   // State Management
   const [activeTab, setActiveTab] = useState<string>("Dashboard Summary")
@@ -89,10 +89,18 @@ export default function Reports() {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [])
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true)
-    setTimeout(() => setIsRefreshing(false), 800)
+    try {
+      await syncOrdersFromBackend()
+    } finally {
+      setIsRefreshing(false)
+    }
   }
+
+  useEffect(() => {
+    syncOrdersFromBackend()
+  }, [syncOrdersFromBackend])
 
   const handleExportData = () => {
     alert(`Exporting "${activeTab}" as CSV spreadsheet report.`)
@@ -100,6 +108,18 @@ export default function Reports() {
 
   // Dynamic calculations based on live orders store
   const hasData = timeRange === "Today"
+
+  const todayBusinessDate = useMemo(() => new Date().toISOString().slice(0, 10), [])
+
+  const todayOrders = useMemo(() => {
+    if (!hasData) return []
+    return orders.filter(o =>
+      o.status !== 'Cancelled' &&
+      o.status !== 'Refunded' &&
+      (o.businessDate === todayBusinessDate ||
+        (!o.businessDate && o.timestamp.slice(0, 10) === todayBusinessDate))
+    )
+  }, [orders, hasData, todayBusinessDate])
 
   const reportStats = useMemo(() => {
     if (!hasData) {
@@ -110,23 +130,19 @@ export default function Reports() {
       }
     }
 
-    const totalOrdersCount = orders.length
-    const grossSales = orders.reduce((sum, o) => sum + o.total, 0)
-    const netSales = orders.reduce((sum, o) => sum + o.subtotal, 0)
-    const totalTax = orders.reduce((sum, o) => sum + o.tax, 0)
-    const totalService = orders.reduce((sum, o) => sum + o.serviceCharge, 0)
-    const totalDiscount = orders.reduce((sum, o) => sum + o.discount, 0)
-    const totalDelivery = orders.reduce((sum, o) => {
-      const grandTotal = o.total - (o.roundOffAdjustment || 0)
-      const delivery = grandTotal - Math.max(0, o.subtotal - o.discount) - o.tax - o.serviceCharge
-      return sum + Math.max(0, Math.round(delivery))
-    }, 0)
+    const totalOrdersCount = todayOrders.length
+    const grossSales = todayOrders.reduce((sum, o) => sum + o.total, 0)
+    const netSales = todayOrders.reduce((sum, o) => sum + Math.max(0, o.subtotal - o.discount), 0)
+    const totalTax = todayOrders.reduce((sum, o) => sum + o.tax, 0)
+    const totalService = todayOrders.reduce((sum, o) => sum + o.serviceCharge, 0)
+    const totalDiscount = todayOrders.reduce((sum, o) => sum + o.discount, 0)
+    const totalDelivery = todayOrders.reduce((sum, o) => sum + (o.deliveryCharge || 0), 0)
 
-    const paidCount = orders.filter(o => o.paymentStatus === "Paid").length
-    const unpaidCount = orders.filter(o => o.paymentStatus === "Unpaid").length
-    const refundsCount = orders.filter(o => o.paymentStatus === "Refunded").length
+    const paidCount = todayOrders.filter(o => o.paymentStatus === "Paid").length
+    const unpaidCount = todayOrders.filter(o => o.paymentStatus === "Unpaid").length
+    const refundsCount = todayOrders.filter(o => o.paymentStatus === "Refunded").length
 
-    const cashSales = orders.filter(o => (o.payments?.[0]?.method || "Cash") === "Cash").reduce((s, o) => s + o.total, 0)
+    const cashSales = todayOrders.filter(o => (o.payments?.[0]?.method || "Cash") === "Cash").reduce((s, o) => s + o.total, 0)
     const digitalSales = grossSales - cashSales
     const avgBill = totalOrdersCount > 0 ? Math.round(grossSales / totalOrdersCount) : 0
     const netEstimatedProfit = Math.round(netSales * 0.45)
@@ -136,7 +152,7 @@ export default function Reports() {
       totalDiscount, totalDelivery, paidCount, unpaidCount, refundsCount, cashSales,
       digitalSales, avgBill, netEstimatedProfit
     }
-  }, [orders, hasData])
+  }, [todayOrders, hasData])
 
 
   // Product Sales Real Data
@@ -146,7 +162,9 @@ export default function Reports() {
     const itemMap = new Map<string, { name: string, cat: string, sold: number, rev: number }>()
 
     orders.forEach(order => {
-      if (order.status === 'Cancelled') return
+      if (order.status === 'Cancelled' || order.status === 'Refunded') return
+      if (order.businessDate && order.businessDate !== todayBusinessDate) return
+      if (!order.businessDate && order.timestamp.slice(0, 10) !== todayBusinessDate) return
       order.items.forEach(item => {
         const existing = itemMap.get(item.id)
         if (existing) {
@@ -187,7 +205,7 @@ export default function Reports() {
     data.sort((a, b) => productSortBy === "qty" ? b.sold - a.sold : b.rev - a.rev)
     const totalRev = data.reduce((sum, item) => sum + item.rev, 0)
     return data.map(d => ({ ...d, share: totalRev ? Math.round((d.rev / totalRev) * 100) : 0 }))
-  }, [orders, productSortBy, searchQuery, productCategoryFilter, hasData])
+  }, [orders, productSortBy, searchQuery, productCategoryFilter, hasData, todayBusinessDate])
 
   void filterPayment
   void currentTime
