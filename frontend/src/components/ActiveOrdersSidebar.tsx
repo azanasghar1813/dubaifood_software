@@ -60,8 +60,8 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
   const activeOrders = useMemo(() => {
     let result = orders.filter(o => o.status === 'Held' || o.status === 'Active')
     
-    // Sort oldest first (highest priority to clear out)
-    result.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    // Sort newest first (recently placed on top)
+    result.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     
     if (filter !== "All") {
       result = result.filter(o => o.orderType === filter)
@@ -111,23 +111,11 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
   }, [isOpen, activeOrders, selectedIndex])
 
   const handleEdit = async (order: Order) => {
-    // If currently editing another order, we might want to warn or just switch
-    if (editingOrderId && editingOrderId !== order.id) {
-      // Just let loadOrderForEdit handle clearing the backend cart
-    }
-    
     try {
-      const res = await fetchOrderDetail(order.id)
-      if (res.success && res.data) {
-        const fullOrder = mapHistoryDetailToOrder(res.data, res.data)
-        loadOrderForEdit(fullOrder)
-      } else {
-        loadOrderForEdit(order)
-      }
+      await loadOrderForEdit(order)
     } catch(e) {
-      loadOrderForEdit(order)
+      console.error(e)
     }
-    
     onClose()
   }
 

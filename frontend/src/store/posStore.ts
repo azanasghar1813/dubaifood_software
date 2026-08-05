@@ -123,10 +123,12 @@ export const usePosStore = create<POSState>((set, get) => ({
   startTime: new Date(),
 
   fetchDraftOrder: async () => {
+    if (get().editingOrderId) return; // Do not fetch draft if we are in an active edit session
     set({ isLoadingOrder: true })
     try {
       const res = await cartService.getDraftOrder()
       if ((res as any).success) {
+        if (get().editingOrderId) return; // Prevent race condition if an edit started while fetching
         set({ 
           activeOrder: res.data, 
           cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))

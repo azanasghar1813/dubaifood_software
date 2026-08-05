@@ -118,7 +118,11 @@ export default function Reports() {
         o.subtotal.toFixed(2),
         o.tax.toFixed(2),
         (o.serviceCharge || 0).toFixed(2),
-        (o.deliveryCharges || 0).toFixed(2),
+        (() => {
+          const grandTotal = o.total - (o.roundOffAdjustment || 0)
+          const delivery = grandTotal - Math.max(0, o.subtotal - o.discount) - o.tax - o.serviceCharge
+          return Math.max(0, Math.round(delivery))
+        })().toFixed(2),
         o.discount.toFixed(2),
         o.total.toFixed(2),
         `"${o.payments?.[0]?.method || 'Cash'}"`,
@@ -314,8 +318,33 @@ export default function Reports() {
     const unpaidCount = todayOrders.filter(o => o.paymentStatus === "Unpaid").length
     const refundsCount = todayOrders.filter(o => o.paymentStatus === "Refunded").length
 
+    let restaurantSales = 0
+    let fastFoodSales = 0
+    orders.forEach(o => {
+      if (o.status !== 'Cancelled') {
+        let itemFastFood = 0;
+        let itemRestaurant = 0;
+        
+        o.items.forEach(item => {
+           const cat = (item.category || 'Other').toLowerCase();
+           if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) {
+             itemFastFood += item.price * item.quantity;
+           } else {
+             itemRestaurant += item.price * item.quantity;
+           }
+        });
+        
+        const orderItemsTotal = itemFastFood + itemRestaurant;
+        if (orderItemsTotal > 0) {
+          fastFoodSales += (itemFastFood / orderItemsTotal) * o.total;
+          restaurantSales += (itemRestaurant / orderItemsTotal) * o.total;
+        }
+      }
+    })
+
     const cashSales = orders.filter(o => (o.payments?.[0]?.method || "Cash") === "Cash").reduce((s, o) => s + o.total, 0)
     const digitalSales = grossSales - cashSales
+    const cardSales = digitalSales
     const avgBill = totalOrdersCount > 0 ? Math.round(grossSales / totalOrdersCount) : 0
     const netEstimatedProfit = Math.round(netSales * 0.45)
 
@@ -324,7 +353,7 @@ export default function Reports() {
       totalDiscount, totalDelivery, paidCount, unpaidCount, refundsCount, cashSales,
       cardSales, digitalSales, avgBill, netEstimatedProfit, restaurantSales: restaurantSales || 0, fastFoodSales: fastFoodSales || 0
     }
-  }, [todayOrders, hasData])
+  }, [orders, todayOrders, hasData])
 
 
   // Product Sales Real Data
