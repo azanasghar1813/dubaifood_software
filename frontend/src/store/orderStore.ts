@@ -57,9 +57,9 @@ export interface Order {
   subtotal: number
   tax: number
   serviceCharge: number
-  deliveryCharges?: number
   discount: number
   total: number
+  businessDate?: string
   status: OrderStatus
   kitchenStatus: KitchenStatus
   paymentStatus: PaymentStatus
@@ -188,26 +188,10 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     items,
     subtotal: Number(row.subtotal || 0),
     tax: Number(row.tax_total || 0),
-    serviceCharge: (() => {
-      // Try multiple metadata paths for service charge
-      const meta = detail?.metadata || {};
-      const fromMeta = Number(row.service_charge ?? meta.service_charge ?? meta.serviceCharge ?? 0);
-      if (fromMeta > 0) return fromMeta;
-      // Fallback: calculate from grand_total - subtotal - tax + discount - delivery
-      const gt = Number(row.grand_total || 0);
-      const sub = Number(row.subtotal || 0);
-      const tax = Number(row.tax_total || 0);
-      const disc = Number(row.discount_total || 0);
-      const del = Number(row.delivery_charges ?? meta.delivery_charges ?? meta.deliveryCharges ?? 0);
-      const calculated = gt - sub - tax + disc - del;
-      return calculated > 0 ? Math.round(calculated * 100) / 100 : 0;
-    })(),
-    deliveryCharges: (() => {
-      const meta = detail?.metadata || {};
-      return Number(row.delivery_charges ?? meta.delivery_charges ?? meta.deliveryCharges ?? 0);
-    })(),
+    serviceCharge: 0,
     discount: Number(row.discount_total || 0),
     total: Number(row.grand_total || 0),
+    businessDate: row.business_date,
     status: mapLifecycleState(row.lifecycle_state),
     kitchenStatus: mapKitchenState(row.kitchen_state),
     paymentStatus: mapPaymentState(row.payment_state),
@@ -232,14 +216,14 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   orders: [],
   orderCounter: 1,
   isSyncingFromBackend: false,
-  
+
   addOrder: (order) => set((state) => ({
     orders: [order, ...state.orders],
     orderCounter: state.orderCounter + 1
   })),
 
   updateOrder: (id, updates) => set((state) => ({
-    orders: state.orders.map(order => 
+    orders: state.orders.map(order =>
       order.id === id ? { ...order, ...updates, lastEdited: new Date().toISOString() } : order
     )
   })),
@@ -267,17 +251,17 @@ export const useOrderStore = create<OrderState>((set, get) => ({
       return order
     })
   })),
-  
+
   getOrders: () => get().orders,
-  
+
   lockOrder: (id, cashier) => set(state => ({
-    orders: state.orders.map(o => 
+    orders: state.orders.map(o =>
       o.id === id ? { ...o, isLocked: true, lockedBy: cashier } : o
     )
   })),
-  
+
   unlockOrder: (id, _override) => set(state => ({
-    orders: state.orders.map(o => 
+    orders: state.orders.map(o =>
       o.id === id ? { ...o, isLocked: false, lockedBy: undefined } : o
     )
   })),
@@ -285,7 +269,7 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   syncOrdersFromBackend: async () => {
     set({ isSyncingFromBackend: true })
     try {
-      const listResult = await fetchOrders({}, { page: 1, limit: 50, sort_by: 'NEWEST' })
+      const listResult = await fetchOrders({}, { page: 1, limit: 500, sort_by: 'NEWEST' })
       const detailedOrders = await Promise.all(
         (listResult.data || []).map(async (row: HistoryOrderRow) => {
           try {

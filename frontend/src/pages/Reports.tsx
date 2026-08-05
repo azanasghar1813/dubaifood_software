@@ -14,7 +14,7 @@ import { motion } from "framer-motion"
 const COLORS = ['#f97316', '#3b82f6', '#10b981', '#8b5cf6', '#a855f7', '#ec4899', '#f43f5e']
 
 export default function Reports() {
-  const { orders } = useOrderStore()
+  const { orders, syncOrdersFromBackend } = useOrderStore()
 
   // State Management
   const [activeTab, setActiveTab] = useState<string>("Dashboard Summary")
@@ -30,7 +30,7 @@ export default function Reports() {
   const [productCategoryFilter, setProductCategoryFilter] = useState("All")
   const [productCurrentPage, setProductCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
-  
+
   // Orders Report State
   const [orderChartTimeView, setOrderChartTimeView] = useState<"Hour" | "Day" | "Week" | "Month">("Hour")
 
@@ -89,10 +89,18 @@ export default function Reports() {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [])
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true)
-    setTimeout(() => setIsRefreshing(false), 800)
+    try {
+      await syncOrdersFromBackend()
+    } finally {
+      setIsRefreshing(false)
+    }
   }
+
+  useEffect(() => {
+    syncOrdersFromBackend()
+  }, [syncOrdersFromBackend])
 
   const handleExportData = () => {
     // Build CSV content based on active tab
@@ -169,7 +177,7 @@ export default function Reports() {
           doc.setFontSize(14)
           doc.setTextColor(0)
           doc.text('Summary', 14, 42)
-          
+
           autoTable(doc, {
             startY: 46,
             head: [['Metric', 'Value']],
@@ -187,9 +195,9 @@ export default function Reports() {
             ],
             theme: 'grid'
           })
-          
+
           doc.text('Order Details', 14, (doc as any).lastAutoTable.finalY + 10)
-          
+
           autoTable(doc, {
             startY: (doc as any).lastAutoTable.finalY + 14,
             head: [['Order #', 'Date', 'Type', 'Total', 'Payment', 'Status']],
@@ -218,7 +226,7 @@ export default function Reports() {
             theme: 'striped'
           })
         }
-        
+
         doc.save(`Report_${activeTab.replace(/ /g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`)
       })
     })
@@ -227,7 +235,7 @@ export default function Reports() {
   const generatePrintTableHtml = () => {
     let html = ''
     const timestamp = new Date().toLocaleString()
-    
+
     if (activeTab === 'Dashboard Summary' || activeTab === 'Orders Report') {
       html = `
         <h2>Summary</h2>
@@ -269,6 +277,18 @@ export default function Reports() {
   // Dynamic calculations based on live orders store
   const hasData = timeRange === "Today"
 
+  const todayBusinessDate = useMemo(() => new Date().toISOString().slice(0, 10), [])
+
+  const todayOrders = useMemo(() => {
+    if (!hasData) return []
+    return orders.filter(o =>
+      o.status !== 'Cancelled' &&
+      o.status !== 'Refunded' &&
+      (o.businessDate === todayBusinessDate ||
+        (!o.businessDate && o.timestamp.slice(0, 10) === todayBusinessDate))
+    )
+  }, [orders, hasData, todayBusinessDate])
+
   const reportStats = useMemo(() => {
     if (!hasData) {
       return {
@@ -281,79 +301,21 @@ export default function Reports() {
     const totalOrdersCount = orders.length
     const grossSales = orders.reduce((sum, o) => sum + o.total, 0)
     const netSales = orders.reduce((sum, o) => sum + o.subtotal, 0)
-      
-    const totalService = orders.reduce((sum, o) => {
-      if (o.serviceCharge && o.serviceCharge > 0) return sum + o.serviceCharge;
-      
-      // Smart Fallback
-      const gt = Number(o.total || 0);
-      const sub = Number(o.subtotal || 0);
-      const tax = Number(o.tax || 0);
-      const disc = Number(o.discount || 0);
-      const del = Number(o.deliveryCharges || 0);
-      const calculatedService = gt - sub - tax + disc - del;
-      
-      // If still 0, we can't extract, assume 0
-      return sum + Math.max(0, Math.round(calculatedService));
-    }, 0)
-
-    const totalDelivery = orders.reduce((sum, o) => {
-      if (o.deliveryCharges && o.deliveryCharges > 0) return sum + o.deliveryCharges;
-      // If it's a delivery order and we don't have explicit delivery charges, extract it
-      if (o.orderType === 'Delivery') {
-        const gt = Number(o.total || 0);
-        const sub = Number(o.subtotal || 0);
-        const tax = Number(o.tax || 0);
-        const disc = Number(o.discount || 0);
-        const calculatedDel = gt - sub - tax + disc;
-        return sum + Math.max(0, Math.round(calculatedDel));
-      }
-      return sum;
-    }, 0)
-
-    let restaurantSales = 0
-    let fastFoodSales = 0
-    let cashSales = 0
-    let cardSales = 0
-    orders.forEach(o => {
-      if (o.status !== 'Cancelled') {
-        // Track Restaurant vs Fast Food by item categories proportional to total
-        let itemFastFood = 0;
-        let itemRestaurant = 0;
-        
-        o.items.forEach(item => {
-           const cat = (item.category || 'Other').toLowerCase();
-           if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) {
-             itemFastFood += item.price * item.quantity;
-           } else {
-             itemRestaurant += item.price * item.quantity;
-           }
-        });
-        
-        const orderItemsTotal = itemFastFood + itemRestaurant;
-        if (orderItemsTotal > 0) {
-          fastFoodSales += (itemFastFood / orderItemsTotal) * o.total;
-          restaurantSales += (itemRestaurant / orderItemsTotal) * o.total;
-        }
-
-        // Track Cash vs Card by payment method - keep separate
-        const primaryPaymentMethod = (o.payments?.[0]?.method || 'Cash').toUpperCase().replace(/_/g, ' ')
-        if (primaryPaymentMethod === 'CASH') {
-          cashSales += o.total
-        } else {
-          cardSales += o.total
-        }
-      }
-    })
-
-    const paidCount = orders.filter(o => o.paymentStatus === "Paid").length
-    const unpaidCount = orders.filter(o => o.paymentStatus === "Unpaid").length
-    const refundsCount = orders.filter(o => o.paymentStatus === "Refunded").length
-
     const totalTax = orders.reduce((sum, o) => sum + o.tax, 0)
+    const totalService = orders.reduce((sum, o) => sum + o.serviceCharge, 0)
     const totalDiscount = orders.reduce((sum, o) => sum + o.discount, 0)
+    const totalDelivery = orders.reduce((sum, o) => {
+      const grandTotal = o.total - (o.roundOffAdjustment || 0)
+      const delivery = grandTotal - Math.max(0, o.subtotal - o.discount) - o.tax - o.serviceCharge
+      return sum + Math.max(0, Math.round(delivery))
+    }, 0)
 
-    const digitalSales = cardSales
+    const paidCount = todayOrders.filter(o => o.paymentStatus === "Paid").length
+    const unpaidCount = todayOrders.filter(o => o.paymentStatus === "Unpaid").length
+    const refundsCount = todayOrders.filter(o => o.paymentStatus === "Refunded").length
+
+    const cashSales = orders.filter(o => (o.payments?.[0]?.method || "Cash") === "Cash").reduce((s, o) => s + o.total, 0)
+    const digitalSales = grossSales - cashSales
     const avgBill = totalOrdersCount > 0 ? Math.round(grossSales / totalOrdersCount) : 0
     const netEstimatedProfit = Math.round(netSales * 0.45)
 
@@ -362,7 +324,7 @@ export default function Reports() {
       totalDiscount, totalDelivery, paidCount, unpaidCount, refundsCount, cashSales,
       cardSales, digitalSales, avgBill, netEstimatedProfit, restaurantSales: restaurantSales || 0, fastFoodSales: fastFoodSales || 0
     }
-  }, [orders, hasData])
+  }, [todayOrders, hasData])
 
 
   // Product Sales Real Data
@@ -372,7 +334,9 @@ export default function Reports() {
     const itemMap = new Map<string, { name: string, cat: string, sold: number, rev: number }>()
 
     orders.forEach(order => {
-      if (order.status === 'Cancelled') return
+      if (order.status === 'Cancelled' || order.status === 'Refunded') return
+      if (order.businessDate && order.businessDate !== todayBusinessDate) return
+      if (!order.businessDate && order.timestamp.slice(0, 10) !== todayBusinessDate) return
       order.items.forEach(item => {
         const existing = itemMap.get(item.id)
         if (existing) {
@@ -413,7 +377,7 @@ export default function Reports() {
     data.sort((a, b) => productSortBy === "qty" ? b.sold - a.sold : b.rev - a.rev)
     const totalRev = data.reduce((sum, item) => sum + item.rev, 0)
     return data.map(d => ({ ...d, share: totalRev ? Math.round((d.rev / totalRev) * 100) : 0 }))
-  }, [orders, productSortBy, searchQuery, productCategoryFilter, hasData])
+  }, [orders, productSortBy, searchQuery, productCategoryFilter, hasData, todayBusinessDate])
 
   void filterPayment
   void currentTime
@@ -481,7 +445,7 @@ export default function Reports() {
       }
       map.set(key, (map.get(key) || 0) + 1)
     })
-    
+
     let data = Array.from(map.entries()).map(([time, count]) => ({ time, count }))
     if (orderChartTimeView === 'Hour') {
       data.sort((a, b) => parseInt(a.time) - parseInt(b.time))
@@ -1083,9 +1047,9 @@ export default function Reports() {
                     <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Order Volume Analytics</h3>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">View by:</span>
-                      <select 
+                      <select
                         value={orderChartTimeView}
-                        onChange={(e) => setOrderChartTimeView(e.target.value as "Hour"|"Day"|"Week"|"Month")}
+                        onChange={(e) => setOrderChartTimeView(e.target.value as "Hour" | "Day" | "Week" | "Month")}
                         className="bg-secondary border border-border rounded-lg text-xs font-bold px-3 py-1.5 focus:outline-none cursor-pointer"
                       >
                         <option value="Hour">Hour</option>
@@ -1095,14 +1059,14 @@ export default function Reports() {
                       </select>
                     </div>
                   </div>
-                  
+
                   <div className="flex-1 min-h-[280px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={orderVolumeChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <defs>
                           <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
@@ -1124,7 +1088,7 @@ export default function Reports() {
                           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
                           <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
                           <YAxis dataKey="name" type="category" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} width={70} />
-                          <Tooltip cursor={{fill: 'hsl(var(--secondary))'}} contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '12px', fontWeight: 'bold' }} />
+                          <Tooltip cursor={{ fill: 'hsl(var(--secondary))' }} contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '12px', fontWeight: 'bold' }} />
                           <Bar dataKey="value" name="Orders" radius={[0, 4, 4, 0]}>
                             {orderTypeData.map((entry, index) => (
                               <Cell key={`cell-${index}`} fill={entry.color} />

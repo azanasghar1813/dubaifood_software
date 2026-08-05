@@ -262,6 +262,7 @@ class OrderCreationService {
         subtotal,
         tax_total: taxTotal,
         discount_total: discountTotal,
+        delivery_fee: deliveryCharges,
         grand_total: grandTotal,
         paid_total: 0,
         due_total: grandTotal,
