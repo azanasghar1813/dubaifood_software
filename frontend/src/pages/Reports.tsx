@@ -302,13 +302,13 @@ export default function Reports() {
       }
     }
 
-    const totalOrdersCount = orders.length
-    const grossSales = orders.reduce((sum, o) => sum + o.total, 0)
-    const netSales = orders.reduce((sum, o) => sum + o.subtotal, 0)
-    const totalTax = orders.reduce((sum, o) => sum + o.tax, 0)
-    const totalService = orders.reduce((sum, o) => sum + o.serviceCharge, 0)
-    const totalDiscount = orders.reduce((sum, o) => sum + o.discount, 0)
-    const totalDelivery = orders.reduce((sum, o) => {
+    const totalOrdersCount = todayOrders.length
+    const grossSales = todayOrders.reduce((sum, o) => sum + o.total, 0)
+    const netSales = todayOrders.reduce((sum, o) => sum + o.subtotal, 0)
+    const totalTax = todayOrders.reduce((sum, o) => sum + o.tax, 0)
+    const totalService = todayOrders.reduce((sum, o) => sum + o.serviceCharge, 0)
+    const totalDiscount = todayOrders.reduce((sum, o) => sum + o.discount, 0)
+    const totalDelivery = todayOrders.reduce((sum, o) => {
       const grandTotal = o.total - (o.roundOffAdjustment || 0)
       const delivery = grandTotal - Math.max(0, o.subtotal - o.discount) - o.tax - o.serviceCharge
       return sum + Math.max(0, Math.round(delivery))
@@ -320,29 +320,36 @@ export default function Reports() {
 
     let restaurantSales = 0
     let fastFoodSales = 0
-    orders.forEach(o => {
+    let dealsSales = 0
+    todayOrders.forEach(o => {
       if (o.status !== 'Cancelled') {
         let itemFastFood = 0;
         let itemRestaurant = 0;
-        
+        let itemDeals = 0;
+
         o.items.forEach(item => {
-           const cat = (item.category || 'Other').toLowerCase();
-           if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) {
-             itemFastFood += item.price * item.quantity;
-           } else {
-             itemRestaurant += item.price * item.quantity;
-           }
+          const cat = (item.category || 'Other').toLowerCase();
+          if (cat.includes("deal")) {
+            itemDeals += item.price * item.quantity;
+          } else if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) {
+            itemFastFood += item.price * item.quantity;
+          } else {
+            itemRestaurant += item.price * item.quantity;
+          }
         });
-        
-        const orderItemsTotal = itemFastFood + itemRestaurant;
+
+        const orderItemsTotal = itemFastFood + itemRestaurant + itemDeals;
         if (orderItemsTotal > 0) {
-          fastFoodSales += (itemFastFood / orderItemsTotal) * o.total;
-          restaurantSales += (itemRestaurant / orderItemsTotal) * o.total;
+          const salesWithoutCharges = Math.max(0, o.subtotal - (o.discount || 0));
+
+          fastFoodSales += (itemFastFood / orderItemsTotal) * salesWithoutCharges;
+          restaurantSales += (itemRestaurant / orderItemsTotal) * salesWithoutCharges;
+          dealsSales += (itemDeals / orderItemsTotal) * salesWithoutCharges;
         }
       }
     })
 
-    const cashSales = orders.filter(o => (o.payments?.[0]?.method || "Cash") === "Cash").reduce((s, o) => s + o.total, 0)
+    const cashSales = todayOrders.filter(o => (o.payments?.[0]?.method || "Cash") === "Cash").reduce((s, o) => s + o.total, 0)
     const digitalSales = grossSales - cashSales
     const cardSales = digitalSales
     const avgBill = totalOrdersCount > 0 ? Math.round(grossSales / totalOrdersCount) : 0
@@ -351,7 +358,7 @@ export default function Reports() {
     return {
       totalOrdersCount, grossSales, netSales, totalTax, totalService,
       totalDiscount, totalDelivery, paidCount, unpaidCount, refundsCount, cashSales,
-      cardSales, digitalSales, avgBill, netEstimatedProfit, restaurantSales: restaurantSales || 0, fastFoodSales: fastFoodSales || 0
+      cardSales, digitalSales, avgBill, netEstimatedProfit, restaurantSales: restaurantSales || 0, fastFoodSales: fastFoodSales || 0, dealsSales: dealsSales || 0, totalCatSales: (restaurantSales || 0) + (fastFoodSales || 0) + (dealsSales || 0)
     }
   }, [orders, todayOrders, hasData])
 
@@ -756,44 +763,32 @@ export default function Reports() {
                     <h3 className="text-lg font-black uppercase tracking-wider text-foreground mb-4">Sales Split</h3>
                     <div className="space-y-3 my-auto">
                       {/* By Order Type */}
-                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">By Channel</p>
+                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider mb-4">By Channel</p>
                       <div className="p-3 bg-orange-500/10 border border-orange-500/25 rounded-2xl flex justify-between items-center">
                         <div>
-                          <span className="text-[10px] text-orange-500 font-bold uppercase">Fast Food (Delivery/Online)</span>
+                          <span className="text-[10px] text-orange-500 font-bold uppercase">Fast Food </span>
                           <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.fastFoodSales || 0)}</p>
                         </div>
                         <span className="text-sm font-bold text-orange-500 bg-orange-500/20 px-3 py-1.5 rounded-lg">
-                          {reportStats.grossSales > 0 ? Math.round(((reportStats.fastFoodSales || 0) / reportStats.grossSales) * 100) : 0}%
+                          {reportStats.totalCatSales > 0 ? Math.round(((reportStats.fastFoodSales || 0) / reportStats.totalCatSales) * 100) : 0}%
                         </span>
                       </div>
                       <div className="p-3 bg-blue-500/10 border border-blue-500/25 rounded-2xl flex justify-between items-center">
                         <div>
-                          <span className="text-[10px] text-blue-500 font-bold uppercase">Restaurant (Dine-in/Takeaway)</span>
+                          <span className="text-[10px] text-blue-500 font-bold uppercase">Restaurant</span>
                           <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.restaurantSales || 0)}</p>
                         </div>
                         <span className="text-sm font-bold text-blue-500 bg-blue-500/20 px-3 py-1.5 rounded-lg">
-                          {reportStats.grossSales > 0 ? Math.round(((reportStats.restaurantSales || 0) / reportStats.grossSales) * 100) : 0}%
-                        </span>
-                      </div>
-
-                      {/* By Payment Method */}
-                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider mt-4">By Payment Method</p>
-                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-2xl flex justify-between items-center">
-                        <div>
-                          <span className="text-[10px] text-emerald-500 font-bold uppercase">💵 Cash Sales</span>
-                          <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.cashSales || 0)}</p>
-                        </div>
-                        <span className="text-sm font-bold text-emerald-500 bg-emerald-500/20 px-3 py-1.5 rounded-lg">
-                          {reportStats.grossSales > 0 ? Math.round(((reportStats.cashSales || 0) / reportStats.grossSales) * 100) : 0}%
+                          {reportStats.totalCatSales > 0 ? Math.round(((reportStats.restaurantSales || 0) / reportStats.totalCatSales) * 100) : 0}%
                         </span>
                       </div>
                       <div className="p-3 bg-purple-500/10 border border-purple-500/25 rounded-2xl flex justify-between items-center">
                         <div>
-                          <span className="text-[10px] text-purple-500 font-bold uppercase">💳 Card / Digital Sales</span>
-                          <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.cardSales || 0)}</p>
+                          <span className="text-[10px] text-purple-500 font-bold uppercase">Deals Sale</span>
+                          <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.dealsSales || 0)}</p>
                         </div>
                         <span className="text-sm font-bold text-purple-500 bg-purple-500/20 px-3 py-1.5 rounded-lg">
-                          {reportStats.grossSales > 0 ? Math.round(((reportStats.cardSales || 0) / reportStats.grossSales) * 100) : 0}%
+                          {reportStats.totalCatSales > 0 ? Math.round(((reportStats.dealsSales || 0) / reportStats.totalCatSales) * 100) : 0}%
                         </span>
                       </div>
                     </div>

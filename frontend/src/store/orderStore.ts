@@ -197,6 +197,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     paymentStatus: mapPaymentState(row.payment_state),
     timestamp: row.created_at ? (row.created_at.includes('Z') ? row.created_at : row.created_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
     lastEdited: row.updated_at ? (row.updated_at.includes('Z') ? row.updated_at : row.updated_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
+    isEdited: Boolean(row.is_edited),
     editedBy: undefined,
     isLocked: false,
     lockedBy: undefined,

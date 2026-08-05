@@ -210,10 +210,10 @@ export default function Dashboard() {
           ================================================== */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { title: "Today's Sales", value: `Rs. ${(liveStats.todaySales || 0).toLocaleString()}`, desc: "Paid + Confirmed orders", trend: "Live data", color: "text-emerald-500", icon: DollarSign },
-          { title: "Today's Orders", value: liveStats.todayOrders || 0, desc: "Total transactions today", trend: "Live data", color: "text-blue-500", icon: ShoppingBag },
-          { title: "Paid Orders", value: liveStats.paidOrders || 0, desc: "Completed transactions", trend: "Live data", color: "text-zinc-400", icon: CheckCircle },
-          { title: "Unpaid Orders", value: liveStats.unpaidOrders || 0, desc: "Open credit bills", trend: "Live data", color: "text-red-500", icon: AlertCircle }
+          { title: "Today's Sales", value: `Rs. ${(summary?.todaySales || liveStats.todaySales || 0).toLocaleString()}`, desc: "Paid + Confirmed orders", trend: "Live data", color: "text-emerald-500", icon: DollarSign },
+          { title: "Today's Orders", value: summary?.ordersCount || liveStats.todayOrders || 0, desc: "Total transactions today", trend: "Live data", color: "text-blue-500", icon: ShoppingBag },
+          { title: "Paid Orders", value: summary?.paid || liveStats.paidOrders || 0, desc: "Completed transactions", trend: "Live data", color: "text-zinc-400", icon: CheckCircle },
+          { title: "Unpaid Orders", value: summary?.unpaid || liveStats.unpaidOrders || 0, desc: "Open credit bills", trend: "Live data", color: "text-red-500", icon: AlertCircle }
         ].map((card, i) => (
           <motion.div
             key={card.title}

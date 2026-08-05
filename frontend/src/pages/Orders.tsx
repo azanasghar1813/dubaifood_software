@@ -522,8 +522,10 @@ export default function Orders() {
                     <input type="checkbox" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectOrder(order.id)} className="w-4 h-4 rounded border-border text-primary focus:ring-primary" />
                   </td>
                   <td className="p-4 font-black">
-                    #{order.orderNumber}
-                    {order.auditLog?.length > 0 && <span className="ml-2 text-[8px] bg-amber-500/10 text-amber-500 px-1 rounded uppercase border border-amber-500/20">Edited</span>}
+                    <div className="flex flex-col items-start gap-1">
+                      <span>#{order.orderNumber}</span>
+                      {order.isEdited && <span className="text-[8px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded uppercase border border-amber-500/20 font-bold tracking-widest leading-none">Edited</span>}
+                    </div>
                   </td>
                   <td className="p-4 text-xs font-medium text-muted-foreground">
                     <div>{new Date(order.timestamp).toLocaleDateString()}</div>

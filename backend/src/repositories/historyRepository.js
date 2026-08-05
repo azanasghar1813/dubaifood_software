@@ -69,7 +69,8 @@ class HistoryRepository {
           ORDER BY op.created_at ASC LIMIT 1
         ) AS primary_payment_method,
         (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'service_charge') AS service_charge,
-        (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'delivery_charges') AS delivery_charges
+        (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'delivery_charges') AS delivery_charges,
+        (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM activity_logs al WHERE al.entity_id = o.id AND al.action IN ('ITEM_REMOVED', 'ITEM_ADDED', 'QUANTITY_CHANGED')) AS is_edited
       FROM orders o
       ${whereSql}
       ORDER BY ${orderBySql}
@@ -103,10 +104,14 @@ class HistoryRepository {
     const items = dbEngine.prepare(`
       SELECT 
         oi.*,
-        c.name AS category_name
+        CASE 
+          WHEN d.id IS NOT NULL THEN 'Deals'
+          ELSE c.name 
+        END AS category_name
       FROM order_items oi
       LEFT JOIN products p ON p.id = oi.product_id
       LEFT JOIN categories c ON c.id = p.category_id
+      LEFT JOIN deals d ON d.id = oi.product_id
       WHERE oi.order_id = ? 
       ORDER BY oi.created_at ASC
     `).all(orderId);
@@ -164,10 +169,18 @@ class HistoryRepository {
     // Metadata
     order.metadata = this._loadMetadata(orderId);
 
-    // Audit trail
-    order.audit_trail = dbEngine.prepare(`
-      SELECT * FROM order_audit_trail WHERE order_id = ? ORDER BY created_at ASC
+    // Audit trail (Combine order_audit_trail and activity_logs)
+    const audits = dbEngine.prepare(`
+      SELECT id, user_id, action, old_value, new_value, reason, created_at 
+      FROM order_audit_trail WHERE order_id = ?
     `).all(orderId);
+    
+    const activities = dbEngine.prepare(`
+      SELECT id, user_id, action, NULL as old_value, details as new_value, NULL as reason, created_at
+      FROM activity_logs WHERE entity_type = 'ORDER' AND entity_id = ?
+    `).all(orderId);
+    
+    order.audit_trail = [...audits, ...activities].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
     // Tags
     order.tags = dbEngine.prepare(`

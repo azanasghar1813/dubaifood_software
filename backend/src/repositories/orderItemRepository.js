@@ -126,7 +126,20 @@ class OrderItemRepository {
   }
 
   findItemsByOrderId(orderId) {
-    const items = dbEngine.prepare('SELECT * FROM order_items WHERE order_id = ? ORDER BY created_at ASC').all(orderId);
+    const items = dbEngine.prepare(`
+      SELECT 
+        oi.*,
+        CASE 
+          WHEN d.id IS NOT NULL THEN 'Deals'
+          ELSE c.name 
+        END AS category_name
+      FROM order_items oi
+      LEFT JOIN products p ON p.id = oi.product_id
+      LEFT JOIN categories c ON c.id = p.category_id
+      LEFT JOIN deals d ON d.id = oi.product_id
+      WHERE oi.order_id = ? 
+      ORDER BY oi.created_at ASC
+    `).all(orderId);
     if (!items.length) return [];
 
     const itemIds = items.map(i => i.id);

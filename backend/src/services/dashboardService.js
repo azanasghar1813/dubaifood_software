@@ -28,21 +28,21 @@ export const dashboardService = {
     endOfBusinessDay.setDate(endOfBusinessDay.getDate() + 1);
 
     return {
-      start: startOfBusinessDay.toISOString(),
-      end: endOfBusinessDay.toISOString(),
+      start: startOfBusinessDay.toISOString().replace('T', ' ').substring(0, 19),
+      end: endOfBusinessDay.toISOString().replace('T', ' ').substring(0, 19),
     };
   },
 
   getSummary: () => {
     const { start, end } = dashboardService.getBusinessDayBounds();
     
-    // Total Sales (completed or confirmed)
+    // Total Sales (completed, confirmed, or active)
     const stmt = dbEngine.db.prepare(`
       SELECT 
         SUM(grand_total) as todaySales,
         COUNT(id) as ordersCount
       FROM orders
-      WHERE (lifecycle_state = 'COMPLETED' OR lifecycle_state = 'CONFIRMED')
+      WHERE (lifecycle_state = 'COMPLETED' OR lifecycle_state = 'CONFIRMED' OR lifecycle_state = 'ACTIVE')
       AND created_at >= ? AND created_at < ?
     `);
     
