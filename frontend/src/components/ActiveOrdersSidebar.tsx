@@ -7,10 +7,12 @@ import {
   CheckCircle2, PlusCircle, CreditCard,
   Utensils
 } from "lucide-react"
-import { useOrderStore } from "../store/orderStore"
+import { useOrderStore, mapHistoryDetailToOrder } from "../store/orderStore"
 import type { Order, OrderStatus, KitchenStatus, PaymentStatus } from "../store/orderStore"
 import { usePosStore } from "../store/posStore"
 import { useAuthStore } from "../store/authStore"
+import { fetchOrderDetail } from "../api/historyApi"
+import { apiClient } from "../api/client"
 
 interface ActiveOrdersSidebarProps {
   isOpen: boolean
@@ -47,6 +49,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
   
   const [searchQuery, setSearchQuery] = useState("")
   const [filter, setFilter] = useState<string>("All")
+  const [selectedIndex, setSelectedIndex] = useState(0)
 
   useEffect(() => {
     if (isOpen) {
@@ -69,47 +72,75 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
       result = result.filter(o => 
         o.orderNumber.toLowerCase().includes(q) ||
         (o.customerName && o.customerName.toLowerCase().includes(q)) ||
-        (o.tableNumber && o.tableNumber.toLowerCase().includes(q))
+        (o.tableNumber && o.tableNumber.toLowerCase().includes(q)) ||
+        (o.customerPhone && o.customerPhone.toLowerCase().includes(q)) ||
+        (o.orderType && o.orderType.toLowerCase().includes(q)) ||
+        (o.status && o.status.toLowerCase().includes(q)) ||
+        (o.paymentStatus && o.paymentStatus.toLowerCase().includes(q)) ||
+        (o.kitchenStatus && o.kitchenStatus.toLowerCase().includes(q))
       )
     }
     return result
   }, [orders, searchQuery, filter])
 
+  useEffect(() => {
+    setSelectedIndex(0)
+  }, [searchQuery, filter])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedIndex(s => Math.min(s + 1, activeOrders.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedIndex(s => Math.max(s - 1, 0))
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        if (activeOrders[selectedIndex]) {
+          handleEdit(activeOrders[selectedIndex])
+        }
+      } else if (e.ctrlKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, activeOrders, selectedIndex])
+
   const handleEdit = async (order: Order) => {
     // If currently editing another order, we might want to warn or just switch
     if (editingOrderId && editingOrderId !== order.id) {
-      clearCart()
+      // Just let loadOrderForEdit handle clearing the backend cart
     }
     
     try {
-      // We must fetch full order details because the sidebar list only has summary data without items.
-      const { fetchOrderDetail } = await import("../api/historyApi");
-      const result = await fetchOrderDetail(order.id);
-      if (result.success && result.data) {
-        loadOrderForEdit(result.data);
+      const res = await fetchOrderDetail(order.id)
+      if (res.success && res.data) {
+        const fullOrder = mapHistoryDetailToOrder(res.data, res.data)
+        loadOrderForEdit(fullOrder)
       } else {
-        loadOrderForEdit(order); // fallback
+        loadOrderForEdit(order)
       }
-    } catch (e) {
-      console.error("Failed to fetch full order for edit", e);
-      loadOrderForEdit(order);
+    } catch(e) {
+      loadOrderForEdit(order)
     }
     
     onClose()
   }
 
-  const handleQuickPay = async (order: Order) => {
-    // Real implementation would call payment endpoint
+  const handleMarkComplete = async (e: React.MouseEvent, order: Order) => {
+    e.stopPropagation()
+    const confirmMsg = `Mark order #${order.orderNumber} as COMPLETED?\nTotal: PKR ${order.total.toLocaleString()}`
+    if (!window.confirm(confirmMsg)) return
+
     try {
-      const res = await fetch(`http://localhost:5000/api/orders/${order.id}/pay`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user?.token}`
-        },
-        body: JSON.stringify({ amount: order.total, method: 'Cash' })
-      })
-      if (!res.ok) throw new Error('Failed to pay')
+      const { useOrderStore } = await import('../store/orderStore')
+      useOrderStore.getState().updateOrder(order.id, { status: 'Completed' })
+
+      await apiClient.post(`/payments/order/${order.id}`, { amount_received: order.total, payment_method: 'CASH' })
       syncOrdersFromBackend()
     } catch (e) {
       console.error(e)
@@ -155,9 +186,24 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   type="text"
+                  autoFocus
                   placeholder="Search by order #, customer, table..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault()
+                      setSelectedIndex(s => Math.min(s + 1, activeOrders.length - 1))
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault()
+                      setSelectedIndex(s => Math.max(s - 1, 0))
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault()
+                      if (activeOrders[selectedIndex]) {
+                        handleEdit(activeOrders[selectedIndex])
+                      }
+                    }
+                  }}
                   className="w-full bg-secondary/50 border border-border/50 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                 />
               </div>
@@ -186,8 +232,14 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                   <p>No active orders found</p>
                 </div>
               ) : (
-                activeOrders.map(order => (
-                  <div key={order.id} className="bg-secondary/30 border border-border/50 rounded-xl p-4 flex flex-col gap-3 relative overflow-hidden group">
+                activeOrders.map((order, index) => (
+                  <motion.div
+                    key={order.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    onClick={() => handleEdit(order)}
+                    className={`bg-secondary/30 border cursor-pointer ${selectedIndex === index ? 'border-orange-500 ring-1 ring-orange-500' : 'border-border/50 hover:border-orange-500/30'} rounded-xl p-4 transition-all group`}
+                  >
                     <div className="flex justify-between items-start">
                       <div>
                         <div className="flex items-center gap-2">
@@ -211,7 +263,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                       </div>
                       <div className="text-right">
                         <div className="font-bold text-lg">
-                          AED {order.total.toFixed(2)}
+                          PKR {order.total.toLocaleString()}
                         </div>
                       </div>
                     </div>
@@ -239,15 +291,15 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                       
                       {order.paymentStatus === 'Unpaid' && (
                         <button 
-                          onClick={() => handleQuickPay(order)}
-                          className="flex-1 flex items-center justify-center gap-2 bg-green-500/10 hover:bg-green-500/20 text-green-500 border border-green-500/20 py-2 rounded-lg text-sm font-medium transition-colors"
+                          onClick={(e) => handleMarkComplete(e, order)}
+                          className="flex-1 flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/20 py-2 rounded-lg text-sm font-medium transition-colors"
                         >
-                          <CreditCard className="w-4 h-4" />
-                          Quick Pay
+                          <CheckCircle2 className="w-4 h-4" />
+                          Mark Complete
                         </button>
                       )}
                     </div>
-                  </div>
+                  </motion.div>
                 ))
               )}
             </div>

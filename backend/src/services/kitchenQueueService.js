@@ -18,11 +18,7 @@ class KitchenQueueService {
   }
 
   invalidate(orderId) {
-    for (const [key, value] of this.cache.entries()) {
-      if (value.orderIds && value.orderIds.includes(orderId)) {
-        this.cache.delete(key);
-      }
-    }
+    this.cache.clear();
   }
 
   _loadItemChildren(itemIds = []) {

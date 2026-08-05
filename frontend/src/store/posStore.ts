@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { cartService } from '../services/posServices/cartService'
 import { apiClient } from '../api/client'
 import { useOrderStore } from './orderStore'
+import { useSettingsStore } from './settingsStore'
 
 export interface OrderItem {
   id: string
@@ -13,6 +14,7 @@ export interface OrderItem {
   notes: string | null
   status: string
   modifiers: any[]
+  is_tax_inclusive?: boolean
 }
 
 export interface ActiveOrder {
@@ -25,6 +27,7 @@ export interface ActiveOrder {
   discount_total: number
   grand_total: number
   items: OrderItem[]
+  totals?: any
   hold_name?: string | null
 }
 
@@ -66,7 +69,7 @@ interface POSState {
 
   // Async Backend Actions
   fetchDraftOrder: () => Promise<void>
-  loadOrderForEdit: (order: any) => void
+  loadOrderForEdit: (order: any) => Promise<void>
   addToCart: (product: any, quantity?: number, selectedModifiers?: any[], notes?: string) => Promise<void>
   removeFromCart: (cartItemId: string, reason?: string) => Promise<void>
   updateQuantity: (cartItemId: string, quantity: number) => Promise<void>
@@ -123,7 +126,7 @@ export const usePosStore = create<POSState>((set, get) => ({
     set({ isLoadingOrder: true })
     try {
       const res = await cartService.getDraftOrder()
-      if (res.success) {
+      if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
           cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))
@@ -136,20 +139,67 @@ export const usePosStore = create<POSState>((set, get) => ({
     }
   },
 
-  loadOrderForEdit: (order) => {
+  loadOrderForEdit: async (order) => {
+    // Silently clear the backend cart WITHOUT triggering fetchDraftOrder
+    // This prevents the race condition where fetchDraftOrder overwrites the edit cart
+    try { await apiClient.delete('/cart') } catch {}
+    
+    // Fetch fresh order data from backend to get properly hydrated items
+    let backendOrder: any = null
+    try {
+      const res = await apiClient.get(`/orders/${order.id}`) as any
+      if (res?.success && res?.data) {
+        backendOrder = res.data
+      }
+    } catch {}
+    
+    // Use backend items if available, otherwise fall back to the passed-in order items
+    const sourceItems = backendOrder?.items?.length > 0 ? backendOrder.items : order.items
+    
+    const mappedItems = [...sourceItems].map((i: any) => {
+      const price = i.price ?? i.final_unit_price ?? i.unit_price ?? 0;
+      const quantity = i.quantity || 1;
+      return {
+      ...i,
+      cartItemId: i.cartItemId || i._cart_item_id || i.id || crypto.randomUUID(),
+      name: i.name || (i.variant_name ? `${i.product_name_snapshot || i.product_name || 'Item'} (${i.variant_name})` : (i.product_name_snapshot || i.product_name || 'Item')),
+      price,
+      quantity,
+      subtotal: i.subtotal ?? (price * quantity),
+      product_name: i.product_name || i.product_name_snapshot || i.name || 'Item',
+      product_id: i.product_id || i.id,
+      selectedModifiers: i.selectedModifiers || i.modifiers || [],
+      notes: i.notes || '',
+      category: i.category || i.category_name || 'Unknown',
+      code: i.code || i.product_code || '',
+    }})
+    
+    // Build the activeOrder shape from backend data or passed-in order
+    const activeOrder = backendOrder ? {
+      id: backendOrder.id,
+      order_number: backendOrder.order_number,
+      status: backendOrder.lifecycle_state,
+      order_type: backendOrder.order_type,
+      subtotal: backendOrder.subtotal ?? 0,
+      tax_total: backendOrder.tax_total ?? 0,
+      discount_total: backendOrder.discount_total ?? 0,
+      grand_total: backendOrder.grand_total ?? 0,
+      items: backendOrder.items || [],
+      totals: {
+        subtotal: backendOrder.subtotal ?? 0,
+        tax_total: backendOrder.tax_total ?? 0,
+        discount_total: backendOrder.discount_total ?? 0,
+      }
+    } : order as any
+    
     set({
-      activeOrder: order,
-      cart: (order?.items || []).map((item: any) => ({ 
-        ...item, 
-        name: item.variant_name ? `${item.product_name_snapshot || item.product_name || item.name} (${item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Unknown'), 
-        price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, 
-        cartItemId: item._cart_item_id || item.cartItemId || item.id, 
-        selectedModifiers: item.modifiers || item.selectedModifiers || [] 
-      })),
-      editingOrderId: order?.id || null,
-      orderType: order?.orderType || order?.order_type || get().orderType,
-      tableNumber: order?.tableNumber || order?.table_id || null,
-      customer: order?.customerName ? { name: order.customerName } : get().customer
+      editingOrderId: order.id,
+      activeOrder,
+      cart: mappedItems,
+      orderType: order?.orderType || order?.order_type || (backendOrder?.order_type === 'DINE_IN' ? 'Dine In' : backendOrder?.order_type === 'TAKEAWAY' ? 'Takeaway' : backendOrder?.order_type === 'DELIVERY' ? 'Delivery' : get().orderType),
+      tableNumber: order?.tableNumber || order?.table_id || backendOrder?.table_id || null,
+      customer: order?.customerName ? { name: order.customerName, phone: order.customerPhone || order.customer_phone } : get().customer,
+      deliveryCharges: Number(order.deliveryCharges || order.delivery_charges || order.metadata?.delivery_charges || backendOrder?.delivery_fee || 0)
     })
   },
 
@@ -176,7 +226,7 @@ export const usePosStore = create<POSState>((set, get) => ({
         })
       }
       
-      if (res.success) {
+      if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
           cart: (res.data?.items || []).map((item: any) => ({ 
@@ -206,7 +256,7 @@ export const usePosStore = create<POSState>((set, get) => ({
         res = await cartService.removeItem(cartItemId)
       }
       
-      if (res.success) {
+      if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
           cart: (res.data?.items || []).map((item: any) => ({ 
@@ -236,7 +286,7 @@ export const usePosStore = create<POSState>((set, get) => ({
         res = await cartService.updateItemQuantity(cartItemId, quantity)
       }
       
-      if (res.success) {
+      if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
           cart: (res.data?.items || []).map((item: any) => ({ 
@@ -259,7 +309,7 @@ export const usePosStore = create<POSState>((set, get) => ({
     set({ isLoadingOrder: true })
     try {
       const res = await cartService.updateItemDetails(cartItemId, { modifiers })
-      if (res.success) {
+      if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
           cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))
@@ -276,7 +326,7 @@ export const usePosStore = create<POSState>((set, get) => ({
     set({ isLoadingOrder: true })
     try {
       const res = await cartService.updateItemDetails(cartItemId, { notes })
-      if (res.success) {
+      if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
           cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))
@@ -293,7 +343,7 @@ export const usePosStore = create<POSState>((set, get) => ({
     set({ isLoadingOrder: true })
     try {
       const res = await cartService.duplicateItem(cartItemId)
-      if (res.success) {
+      if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
           cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))
@@ -310,7 +360,7 @@ export const usePosStore = create<POSState>((set, get) => ({
     set({ isLoadingOrder: true })
     try {
       const res = await cartService.holdOrder(holdName)
-      if (res.success) {
+      if ((res as any).success) {
         // Clear active order because it's held
         set({ activeOrder: null, cart: [] })
         await get().fetchDraftOrder() // create new draft
@@ -326,7 +376,7 @@ export const usePosStore = create<POSState>((set, get) => ({
     set({ isLoadingOrder: true })
     try {
       const res = await cartService.resumeOrder(orderId)
-      if (res.success) {
+      if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
           cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))
@@ -356,10 +406,11 @@ export const usePosStore = create<POSState>((set, get) => ({
           branch_id: order.branch_id || 'DEFAULT_BRANCH',
           business_date: order.business_date,
           delivery_charges: state.orderType === 'Delivery' ? state.deliveryCharges : 0,
+          service_charge: state.getServiceCharge(),
           is_tax_enabled: state.orderType === 'Dine In' ? state.isTaxEnabled : false
         })
 
-        if (checkoutResult.success) {
+        if ((checkoutResult as any).success) {
           order = checkoutResult.data
           set({ activeOrder: order, cart: (order?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] })) })
         }
@@ -376,8 +427,9 @@ export const usePosStore = create<POSState>((set, get) => ({
         })
       }
       // Draft order is now completed. Fetch a new draft order and sync history.
-      set({ activeOrder: null, cart: [], editingOrderId: null })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null })
       await get().fetchDraftOrder()
+      // Immediately sync order history for instant status updates
       useOrderStore.getState().syncOrdersFromBackend()
     } catch (e) {
       console.error(e)
@@ -388,10 +440,10 @@ export const usePosStore = create<POSState>((set, get) => ({
 
   clearCart: () => {
     void cartService.clearCart().then(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null })
       void get().fetchDraftOrder()
     }).catch(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null })
       void get().fetchDraftOrder()
     })
   },
@@ -402,17 +454,27 @@ export const usePosStore = create<POSState>((set, get) => ({
     const tax = get().activeOrder?.totals?.tax_total ?? get().activeOrder?.tax_total ?? 0;
     return get().isTaxEnabled ? tax : 0;
   },
-  getServiceCharge: () => 0, // Implement if needed
+  getServiceCharge: () => {
+    const orderType = get().orderType;
+    if (orderType === 'Dine In') {
+      const sub = get().getSubtotal();
+      const discount = get().activeOrder?.totals?.discount_total ?? get().activeOrder?.discount_total ?? 0;
+      const rate = useSettingsStore.getState().serviceChargeRate || 0;
+      return (sub - discount) * (rate / 100);
+    }
+    return 0;
+  },
   getGrandTotal: () => {
     const sub = get().getSubtotal();
     const tax = get().getTax();
+    const service = get().getServiceCharge();
     const discount = get().activeOrder?.totals?.discount_total ?? get().activeOrder?.discount_total ?? 0;
     const isInclusive = get().activeOrder?.items?.[0]?.is_tax_inclusive === true;
     
     if (isInclusive) {
-      return sub - discount;
+      return sub + service - discount;
     }
-    return sub + tax - discount;
+    return sub + tax + service - discount;
   },
   getNetTotal: () => {
     const base = get().getGrandTotal();

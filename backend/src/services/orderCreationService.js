@@ -19,6 +19,7 @@ import { dealRepository } from '../repositories/dealRepository.js';
 import { modifierRepository } from '../repositories/modifierRepository.js';
 import { printerRepository } from '../repositories/printerRepository.js';
 import { availabilityService } from './availabilityService.js';
+import { kitchenQueueService } from './kitchenQueueService.js';
 import { OrderLifecycleState } from '../constants/orderStates.js';
 import crypto from 'crypto';
 
@@ -223,7 +224,8 @@ class OrderCreationService {
       let taxTotal = 0;
       let discountTotal = 0;
       const isTaxEnabled = options.is_tax_enabled !== false;
-      const deliveryCharges = Number(options.delivery_charges) || 0;
+      const deliveryCharges = Number(options.delivery_charges) || Number(options.metadata?.delivery_charges) || 0;
+      const serviceCharge = Number(options.service_charge) || Number(options.metadata?.service_charge) || 0;
 
       for (const cartItem of cart.items) {
         subtotal += Number(cartItem.subtotal) || 0;
@@ -241,6 +243,7 @@ class OrderCreationService {
         : subtotal + taxTotal - discountTotal;
         
       grandTotal += deliveryCharges;
+      grandTotal += serviceCharge;
 
       // ── 3c. Create master orders row ───────────────────────────────────────
       orderRepository.create({
@@ -253,7 +256,7 @@ class OrderCreationService {
         customer_id: customerId,
         table_id: tableId,
         order_type: orderType,
-        lifecycle_state: OrderLifecycleState.DRAFT,
+        lifecycle_state: OrderLifecycleState.ACTIVE,
         kitchen_state: 'PENDING',
         payment_state: 'UNPAID',
         subtotal,
@@ -270,6 +273,7 @@ class OrderCreationService {
       orderMetadataRepository.setMeta(newOrderId, 'kitchen_notes', kitchenNotes);
       orderMetadataRepository.setMeta(newOrderId, 'business_day', businessDate);
       orderMetadataRepository.setMeta(newOrderId, 'delivery_charges', deliveryCharges);
+      orderMetadataRepository.setMeta(newOrderId, 'service_charge', serviceCharge);
       orderMetadataRepository.setMeta(newOrderId, 'is_tax_enabled', isTaxEnabled);
       orderMetadataRepository.setMeta(newOrderId, 'cart_totals', {
         subtotal,
@@ -398,6 +402,9 @@ class OrderCreationService {
         business_date: businessDate,
         grand_total: grandTotal
       }, 1, { strict: true });
+
+      // Invalidate kitchen queue cache so KDS sees the new order immediately
+      kitchenQueueService.invalidate(newOrderId);
 
       return { orderId: newOrderId, orderNumber: newOrderNumber };
     });

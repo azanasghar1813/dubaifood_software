@@ -30,7 +30,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
   const notesRef = useRef<HTMLTextAreaElement>(null)
   
   const [customers, setCustomers] = useState<any[]>([])
-  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [selectedIndex, setSelectedIndex] = useState(-1)
   const [activeInput, setActiveInput] = useState<number>(1) // 0: Name, 1: Phone, 2: Address, 3: Notes
 
   const fetchCustomers = async () => {
@@ -57,7 +57,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
       setNewAddress("")
       setNewNotes("")
       setIsVip(false)
-      setSelectedIndex(0)
+      setSelectedIndex(-1)
       setActiveInput(1)
       setTimeout(() => phoneRef.current?.focus(), 100)
     }
@@ -102,7 +102,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
         // if inside search bar, select the highlighted customer.
         if (document.activeElement === searchInputRef.current) {
           e.preventDefault()
-          if (filteredCustomers[selectedIndex]) {
+          if (selectedIndex >= 0 && filteredCustomers[selectedIndex]) {
             handleSelect(filteredCustomers[selectedIndex])
           }
         }
@@ -133,7 +133,10 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
     e.preventDefault()
     // Name is not mandatory, if empty write Guest
     const finalName = newName.trim() === '' ? 'Guest' : newName
-    if (!newPhone) return
+    if (!newPhone) {
+      toast.error('Phone number is required')
+      return
+    }
     
     const newCust: any = {
       first_name: finalName,
@@ -237,7 +240,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Name</label>
                   <div className="relative">
                     <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input ref={nameRef} onFocus={() => setActiveInput(0)} type="text" value={newName} onChange={e => setNewName(e.target.value)} className="w-full h-10 pl-9 pr-4 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold" placeholder="Guest" />
+                    <input ref={nameRef} onFocus={() => setActiveInput(0)} type="text" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCreate(e as any); } }} className="w-full h-10 pl-9 pr-4 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold" placeholder="Guest" />
                   </div>
                 </div>
                 <div className="space-y-1.5">
@@ -251,7 +254,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
                         val = val.slice(0, 4) + '-' + val.slice(4);
                       }
                       setNewPhone(val);
-                    }} className="w-full h-10 pl-9 pr-4 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold" placeholder="03XX-XXXXXXX" maxLength={12} />
+                    }} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCreate(e as any); } }} className="w-full h-10 pl-9 pr-4 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold" placeholder="03XX-XXXXXXX" maxLength={12} />
                   </div>
                 </div>
               </div>
@@ -260,7 +263,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Address</label>
                 <div className="relative">
                   <MapPin className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
-                  <textarea ref={addressRef} onFocus={() => setActiveInput(2)} value={newAddress} onChange={e => setNewAddress(e.target.value)} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none" placeholder="Delivery address..." />
+                  <textarea ref={addressRef} onFocus={() => setActiveInput(2)} value={newAddress} onChange={e => setNewAddress(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCreate(e as any); } }} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none" placeholder="Delivery address..." />
                 </div>
               </div>
 
@@ -268,7 +271,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Notes</label>
                 <div className="relative">
                   <StickyNote className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
-                  <textarea ref={notesRef} onFocus={() => setActiveInput(3)} value={newNotes} onChange={e => setNewNotes(e.target.value)} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none" placeholder="Allergies, preferences..." />
+                  <textarea ref={notesRef} onFocus={() => setActiveInput(3)} value={newNotes} onChange={e => setNewNotes(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCreate(e as any); } }} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none" placeholder="Allergies, preferences..." />
                 </div>
               </div>
 

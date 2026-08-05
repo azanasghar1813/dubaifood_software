@@ -266,6 +266,10 @@ class KitchenService {
     });
   }
 
+  markItemSent(itemId, userId, options = {}) {
+    return this._updateItemState(itemId, userId, KitchenState.SENT, options);
+  }
+
   startPreparingItem(itemId, userId, options = {}) {
     return this._updateItemState(itemId, userId, KitchenState.PREPARING, options);
   }

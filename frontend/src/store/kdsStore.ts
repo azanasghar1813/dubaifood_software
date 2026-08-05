@@ -70,7 +70,7 @@ export const useKdsStore = create<KdsState>((set, get) => ({
       const { kitchenService } = await import('../services/kitchenService')
       const res = await kitchenService.getQueue()
       if (res.success && res.data) {
-        const backendTickets = res.data.tickets || res.data // handle both shapes
+        const backendTickets = (res.data as any).tickets || res.data // handle both shapes
         const mappedTickets: KitchenTicket[] = backendTickets.map((row: any) => {
           // Normalize priority
           let p = row.priority?.toUpperCase() || 'NORMAL'
@@ -81,6 +81,11 @@ export const useKdsStore = create<KdsState>((set, get) => ({
           let s = row.kitchen_state?.toUpperCase() || 'PENDING'
           if (s === 'PENDING') s = 'Waiting'
           if (s === 'SENT') s = 'Accepted'
+          if (s === 'PREPARING') s = 'Preparing'
+          if (s === 'READY') s = 'Ready'
+          if (s === 'SERVED') s = 'Served'
+          if (s === 'COMPLETED') s = 'Served'
+          if (s === 'CANCELLED') s = 'Cancelled'
 
           return {
             id: row.id,
@@ -98,6 +103,11 @@ export const useKdsStore = create<KdsState>((set, get) => ({
             items: row.items.map((item: any) => {
               let is = item.kitchen_state?.toUpperCase() || 'PENDING'
               if (is === 'PENDING' || is === 'SENT') is = 'Waiting'
+              if (is === 'PREPARING') is = 'Preparing'
+              if (is === 'READY') is = 'Ready'
+              if (is === 'SERVED') is = 'Served'
+              if (is === 'COMPLETED') is = 'Served'
+              if (is === 'CANCELLED') is = 'Cancelled'
               
               let type = 'NORMAL'
               if (item.created_at && row.created_at) {
@@ -144,14 +154,17 @@ export const useKdsStore = create<KdsState>((set, get) => ({
       const { kitchenService } = await import('../services/kitchenService')
       const ticket = get().tickets.find(t => t.id === ticketId)
       if (ticket) {
-        const promises = ticket.items.map(item => {
-          if (status === 'Preparing') return kitchenService.startPreparingItem(item.id)
-          if (status === 'Ready') return kitchenService.markItemReady(item.id)
-          if (status === 'Served') return kitchenService.markItemServed(item.id)
-          if (status === 'Cancelled') return kitchenService.cancelItem(item.id)
-          return Promise.resolve()
-        })
-        await Promise.allSettled(promises)
+        for (const item of ticket.items) {
+          try {
+            if (status === 'Accepted') await kitchenService.acceptItem(item.id)
+            if (status === 'Preparing') await kitchenService.startPreparingItem(item.id)
+            if (status === 'Ready') await kitchenService.markItemReady(item.id)
+            if (status === 'Served') await kitchenService.markItemServed(item.id)
+            if (status === 'Cancelled') await kitchenService.cancelItem(item.id)
+          } catch (err) {
+            console.error(`Failed to update item ${item.id}`, err)
+          }
+        }
       }
       get().fetchTickets()
     } catch (e) {

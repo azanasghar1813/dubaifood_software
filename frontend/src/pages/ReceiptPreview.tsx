@@ -1,13 +1,28 @@
-import { Printer, Share2 } from "lucide-react"
+import { useEffect } from "react"
+import { Printer, Share2, X } from "lucide-react"
 import type { Order } from "../store/orderStore"
 import { useSettingsStore } from "../store/settingsStore"
 
 interface ReceiptPreviewProps {
   order?: Order
+  autoPrint?: boolean
+  onClose?: () => void
 }
 
-export default function ReceiptPreview({ order }: ReceiptPreviewProps) {
+export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPreviewProps) {
   const settings = useSettingsStore()
+
+  useEffect(() => {
+    if (autoPrint) {
+      // Small timeout to ensure rendering is complete before printing
+      const timer = setTimeout(() => {
+        window.print()
+      }, 500)
+      
+      // Cleanup
+      return () => clearTimeout(timer)
+    }
+  }, [autoPrint])
 
   // Use order data if available, otherwise use dummy data for the standalone preview page
   const orderNumber = order ? order.orderNumber : "10234"
@@ -24,8 +39,17 @@ export default function ReceiptPreview({ order }: ReceiptPreviewProps) {
   ]
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto pb-10">
-      {!order && (
+    <div className="space-y-6 max-w-3xl mx-auto pb-10 relative">
+      {onClose && (
+        <button 
+          onClick={onClose}
+          className="absolute top-0 right-0 z-10 p-2 bg-gray-100 rounded-full hover:bg-gray-200"
+        >
+          <X className="w-5 h-5 text-gray-600" />
+        </button>
+      )}
+
+      {!order && !autoPrint && (
         <div className="flex flex-col sm:flex-row justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Receipt Preview</h1>

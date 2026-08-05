@@ -2,10 +2,12 @@ import { useState, useEffect, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import jsPDF from "jspdf"
-import autoTable from "jspdf-autotable"
-import { useOrderStore, type Order } from "../store/orderStore"
+import ReceiptPreview from "./ReceiptPreview"
+import { useOrderStore, type Order, mapHistoryDetailToOrder } from "../store/orderStore"
 import { usePosStore } from "../store/posStore"
 import { useAuthStore } from "../store/authStore"
+import { fetchOrderDetail } from "../api/historyApi"
+import { apiClient } from "../api/client"
 import { 
   Search, Filter, Clock, Pencil, History, Printer, 
   X, AlertTriangle, FileText, Download, RotateCcw, Ban, Plus, 
@@ -67,6 +69,71 @@ export default function Orders() {
   const [itemsPerPage, setItemsPerPage] = useState<number>(25)
   
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set())
+  const [printOrder, setPrintOrder] = useState<Order | null>(null)
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedOrderIds(new Set(paginatedOrders.map(o => o.id)))
+    } else {
+      setSelectedOrderIds(new Set())
+    }
+  }
+
+  const handleSelectOrder = (id: string) => {
+    const newSet = new Set(selectedOrderIds)
+    if (newSet.has(id)) newSet.delete(id)
+    else newSet.add(id)
+    setSelectedOrderIds(newSet)
+  }
+
+  const handleBulkMarkPaid = async () => {
+    if (selectedOrderIds.size === 0) return
+    if (!confirm(`Mark ${selectedOrderIds.size} order(s) as paid?`)) return
+    
+    for (const id of selectedOrderIds) {
+      const order = orders.find(o => o.id === id)
+      if (order && order.paymentStatus !== 'Paid') {
+        try {
+          await apiClient.post(`/payments/order/${id}`, { amount_received: order.total, payment_method: 'CASH' })
+          updateOrder(id, { paymentStatus: 'Paid' })
+        } catch(e) {}
+      }
+    }
+    syncOrdersFromBackend()
+    setSelectedOrderIds(new Set())
+  }
+
+  const handleBulkMarkComplete = async () => {
+    if (selectedOrderIds.size === 0) return
+    if (!confirm(`Mark ${selectedOrderIds.size} order(s) as completed?`)) return
+    
+    for (const id of selectedOrderIds) {
+      const order = orders.find(o => o.id === id)
+      if (order && order.status !== 'Completed') {
+        try {
+          await apiClient.post(`/orders/${id}/transition`, { targetState: 'COMPLETED' })
+          updateOrder(id, { status: 'Completed', kitchenStatus: 'Served' })
+        } catch(e) {}
+      }
+    }
+    syncOrdersFromBackend()
+    setSelectedOrderIds(new Set())
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedOrderIds.size === 0) return
+    const pin = prompt("Deleting orders requires Authorization. Enter PIN (1234):")
+    if (pin !== '1234') { alert("Unauthorized."); return }
+
+    if (!confirm(`Permanently delete ${selectedOrderIds.size} order(s)? This action cannot be undone.`)) return
+    
+    for (const id of selectedOrderIds) {
+      try { await deleteOrder(id) } catch(e) {}
+    }
+    syncOrdersFromBackend()
+    setSelectedOrderIds(new Set())
+  }
 
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -115,6 +182,7 @@ export default function Orders() {
       o.items.map(i => `${i.quantity}x ${i.name}`).join('\n')
     ])
 
+    // @ts-ignore
     autoTable(doc, {
       head: headers,
       body: data,
@@ -152,22 +220,34 @@ export default function Orders() {
     document.body.removeChild(link)
   }
 
-  const handleEditClick = (order: Order) => {
+  const handleEditClick = async (order: Order) => {
     const cashierName = user?.name || 'Ahmed'
     if (order.paymentStatus === 'Paid' || order.status === 'Cancelled') {
       const pin = prompt("Modifying this order requires Manager Authorization. Enter PIN (1234):")
       if (pin !== '1234') { alert("Unauthorized Manager PIN."); return }
     }
     lockOrder(order.id, cashierName)
-    clearCart()
-    loadOrderForEdit(order)
+    
+    await loadOrderForEdit(order)
+
     navigate("/pos")
   }
 
-  const handlePrintReceipt = (order: Order) => {
+  const handlePrintReceipt = async (order: Order) => {
     updateOrder(order.id, { receiptReprints: (order.receiptReprints || 0) + 1 })
     addTimelineEvent(order.id, { event: "Receipt Printed", remarks: "Printed thermal receipt", cashier: user?.name || "Ahmed" })
-    alert(`Printing Receipt for Order #${order.orderNumber}`)
+    
+    try {
+      const res = await fetchOrderDetail(order.id)
+      if (res.success && res.data) {
+        const fullOrder = mapHistoryDetailToOrder(res.data, res.data)
+        setPrintOrder(fullOrder)
+      } else {
+        setPrintOrder(order)
+      }
+    } catch(e) {
+      setPrintOrder(order)
+    }
   }
 
   const handleDuplicate = (order: Order) => {
@@ -175,8 +255,7 @@ export default function Orders() {
   }
 
   const handleCancelOrder = (order: Order) => {
-    const pin = prompt("Cancelling an order requires Manager Authorization. Enter PIN (1234):")
-    if (pin !== '1234') { alert("Unauthorized."); return }
+    if (!confirm("Are you sure you want to cancel this order?")) return;
     updateOrder(order.id, { status: "Cancelled", kitchenStatus: "Cancelled" })
     addTimelineEvent(order.id, { event: "Order Cancelled", remarks: "Cancelled from Order History", cashier: user?.name || "Ahmed" })
     addAuditLog(order.id, { actionType: "Order Cancelled", who: user?.name || "Ahmed", oldValue: order.status, newValue: "Cancelled", reason: "Manager override via OCC" })
@@ -193,11 +272,9 @@ export default function Orders() {
   }
 
   const handleDeleteOrder = async (order: Order) => {
-    const role = (user?.role || '').toUpperCase();
-    if (role !== 'ADMIN' && role !== 'SUPER ADMIN') {
-      const pin = prompt("Deleting an order requires Admin Authorization. Enter PIN (1234):")
-      if (pin !== '1234') { alert("Unauthorized."); return }
-    }
+    const pin = prompt("Deleting an order requires Authorization. Enter PIN (1234):")
+    if (pin !== '1234') { alert("Unauthorized."); return }
+
     
     if (!confirm(`Are you absolutely sure you want to permanently delete order ${order.orderNumber}? This action cannot be undone.`)) return
     
@@ -411,10 +488,23 @@ export default function Orders() {
 
       {/* ORDERS TABLE */}
       <div className="bg-card border border-border rounded-3xl shadow-sm overflow-hidden flex flex-col">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1200px]">
-            <thead>
-              <tr className="bg-secondary/40 border-b border-border text-[10px] uppercase tracking-widest text-muted-foreground font-black">
+        {selectedOrderIds.size > 0 && (
+          <div className="bg-primary/10 border-b border-border p-3 flex justify-between items-center px-6">
+            <span className="text-sm font-bold text-primary">{selectedOrderIds.size} orders selected</span>
+            <div className="flex gap-2">
+              <button onClick={handleBulkMarkPaid} className="px-3 py-1.5 bg-green-500 text-white rounded-lg text-xs font-bold hover:bg-green-600 transition-colors">Mark Paid</button>
+              <button onClick={handleBulkMarkComplete} className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors">Mark Complete</button>
+              <button onClick={handleBulkDelete} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-bold hover:bg-red-600 transition-colors">Delete Selected</button>
+            </div>
+          </div>
+        )}
+        <div className="overflow-x-auto max-h-[60vh] overflow-y-auto custom-scrollbar relative">
+          <table className="w-full text-left border-collapse min-w-[1000px]">
+            <thead className="sticky top-0 bg-secondary z-10 shadow-sm">
+              <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted-foreground font-black">
+                <th className="p-4 w-12 text-center">
+                  <input type="checkbox" onChange={handleSelectAll} checked={paginatedOrders.length > 0 && selectedOrderIds.size === paginatedOrders.length} className="w-4 h-4 rounded border-border text-primary focus:ring-primary" />
+                </th>
                 <th className="p-4">Order #</th>
                 <th className="p-4">Date & Time</th>
                 <th className="p-4">Customer</th>
@@ -427,7 +517,10 @@ export default function Orders() {
             </thead>
             <tbody className="divide-y divide-border text-sm">
               {paginatedOrders.map((order) => (
-                <tr key={order.id} className="hover:bg-secondary/40 transition-colors group cursor-pointer" onClick={() => setSelectedOrder(order)}>
+                <tr key={order.id} className={`hover:bg-secondary/40 transition-colors group cursor-pointer ${selectedOrderIds.has(order.id) ? 'bg-primary/5' : ''}`} onClick={() => setSelectedOrder(order)}>
+                  <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectOrder(order.id)} className="w-4 h-4 rounded border-border text-primary focus:ring-primary" />
+                  </td>
                   <td className="p-4 font-black">
                     #{order.orderNumber}
                     {order.auditLog?.length > 0 && <span className="ml-2 text-[8px] bg-amber-500/10 text-amber-500 px-1 rounded uppercase border border-amber-500/20">Edited</span>}
@@ -472,12 +565,19 @@ export default function Orders() {
                     <div className="flex justify-end gap-2" onClick={e => e.stopPropagation()}>
                       <button onClick={() => setSelectedOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors" title="View Details"><FileText className="w-4 h-4" /></button>
                       <button onClick={async () => {
-                        updateOrder(order.id, { paymentStatus: 'Paid', status: 'Completed', kitchenStatus: 'Served' })
                         try {
-                          await fetch(`http://localhost:5000/api/orders/${order.id}/pay`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ amount: order.total, method: 'Cash' }) })
+                          await apiClient.post(`/payments/order/${order.id}`, { amount_received: order.total, payment_method: 'CASH' })
+                          updateOrder(order.id, { paymentStatus: 'Paid' })
                           await syncOrdersFromBackend()
                         } catch(e) {}
-                      }} disabled={order.status === "Completed" || order.status === "Cancelled"} className="p-2 hover:bg-green-500/10 rounded-lg text-muted-foreground hover:text-green-500 disabled:opacity-30 transition-colors" title="Quick Complete"><CheckCircle2 className="w-4 h-4" /></button>
+                      }} disabled={order.paymentStatus === "Paid" || order.status === "Cancelled"} className="p-2 hover:bg-green-500/10 rounded-lg text-muted-foreground hover:text-green-500 disabled:opacity-30 transition-colors" title="Mark Paid"><DollarSign className="w-4 h-4" /></button>
+                      <button onClick={async () => {
+                        try {
+                          await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'COMPLETED' })
+                          updateOrder(order.id, { status: 'Completed', kitchenStatus: 'Served' })
+                          await syncOrdersFromBackend()
+                        } catch(e) {}
+                      }} disabled={order.status === "Completed" || order.status === "Cancelled"} className="p-2 hover:bg-blue-500/10 rounded-lg text-muted-foreground hover:text-blue-500 disabled:opacity-30 transition-colors" title="Mark Complete"><CheckCircle2 className="w-4 h-4" /></button>
                       <button onClick={() => handlePrintReceipt(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-primary transition-colors" title="Print/Reprint Receipt"><Printer className="w-4 h-4" /></button>
                       <button onClick={() => handleEditClick(order)} disabled={order.status === "Cancelled" || order.paymentStatus === "Paid"} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-amber-500 disabled:opacity-30 transition-colors" title="Edit Order"><Pencil className="w-4 h-4" /></button>
                       <button onClick={() => handleRefund(order)} disabled={order.paymentStatus === "Unpaid" || order.paymentStatus === "Refunded"} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-purple-500 disabled:opacity-30 transition-colors" title="Refund"><RotateCcw className="w-4 h-4" /></button>
@@ -731,6 +831,10 @@ export default function Orders() {
           </div>
         )}
       </AnimatePresence>
+
+      <div className="hidden">
+        {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
+      </div>
     </div>
   )
 }

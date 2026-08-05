@@ -43,7 +43,7 @@ const paymentStatusColors: Record<string, string> = {
 
 export const RecentOrdersModal: React.FC<RecentOrdersModalProps> = ({ isOpen, onClose }) => {
   const { orders, lockOrder, unlockOrder, syncOrdersFromBackend } = useOrderStore()
-  const { loadOrderForEdit, clearCart, editingOrderId } = usePosStore()
+  const { loadOrderForEdit, editingOrderId } = usePosStore()
   const { user } = useAuthStore()
   
   const [searchQuery, setSearchQuery] = useState("")
@@ -152,7 +152,7 @@ export const RecentOrdersModal: React.FC<RecentOrdersModalProps> = ({ isOpen, on
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [isOpen, selectedOrder, onClose, overrideModalOrder, filteredOrders])
 
-  const handleEditOrder = (order: Order) => {
+  const handleEditOrder = async (order: Order) => {
     const cashierName = user?.name || 'Cashier'
 
     // If locked by someone else → show override modal
@@ -163,18 +163,16 @@ export const RecentOrdersModal: React.FC<RecentOrdersModalProps> = ({ isOpen, on
     // Already being edited by this session → just close
     if (order.id === editingOrderId) { onClose(); return }
     lockOrder(order.id, cashierName)
-    clearCart()
-    loadOrderForEdit(order)
+    await loadOrderForEdit(order)
     onClose()
   }
 
-  const handleManagerOverride = () => {
+  const handleManagerOverride = async () => {
     if (!overrideModalOrder) return
     const cashierName = user?.name || 'Cashier'
     unlockOrder(overrideModalOrder.id, true)
     lockOrder(overrideModalOrder.id, cashierName)
-    clearCart()
-    loadOrderForEdit(overrideModalOrder)
+    await loadOrderForEdit(overrideModalOrder)
     setOverrideModalOrder(null)
     onClose()
   }

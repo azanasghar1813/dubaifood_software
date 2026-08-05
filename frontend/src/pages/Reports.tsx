@@ -95,7 +95,175 @@ export default function Reports() {
   }
 
   const handleExportData = () => {
-    alert(`Exporting "${activeTab}" as CSV spreadsheet report.`)
+    // Build CSV content based on active tab
+    let csvContent = ''
+    const timestamp = new Date().toISOString().split('T')[0]
+    let filename = `Report_${activeTab.replace(/ /g, '_')}_${timestamp}`
+
+    if (activeTab === 'Dashboard Summary' || activeTab === 'Orders Report') {
+      const headers = ['Order #', 'Date', 'Customer', 'Type', 'Subtotal', 'Tax', 'Service Charge', 'Delivery', 'Discount', 'Total', 'Payment Method', 'Payment Status', 'Order Status']
+      const rows = orders.map(o => [
+        o.orderNumber,
+        `"${new Date(o.timestamp).toLocaleString()}"`,
+        `"${o.customerName || 'Walk-in'}"`,
+        `"${o.orderType}"`,
+        o.subtotal.toFixed(2),
+        o.tax.toFixed(2),
+        (o.serviceCharge || 0).toFixed(2),
+        (o.deliveryCharges || 0).toFixed(2),
+        o.discount.toFixed(2),
+        o.total.toFixed(2),
+        `"${o.payments?.[0]?.method || 'Cash'}"`,
+        `"${o.paymentStatus}"`,
+        `"${o.status}"`
+      ])
+      csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    } else if (activeTab === 'Product Sales') {
+      const headers = ['Product', 'Category', 'Qty Sold', 'Revenue', 'Share %']
+      const rows = productSalesData.map(p => [
+        `"${p.name}"`, `"${p.cat}"`, p.sold, p.rev.toFixed(2), p.share
+      ])
+      csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    } else if (activeTab === 'Category Sales') {
+      const headers = ['Category', 'Qty Sold', 'Revenue', 'Share %']
+      const rows = categorySalesData.map(c => [
+        `"${c.cat}"`, c.sold, c.rev.toFixed(2), c.share
+      ])
+      csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    } else if (activeTab === 'Deal Sales') {
+      const headers = ['Deal Name', 'Times Redeemed', 'Revenue', 'Discount Cost', 'Net Contribution']
+      const rows = dealSalesData.map(d => [
+        `"${d.name}"`, d.sold, d.rev.toFixed(2), d.discountCost?.toFixed(2) || '0', d.netContribution?.toFixed(2) || '0'
+      ])
+      csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    }
+
+    if (!csvContent) {
+      alert('No data to export for this report tab.')
+      return
+    }
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `${filename}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleExportPDF = () => {
+    import('jspdf').then(({ default: jsPDF }) => {
+      import('jspdf-autotable').then(({ default: autoTable }) => {
+        const doc = new jsPDF()
+        const timestamp = new Date().toLocaleString()
+        doc.setFontSize(18)
+        doc.text(`${activeTab} Report`, 14, 22)
+        doc.setFontSize(11)
+        doc.setTextColor(100)
+        doc.text(`Generated: ${timestamp}`, 14, 30)
+
+        if (activeTab === 'Dashboard Summary' || activeTab === 'Orders Report') {
+          doc.setFontSize(14)
+          doc.setTextColor(0)
+          doc.text('Summary', 14, 42)
+          
+          autoTable(doc, {
+            startY: 46,
+            head: [['Metric', 'Value']],
+            body: [
+              ['Total Orders', reportStats.totalOrdersCount],
+              ['Gross Sales', `Rs. ${formatCurrency(reportStats.grossSales)}`],
+              ['Net Sales', `Rs. ${formatCurrency(reportStats.netSales)}`],
+              ['Tax Collected', `Rs. ${formatCurrency(reportStats.totalTax)}`],
+              ['Service Charges', `Rs. ${formatCurrency(reportStats.totalService)}`],
+              ['Delivery Charges', `Rs. ${formatCurrency(reportStats.totalDelivery)}`],
+              ['Cash Sales', `Rs. ${formatCurrency(reportStats.cashSales || 0)}`],
+              ['Card/Digital Sales', `Rs. ${formatCurrency(reportStats.cardSales || 0)}`],
+              ['Restaurant Sales', `Rs. ${formatCurrency(reportStats.restaurantSales || 0)}`],
+              ['Fast Food Sales', `Rs. ${formatCurrency(reportStats.fastFoodSales || 0)}`]
+            ],
+            theme: 'grid'
+          })
+          
+          doc.text('Order Details', 14, (doc as any).lastAutoTable.finalY + 10)
+          
+          autoTable(doc, {
+            startY: (doc as any).lastAutoTable.finalY + 14,
+            head: [['Order #', 'Date', 'Type', 'Total', 'Payment', 'Status']],
+            body: orders.map(o => [
+              o.orderNumber,
+              new Date(o.timestamp).toLocaleString(),
+              o.orderType,
+              `Rs. ${formatCurrency(o.total)}`,
+              o.payments?.[0]?.method || 'Cash',
+              o.status
+            ]),
+            theme: 'striped'
+          })
+        } else if (activeTab === 'Product Sales') {
+          autoTable(doc, {
+            startY: 38,
+            head: [['Product', 'Category', 'Qty', 'Revenue', 'Share']],
+            body: productSalesData.map(p => [p.name, p.cat, p.sold, `Rs. ${formatCurrency(p.rev)}`, `${p.share}%`]),
+            theme: 'striped'
+          })
+        } else if (activeTab === 'Category Sales') {
+          autoTable(doc, {
+            startY: 38,
+            head: [['Category', 'Qty', 'Revenue', 'Share']],
+            body: categorySalesData.map(c => [c.cat, c.sold, `Rs. ${formatCurrency(c.rev)}`, `${c.share}%`]),
+            theme: 'striped'
+          })
+        }
+        
+        doc.save(`Report_${activeTab.replace(/ /g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`)
+      })
+    })
+  }
+
+  const generatePrintTableHtml = () => {
+    let html = ''
+    const timestamp = new Date().toLocaleString()
+    
+    if (activeTab === 'Dashboard Summary' || activeTab === 'Orders Report') {
+      html = `
+        <h2>Summary</h2>
+        <table>
+          <tr><td>Total Orders</td><td>${reportStats.totalOrdersCount}</td></tr>
+          <tr><td>Gross Sales</td><td>Rs. ${formatCurrency(reportStats.grossSales)}</td></tr>
+          <tr><td>Net Sales</td><td>Rs. ${formatCurrency(reportStats.netSales)}</td></tr>
+          <tr><td>Tax Collected</td><td>Rs. ${formatCurrency(reportStats.totalTax)}</td></tr>
+          <tr><td>Service Charges</td><td>Rs. ${formatCurrency(reportStats.totalService)}</td></tr>
+          <tr><td>Delivery Charges</td><td>Rs. ${formatCurrency(reportStats.totalDelivery)}</td></tr>
+          <tr><td>Cash Sales</td><td>Rs. ${formatCurrency(reportStats.cashSales || 0)}</td></tr>
+          <tr><td>Card/Digital Sales</td><td>Rs. ${formatCurrency(reportStats.cardSales || 0)}</td></tr>
+          <tr><td>Restaurant Sales</td><td>Rs. ${formatCurrency(reportStats.restaurantSales || 0)}</td></tr>
+          <tr><td>Fast Food Sales</td><td>Rs. ${formatCurrency(reportStats.fastFoodSales || 0)}</td></tr>
+        </table>
+        <h2>Order Details</h2>
+        <table>
+          <thead><tr><th>Order #</th><th>Date</th><th>Type</th><th>Total</th><th>Payment</th><th>Status</th></tr></thead>
+          <tbody>
+            ${orders.map(o => `<tr><td>${o.orderNumber}</td><td>${new Date(o.timestamp).toLocaleString()}</td><td>${o.orderType}</td><td>Rs. ${formatCurrency(o.total)}</td><td>${o.payments?.[0]?.method || 'Cash'}</td><td>${o.status}</td></tr>`).join('')}
+          </tbody>
+        </table>`
+    } else if (activeTab === 'Product Sales') {
+      html = `
+        <table>
+          <thead><tr><th>Product</th><th>Category</th><th>Qty</th><th>Revenue</th><th>Share</th></tr></thead>
+          <tbody>${productSalesData.map(p => `<tr><td>${p.name}</td><td>${p.cat}</td><td>${p.sold}</td><td>Rs. ${formatCurrency(p.rev)}</td><td>${p.share}%</td></tr>`).join('')}</tbody>
+        </table>`
+    } else if (activeTab === 'Category Sales') {
+      html = `
+        <table>
+          <thead><tr><th>Category</th><th>Qty</th><th>Revenue</th><th>Share</th></tr></thead>
+          <tbody>${categorySalesData.map(c => `<tr><td>${c.cat}</td><td>${c.sold}</td><td>Rs. ${formatCurrency(c.rev)}</td><td>${c.share}%</td></tr>`).join('')}</tbody>
+        </table>`
+    }
+    return html
   }
 
   // Dynamic calculations based on live orders store
@@ -113,28 +281,86 @@ export default function Reports() {
     const totalOrdersCount = orders.length
     const grossSales = orders.reduce((sum, o) => sum + o.total, 0)
     const netSales = orders.reduce((sum, o) => sum + o.subtotal, 0)
-    const totalTax = orders.reduce((sum, o) => sum + o.tax, 0)
-    const totalService = orders.reduce((sum, o) => sum + o.serviceCharge, 0)
-    const totalDiscount = orders.reduce((sum, o) => sum + o.discount, 0)
-    const totalDelivery = orders.reduce((sum, o) => {
-      const grandTotal = o.total - (o.roundOffAdjustment || 0)
-      const delivery = grandTotal - Math.max(0, o.subtotal - o.discount) - o.tax - o.serviceCharge
-      return sum + Math.max(0, Math.round(delivery))
+      
+    const totalService = orders.reduce((sum, o) => {
+      if (o.serviceCharge && o.serviceCharge > 0) return sum + o.serviceCharge;
+      
+      // Smart Fallback
+      const gt = Number(o.total || 0);
+      const sub = Number(o.subtotal || 0);
+      const tax = Number(o.tax || 0);
+      const disc = Number(o.discount || 0);
+      const del = Number(o.deliveryCharges || 0);
+      const calculatedService = gt - sub - tax + disc - del;
+      
+      // If still 0, we can't extract, assume 0
+      return sum + Math.max(0, Math.round(calculatedService));
     }, 0)
+
+    const totalDelivery = orders.reduce((sum, o) => {
+      if (o.deliveryCharges && o.deliveryCharges > 0) return sum + o.deliveryCharges;
+      // If it's a delivery order and we don't have explicit delivery charges, extract it
+      if (o.orderType === 'Delivery') {
+        const gt = Number(o.total || 0);
+        const sub = Number(o.subtotal || 0);
+        const tax = Number(o.tax || 0);
+        const disc = Number(o.discount || 0);
+        const calculatedDel = gt - sub - tax + disc;
+        return sum + Math.max(0, Math.round(calculatedDel));
+      }
+      return sum;
+    }, 0)
+
+    let restaurantSales = 0
+    let fastFoodSales = 0
+    let cashSales = 0
+    let cardSales = 0
+    orders.forEach(o => {
+      if (o.status !== 'Cancelled') {
+        // Track Restaurant vs Fast Food by item categories proportional to total
+        let itemFastFood = 0;
+        let itemRestaurant = 0;
+        
+        o.items.forEach(item => {
+           const cat = (item.category || 'Other').toLowerCase();
+           if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) {
+             itemFastFood += item.price * item.quantity;
+           } else {
+             itemRestaurant += item.price * item.quantity;
+           }
+        });
+        
+        const orderItemsTotal = itemFastFood + itemRestaurant;
+        if (orderItemsTotal > 0) {
+          fastFoodSales += (itemFastFood / orderItemsTotal) * o.total;
+          restaurantSales += (itemRestaurant / orderItemsTotal) * o.total;
+        }
+
+        // Track Cash vs Card by payment method - keep separate
+        const primaryPaymentMethod = (o.payments?.[0]?.method || 'Cash').toUpperCase().replace(/_/g, ' ')
+        if (primaryPaymentMethod === 'CASH') {
+          cashSales += o.total
+        } else {
+          cardSales += o.total
+        }
+      }
+    })
 
     const paidCount = orders.filter(o => o.paymentStatus === "Paid").length
     const unpaidCount = orders.filter(o => o.paymentStatus === "Unpaid").length
     const refundsCount = orders.filter(o => o.paymentStatus === "Refunded").length
 
-    const cashSales = orders.filter(o => (o.payments?.[0]?.method || "Cash") === "Cash").reduce((s, o) => s + o.total, 0)
-    const digitalSales = grossSales - cashSales
+    const totalTax = orders.reduce((sum, o) => sum + o.tax, 0)
+    const totalDiscount = orders.reduce((sum, o) => sum + o.discount, 0)
+
+    const digitalSales = cardSales
     const avgBill = totalOrdersCount > 0 ? Math.round(grossSales / totalOrdersCount) : 0
     const netEstimatedProfit = Math.round(netSales * 0.45)
 
     return {
       totalOrdersCount, grossSales, netSales, totalTax, totalService,
       totalDiscount, totalDelivery, paidCount, unpaidCount, refundsCount, cashSales,
-      digitalSales, avgBill, netEstimatedProfit
+      cardSales, digitalSales, avgBill, netEstimatedProfit, restaurantSales: restaurantSales || 0, fastFoodSales: fastFoodSales || 0
     }
   }, [orders, hasData])
 
@@ -318,7 +544,7 @@ export default function Reports() {
           </button>
 
           <button
-            onClick={() => window.print()}
+            onClick={handleExportPDF}
             className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-xl text-xs font-black hover:bg-primary/95 shadow-md shadow-primary/10 transition-all active:scale-95"
           >
             <Printer className="w-4 h-4" /> Print PDF Report
@@ -422,20 +648,41 @@ export default function Reports() {
               <>
                 {/* Dynamic summary totals cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {[
-                    { label: "Today's Gross Sales", val: `Rs. ${formatCurrency(reportStats.grossSales)}`, sub: "Total Sale", color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/25" },
-                    { label: "Today's Net Sales", val: `Rs. ${formatCurrency(reportStats.netSales)}`, sub: "Excludes service & delivery charges", color: "text-blue-500 bg-blue-500/10 border-blue-500/25" },
-                    { label: "Today's Service Charges", val: `Rs. ${formatCurrency(reportStats.totalService)}`, sub: "Dine-in services", color: "text-amber-500 bg-amber-500/10 border-amber-500/25" },
-                    { label: "Today's Delivery Charges", val: `Rs. ${formatCurrency(reportStats.totalDelivery)}`, sub: "Delivery fees", color: "text-indigo-500 bg-indigo-500/10 border-indigo-500/25" }
-                  ].map((card, i) => (
-                    <div key={i} className="p-5 bg-card border border-border rounded-[2rem] shadow-sm flex flex-col justify-between">
-                      <div>
-                        <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">{card.label}</span>
-                        <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">{card.val}</h3>
-                      </div>
-                      <span className={`text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit ${card.color}`}>{card.sub}</span>
+                  {/* Gross Sales */}
+                  <div className="p-5 bg-card border border-border rounded-[2rem] shadow-sm flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">Today's Gross Sales</span>
+                      <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.grossSales)}</h3>
                     </div>
-                  ))}
+                    <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-emerald-500 bg-emerald-500/10 border-emerald-500/25">Total Sale</span>
+                  </div>
+
+                  {/* Net Sales */}
+                  <div className="p-5 bg-card border border-border rounded-[2rem] shadow-sm flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">Today's Net Sales</span>
+                      <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.netSales)}</h3>
+                    </div>
+                    <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-blue-500 bg-blue-500/10 border-blue-500/25">Excludes service & delivery charges</span>
+                  </div>
+
+                  {/* Service Charges */}
+                  <div className="p-5 bg-card border border-border rounded-[2rem] shadow-sm flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">Today's Service Charges</span>
+                      <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.totalService)}</h3>
+                    </div>
+                    <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-amber-500 bg-amber-500/10 border-amber-500/25">Dine-in services</span>
+                  </div>
+
+                  {/* Delivery Charges */}
+                  <div className="p-5 bg-card border border-border rounded-[2rem] shadow-sm flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">Today's Delivery Charges</span>
+                      <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.totalDelivery)}</h3>
+                    </div>
+                    <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-indigo-500 bg-indigo-500/10 border-indigo-500/25">Delivery fees</span>
+                  </div>
                 </div>
 
                 {/* Item Velocity Leaderboard */}
@@ -511,49 +758,76 @@ export default function Reports() {
                 {/* Bottom Row */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                  {/* Fast Food vs Restaurant Sales Split */}
+                  {/* Sales Split */}
                   <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm flex flex-col">
                     <h3 className="text-lg font-black uppercase tracking-wider text-foreground mb-4">Sales Split</h3>
-                    <div className="space-y-4 my-auto">
-                      <div className="p-4 bg-orange-500/10 border border-orange-500/25 rounded-2xl flex justify-between items-center">
+                    <div className="space-y-3 my-auto">
+                      {/* By Order Type */}
+                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">By Channel</p>
+                      <div className="p-3 bg-orange-500/10 border border-orange-500/25 rounded-2xl flex justify-between items-center">
                         <div>
-                          <span className="text-[10px] text-orange-500 font-bold uppercase">Fast Food</span>
-                          <p className="text-xl md:text-2xl font-black text-foreground mt-1">Rs. {formatCurrency(reportStats.grossSales * 0.65)}</p>
+                          <span className="text-[10px] text-orange-500 font-bold uppercase">Fast Food (Delivery/Online)</span>
+                          <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.fastFoodSales || 0)}</p>
                         </div>
-                        <span className="text-sm font-bold text-orange-500 bg-orange-500/20 px-3 py-1.5 rounded-lg">65%</span>
+                        <span className="text-sm font-bold text-orange-500 bg-orange-500/20 px-3 py-1.5 rounded-lg">
+                          {reportStats.grossSales > 0 ? Math.round(((reportStats.fastFoodSales || 0) / reportStats.grossSales) * 100) : 0}%
+                        </span>
                       </div>
-                      <div className="p-4 bg-blue-500/10 border border-blue-500/25 rounded-2xl flex justify-between items-center">
+                      <div className="p-3 bg-blue-500/10 border border-blue-500/25 rounded-2xl flex justify-between items-center">
                         <div>
-                          <span className="text-[10px] text-blue-500 font-bold uppercase">Restaurant</span>
-                          <p className="text-xl md:text-2xl font-black text-foreground mt-1">Rs. {formatCurrency(reportStats.grossSales * 0.35)}</p>
+                          <span className="text-[10px] text-blue-500 font-bold uppercase">Restaurant (Dine-in/Takeaway)</span>
+                          <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.restaurantSales || 0)}</p>
                         </div>
-                        <span className="text-sm font-bold text-blue-500 bg-blue-500/20 px-3 py-1.5 rounded-lg">35%</span>
+                        <span className="text-sm font-bold text-blue-500 bg-blue-500/20 px-3 py-1.5 rounded-lg">
+                          {reportStats.grossSales > 0 ? Math.round(((reportStats.restaurantSales || 0) / reportStats.grossSales) * 100) : 0}%
+                        </span>
+                      </div>
+
+                      {/* By Payment Method */}
+                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider mt-4">By Payment Method</p>
+                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-2xl flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] text-emerald-500 font-bold uppercase">💵 Cash Sales</span>
+                          <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.cashSales || 0)}</p>
+                        </div>
+                        <span className="text-sm font-bold text-emerald-500 bg-emerald-500/20 px-3 py-1.5 rounded-lg">
+                          {reportStats.grossSales > 0 ? Math.round(((reportStats.cashSales || 0) / reportStats.grossSales) * 100) : 0}%
+                        </span>
+                      </div>
+                      <div className="p-3 bg-purple-500/10 border border-purple-500/25 rounded-2xl flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] text-purple-500 font-bold uppercase">💳 Card / Digital Sales</span>
+                          <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.cardSales || 0)}</p>
+                        </div>
+                        <span className="text-sm font-bold text-purple-500 bg-purple-500/20 px-3 py-1.5 rounded-lg">
+                          {reportStats.grossSales > 0 ? Math.round(((reportStats.cardSales || 0) / reportStats.grossSales) * 100) : 0}%
+                        </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Category Split Pie Chart */}
+                  {/* Top Selling Items Pie Chart */}
                   <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm flex flex-col justify-center">
-                    <h3 className="text-lg font-black uppercase tracking-wider text-foreground mb-4">Category Breakdown</h3>
+                    <h3 className="text-lg font-black uppercase tracking-wider text-foreground mb-4">Top Selling Items</h3>
                     <div className="h-[200px] w-full">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
-                            data={categorySalesData}
+                            data={productSalesData.slice(0, 5)}
                             cx="50%"
                             cy="50%"
-                            innerRadius={50}
+                            innerRadius={40}
                             outerRadius={80}
                             paddingAngle={5}
-                            dataKey="rev"
-                            nameKey="cat"
+                            dataKey="sold"
+                            nameKey="name"
                           >
-                            {categorySalesData.map((_entry, index) => (
+                            {productSalesData.slice(0, 5).map((_entry, index) => (
                               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
                           </Pie>
                           <Tooltip
-                            formatter={(value) => `Rs. ${formatCurrency(value as number)}`}
+                            formatter={(value) => `${value} items sold`}
                             contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '12px', fontWeight: 'bold' }}
                           />
                           <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: '11px', fontWeight: 'bold', color: 'hsl(var(--foreground))' }} />

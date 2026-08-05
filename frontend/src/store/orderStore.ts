@@ -57,6 +57,7 @@ export interface Order {
   subtotal: number
   tax: number
   serviceCharge: number
+  deliveryCharges?: number
   discount: number
   total: number
   status: OrderStatus
@@ -128,13 +129,15 @@ const formatName = (nameOrId?: string): string => {
   return nameOrId
 }
 
-const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOrderDetail): Order => {
+export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOrderDetail): Order => {
   const items = (detail?.items || []).map((item: any, index: number) => ({
     cartItemId: item.id || `${row.id}-item-${index}`,
     id: item.product_id || item.id || `${row.id}-product-${index}`,
-    name: item.product_name_snapshot || item.product_name || item.name || 'Item',
+    variant_id: item.variant_id || null,
+    name: item.variant_name ? `${item.product_name_snapshot || item.product_name || item.name || 'Item'} (${item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Item'),
     price: Number(item.final_unit_price ?? item.unit_price ?? item.price ?? 0),
     quantity: Number(item.quantity ?? 1),
+    subtotal: Number(item.subtotal ?? (Number(item.final_unit_price ?? item.unit_price ?? item.price ?? 0) * Number(item.quantity ?? 1))),
     category: item.category || item.category_name || 'Unknown',
     code: item.code || item.product_code || '',
     selectedModifiers: item.modifiers || item.selectedModifiers || [],
@@ -185,7 +188,24 @@ const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOrderDeta
     items,
     subtotal: Number(row.subtotal || 0),
     tax: Number(row.tax_total || 0),
-    serviceCharge: 0,
+    serviceCharge: (() => {
+      // Try multiple metadata paths for service charge
+      const meta = detail?.metadata || {};
+      const fromMeta = Number(row.service_charge ?? meta.service_charge ?? meta.serviceCharge ?? 0);
+      if (fromMeta > 0) return fromMeta;
+      // Fallback: calculate from grand_total - subtotal - tax + discount - delivery
+      const gt = Number(row.grand_total || 0);
+      const sub = Number(row.subtotal || 0);
+      const tax = Number(row.tax_total || 0);
+      const disc = Number(row.discount_total || 0);
+      const del = Number(row.delivery_charges ?? meta.delivery_charges ?? meta.deliveryCharges ?? 0);
+      const calculated = gt - sub - tax + disc - del;
+      return calculated > 0 ? Math.round(calculated * 100) / 100 : 0;
+    })(),
+    deliveryCharges: (() => {
+      const meta = detail?.metadata || {};
+      return Number(row.delivery_charges ?? meta.delivery_charges ?? meta.deliveryCharges ?? 0);
+    })(),
     discount: Number(row.discount_total || 0),
     total: Number(row.grand_total || 0),
     status: mapLifecycleState(row.lifecycle_state),

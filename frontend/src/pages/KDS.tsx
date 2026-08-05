@@ -588,21 +588,24 @@ export const KDS: React.FC = () => {
                     {ticket.status === "Waiting" && (
                       <button
                         onClick={() => {
-                          updateTicketStatus(ticket.id, "Accepted")
+                          updateTicketStatus(ticket.id, "Preparing")
                           playNotificationSound('update')
                         }}
-                        className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase rounded-xl transition-all"
+                        className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase rounded-xl transition-all"
                       >
-                        Accept
+                        ✓ Accept
                       </button>
                     )}
 
-                    {(ticket.status === "Waiting" || ticket.status === "Accepted") && (
+                    {ticket.status === "Accepted" && (
                       <button
-                        onClick={() => updateTicketStatus(ticket.id, "Preparing")}
+                        onClick={() => {
+                          updateTicketStatus(ticket.id, "Preparing")
+                          playNotificationSound('update')
+                        }}
                         className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase rounded-xl transition-all"
                       >
-                        Prepare
+                        Start Preparing
                       </button>
                     )}
 
@@ -612,18 +615,18 @@ export const KDS: React.FC = () => {
                           updateTicketStatus(ticket.id, "Ready")
                           playNotificationSound('update')
                         }}
-                        className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase rounded-xl transition-all"
+                        className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white text-xs font-black uppercase rounded-xl transition-all"
                       >
-                        Ready
+                        🔴 Ready
                       </button>
                     )}
 
                     {ticket.status === "Ready" && (
                       <button
                         onClick={() => updateTicketStatus(ticket.id, "Served")}
-                        className="flex-1 py-2.5 bg-secondary hover:bg-border text-foreground text-xs font-black uppercase rounded-xl transition-all border border-border"
+                        className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase rounded-xl transition-all"
                       >
-                        Served / Complete
+                        ✅ Completed
                       </button>
                     )}
 

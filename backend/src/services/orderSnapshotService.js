@@ -63,7 +63,7 @@ class OrderSnapshotService {
       for (const modInput of modifiers) {
         const modId = typeof modInput === 'string' ? modInput : modInput.modifier_id;
         const modObj = modifierRepository.findModifierById(modId);
-        
+
         if (modObj) {
           const priceAdj = modInput.price_adjustment !== undefined ? Number(modInput.price_adjustment) : Number(modObj.price_adjustment || 0);
           const modQty = modInput.quantity || 1;
@@ -144,7 +144,7 @@ class OrderSnapshotService {
 
     // 6. Tax Settings Snapshot
     const financeConfig = configService.getFinanceConfig() || {};
-    const taxRate = Number(financeConfig.tax_rate !== undefined ? financeConfig.tax_rate : 0.05); // 5% default
+    const taxRate = Number(financeConfig.tax_rate !== undefined ? financeConfig.tax_rate : 0.07); // 5% default
     const isTaxInclusive = financeConfig.tax_inclusive === true || financeConfig.tax_inclusive === 1;
     const taxName = financeConfig.tax_name || 'VAT';
 

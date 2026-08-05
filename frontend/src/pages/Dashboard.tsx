@@ -83,14 +83,14 @@ export default function Dashboard() {
       return { id, status: activeTableIds.has(id) ? "Occupied" : "Available" }
     })
   }, [activeTableIds])
-  
+
   const familyTables = useMemo(() => {
     return Array.from({ length: 6 }, (_, i) => {
       const id = `F-${i + 1}`
       return { id, status: activeTableIds.has(id) ? "Occupied" : "Available" }
     })
   }, [activeTableIds])
-  
+
   const rooftopTables = useMemo(() => {
     return Array.from({ length: 8 }, (_, i) => {
       const id = `T-${i + 1}`
@@ -99,13 +99,31 @@ export default function Dashboard() {
   }, [activeTableIds])
 
   // Notifications (Now using backend activity feed)
-  // Activity Timeline log
+  const liveStats = useMemo(() => {
+    const today = new Date().setHours(0, 0, 0, 0)
+    let todaySales = 0
+    let todayOrders = 0
+    let paidOrders = 0
+    let unpaidOrders = 0
 
-
-
+    orders.forEach(o => {
+      const isToday = new Date(o.timestamp).setHours(0, 0, 0, 0) === today
+      if (isToday) {
+        todayOrders++
+        if (o.status !== 'Cancelled') {
+          if (o.paymentStatus === 'Paid') {
+            todaySales += o.total
+            paidOrders++
+          } else {
+            unpaidOrders++
+          }
+        }
+      }
+    })
+    return { todaySales, todayOrders, paidOrders, unpaidOrders }
+  }, [orders])
 
   const handleManualSync = () => {
-    // Manually trigger a refresh
     fetchDashboardData()
   }
 
@@ -192,16 +210,16 @@ export default function Dashboard() {
           ================================================== */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { title: "Today's Sales", value: `Rs. ${(summary?.todaySales || 0).toLocaleString()}`, desc: "Paid + Confirmed orders", trend: "Live data", color: "text-emerald-500", icon: DollarSign },
-          { title: "Today's Orders", value: summary?.ordersCount || 0, desc: "Total transactions today", trend: "Live data", color: "text-blue-500", icon: ShoppingBag },
-          { title: "Paid Orders", value: summary?.paid || 0, desc: "Completed transactions", trend: "Steady range (+1%)", color: "text-zinc-400", icon: CheckCircle },
-          { title: "Unpaid Orders", value: operations?.unpaidOrders || 0, desc: "Open credit bills", trend: "Requires payout processing", color: "text-red-500", icon: AlertCircle }
+          { title: "Today's Sales", value: `Rs. ${(liveStats.todaySales || 0).toLocaleString()}`, desc: "Paid + Confirmed orders", trend: "Live data", color: "text-emerald-500", icon: DollarSign },
+          { title: "Today's Orders", value: liveStats.todayOrders || 0, desc: "Total transactions today", trend: "Live data", color: "text-blue-500", icon: ShoppingBag },
+          { title: "Paid Orders", value: liveStats.paidOrders || 0, desc: "Completed transactions", trend: "Live data", color: "text-zinc-400", icon: CheckCircle },
+          { title: "Unpaid Orders", value: liveStats.unpaidOrders || 0, desc: "Open credit bills", trend: "Live data", color: "text-red-500", icon: AlertCircle }
         ].map((card, i) => (
           <motion.div
             key={card.title}
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
+            transition={{ delay: i * 0.07 }}
             className={`p-5 bg-card/60 backdrop-blur-md rounded-[2rem] border ${card.title === "Unpaid Orders" ? 'border-red-500/40 shadow-sm shadow-red-500/10' : 'border-border/50'} flex flex-col justify-between hover:shadow-md transition-all group`}
           >
             <div>
@@ -420,13 +438,13 @@ export default function Dashboard() {
               )}
             </div>
             {activities.length > 0 ? (
-              <div className="space-y-2">
-                {activities.map(activity => (
+              <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
+                {activities.slice(0, 50).map(activity => (
                   <div
                     key={activity.id}
                     className={`p-3 rounded-2xl border transition-colors flex gap-2 items-start ${activity.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
-                        activity.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
-                          'bg-blue-500/10 border-blue-500/20 text-blue-500'
+                      activity.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
+                        'bg-blue-500/10 border-blue-500/20 text-blue-500'
                       }`}
                   >
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -483,8 +501,8 @@ export default function Dashboard() {
                     <div
                       key={t.id}
                       className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${t.status === "Occupied"
-                          ? 'bg-red-500/10 text-red-500 border-red-500/30'
-                          : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
+                        ? 'bg-red-500/10 text-red-500 border-red-500/30'
+                        : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
                         }`}
                     >
                       {t.id}
@@ -501,8 +519,8 @@ export default function Dashboard() {
                     <div
                       key={t.id}
                       className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${t.status === "Occupied"
-                          ? 'bg-red-500/10 text-red-500 border-red-500/30'
-                          : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
+                        ? 'bg-red-500/10 text-red-500 border-red-500/30'
+                        : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
                         }`}
                     >
                       {t.id}
@@ -519,8 +537,8 @@ export default function Dashboard() {
                     <div
                       key={t.id}
                       className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${t.status === "Occupied"
-                          ? 'bg-red-500/10 text-red-500 border-red-500/30'
-                          : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
+                        ? 'bg-red-500/10 text-red-500 border-red-500/30'
+                        : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
                         }`}
                     >
                       {t.id}

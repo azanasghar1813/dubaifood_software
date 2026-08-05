@@ -383,9 +383,7 @@ export default function POS() {
 
       if (e.ctrlKey && e.key.toLowerCase() === 'e') {
         e.preventDefault()
-        if (!recentOrdersModalOpen) {
-          setRecentOrdersModalOpen(true)
-        }
+        setRecentOrdersModalOpen(prev => !prev)
       }
 
       if (e.ctrlKey && e.key.toLowerCase() === 'p') {
@@ -1097,6 +1095,8 @@ export default function POS() {
                                         updateQuantity(item.cartItemId, item.quantity - 1)
                                       } else {
                                         if (editingOrderId && item.editState !== 'new') {
+                                          const pin = prompt("Voiding an existing item requires Authorization. Enter PIN (1234):")
+                                          if (pin !== '1234') { alert("Unauthorized."); return }
                                           setRemovingCartItemId(item.cartItemId)
                                         } else {
                                           removeFromCart(item.cartItemId)
@@ -1171,12 +1171,18 @@ export default function POS() {
                             <span>Delivery Charges</span>
                             <div className="flex items-center gap-1">
                               <span>Rs</span>
-                              <input 
-                                type="number"
-                                value={deliveryCharges || ''}
-                                onChange={(e) => setDeliveryCharges(parseFloat(e.target.value) || 0)}
-                                className="w-16 h-6 px-1 text-right bg-secondary border border-border rounded text-xs font-black outline-none focus:border-blue-500"
-                              />
+                                <input 
+                                  type="number"
+                                  value={deliveryCharges || ''}
+                                  onChange={(e) => setDeliveryCharges(parseFloat(e.target.value) || 0)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleProceedToPay();
+                                    }
+                                  }}
+                                  className="w-16 h-6 px-1 text-right bg-secondary border border-border rounded text-xs font-black outline-none focus:border-blue-500"
+                                />
                             </div>
                           </div>
                         )}
@@ -1233,7 +1239,7 @@ export default function POS() {
                           <span className="text-[9px] uppercase text-center leading-tight font-black">Charges</span>
                         </button>
                         <button 
-                          onClick={() => console.log('Print KDS')}
+                          onClick={() => usePosStore.getState().completeOrder([])}
                           disabled={cart.length === 0}
                           className="p-1 bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors border border-transparent hover:border-border"
                         >
@@ -1521,12 +1527,7 @@ export default function POS() {
           </div>
         )}
 
-        {/* Paid Status */}
-        <div className="flex justify-center mb-3">
-          <div className="border-2 border-black px-6 py-1 text-[16px] font-black tracking-widest uppercase rounded">
-            {isPaidPrint ? 'PAID' : 'UNPAID'}
-          </div>
-        </div>
+
 
         <div className="w-full border-t border-gray-300 mb-3"></div>
 
@@ -1541,8 +1542,12 @@ export default function POS() {
           {orderType !== 'Dine In' && usePosStore.getState().customer?.phone && (
             <div className="flex"><span className="font-bold w-28">Customer Contact:</span> {usePosStore.getState().customer?.phone}</div>
           )}
+          {orderType !== 'Dine In' && usePosStore.getState().customer?.notes && (
+            <div className="flex"><span className="font-bold w-28">Notes:</span> <span className="flex-1 whitespace-pre-wrap">{usePosStore.getState().customer?.notes}</span></div>
+          )}
           <div className="flex"><span className="font-bold w-28">Order Type:</span> {orderType}</div>
           <div className="flex"><span className="font-bold w-28">Cashier:</span> {user?.name || "Cashier"}</div>
+          <div className="flex"><span className="font-bold w-28">Status:</span> {isPaidPrint ? 'Paid' : 'Unpaid'}</div>
           <div className="flex">
             <span className="font-bold w-28">Time:</span> 
             {currentTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric'})}, {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit'})}

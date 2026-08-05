@@ -39,6 +39,15 @@ export const kitchenController = {
     }
   },
 
+  markItemSent: (req, res) => {
+    try {
+      const data = kitchenService.markItemSent(req.params.itemId, getActorId(req));
+      ok(res, data, 'Item marked accepted (sent)');
+    } catch (error) {
+      fail(res, error);
+    }
+  },
+
   startPreparingItem: (req, res) => {
     try {
       const data = kitchenService.startPreparingItem(req.params.itemId, getActorId(req));

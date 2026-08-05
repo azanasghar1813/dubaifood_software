@@ -13,6 +13,10 @@ export const kitchenService = {
   },
 
   // Item status updates
+  acceptItem: async (itemId: string): Promise<{ success: boolean; data: any }> => {
+    return apiClient.post(`/kitchen/items/${itemId}/accept`, {})
+  },
+
   startPreparingItem: async (itemId: string): Promise<{ success: boolean; data: any }> => {
     return apiClient.post(`/kitchen/items/${itemId}/start`, {})
   },

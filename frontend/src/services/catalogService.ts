@@ -1,17 +1,16 @@
 import { apiClient } from '../api/client'
-import { Product, Category, Deal } from '../types'
 
 export const catalogService = {
-  getProducts: async (): Promise<Product[]> => {
+  getProducts: async (): Promise<any[]> => {
     const res = await apiClient.get('/catalog/products/search')
     return res.data || []
   },
   
-  createProduct: async (productData: Partial<Product>) => {
+  createProduct: async (productData: any) => {
     return apiClient.post('/catalog/products', productData)
   },
 
-  updateProduct: async (id: string, productData: Partial<Product>) => {
+  updateProduct: async (id: string, productData: any) => {
     return apiClient.put(`/catalog/products/${id}`, productData)
   },
 
@@ -19,16 +18,16 @@ export const catalogService = {
     return apiClient.delete(`/catalog/products/${id}`)
   },
 
-  getCategories: async (): Promise<Category[]> => {
+  getCategories: async (): Promise<any[]> => {
     const res = await apiClient.get('/catalog/categories')
     return res.data || []
   },
 
-  createCategory: async (categoryData: Partial<Category>) => {
+  createCategory: async (categoryData: any) => {
     return apiClient.post('/catalog/categories', categoryData)
   },
 
-  updateCategory: async (id: string, categoryData: Partial<Category>) => {
+  updateCategory: async (id: string, categoryData: any) => {
     return apiClient.put(`/catalog/categories/${id}`, categoryData)
   },
 

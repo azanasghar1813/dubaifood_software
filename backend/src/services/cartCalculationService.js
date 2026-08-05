@@ -205,8 +205,8 @@ class CartCalculationService {
     const financeConfig = configService.getFinanceConfig() || {};
     const isTaxInclusive = financeConfig.tax_inclusive === true || financeConfig.tax_inclusive === 1;
 
-    const grandTotal = isTaxInclusive 
-      ? subtotal - discountTotal 
+    const grandTotal = isTaxInclusive
+      ? subtotal - discountTotal
       : subtotal + taxTotal - discountTotal;
 
     return {

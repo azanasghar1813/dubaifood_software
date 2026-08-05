@@ -9,6 +9,7 @@ router.use(authenticate);
 router.get('/queue', kitchenController.getQueue);
 router.get('/summary', kitchenController.getSummary);
 router.get('/tickets/:orderId', kitchenController.getTicket);
+router.post('/items/:itemId/accept', kitchenController.markItemSent);
 router.post('/items/:itemId/start', kitchenController.startPreparingItem);
 router.post('/items/:itemId/ready', kitchenController.markItemReady);
 router.post('/items/:itemId/served', kitchenController.markItemServed);

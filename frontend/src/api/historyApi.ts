@@ -58,6 +58,8 @@ export interface HistoryOrderRow {
   payment_state:         string;
   subtotal:              number;
   tax_total:             number;
+  service_charge?:       number | string;
+  delivery_charges?:     number | string;
   discount_total:        number;
   grand_total:           number;
   paid_total:            number;
