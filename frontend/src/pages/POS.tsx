@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react"
+import React, { useState, useEffect, useRef, useMemo } from "react"
 
 import { usePosStore } from "../store/posStore"
 import type { CartItem } from "../store/posStore"
@@ -12,7 +12,8 @@ import {
   Printer, Monitor,
   Tag, XOctagon, Receipt, FileText, XCircle,
   Hash, Phone, Edit, Edit2,
-  Store, UtensilsCrossed, Truck, CircleDot
+  Store, UtensilsCrossed, Truck, CircleDot,
+  QrCode, Banknote, Clock, Building2, Percent
 } from "lucide-react"
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
 import { menuService } from "../services/menuService"
@@ -71,6 +72,8 @@ export default function POS() {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const cartTopRef = useRef<HTMLDivElement>(null)
   const orderNotesRef = useRef<HTMLInputElement>(null)
+  const checkoutDiscountRef = useRef<HTMLInputElement>(null)
+  const checkoutAmountRef = useRef<HTMLInputElement>(null)
   
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<any[]>([])
@@ -113,9 +116,22 @@ export default function POS() {
   const [recentOrdersModalOpen, setRecentOrdersModalOpen] = useState(false)
 
   // Payment Selection
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>("Cash")
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null)
   const [amountReceived, setAmountReceived] = useState<string>("")
+  const [discountAmount, setDiscountAmount] = useState<string>("")
   const [isPaidPrint, setIsPaidPrint] = useState(false)
+
+  // Checkout modal keyboard navigation
+  // focusZone: 'methods' | 'discount' | 'amount' | 'quickcash' | 'discountpct' | 'confirm'
+  const [checkoutFocusZone, setCheckoutFocusZone] = useState<'methods' | 'discount' | 'amount' | 'quickcash' | 'discountpct' | 'confirm'>('methods')
+  const [checkoutMethodIndex, setCheckoutMethodIndex] = useState(0)
+  const [checkoutQuickCashIndex, setCheckoutQuickCashIndex] = useState(-1)
+  const [checkoutDiscountPctIndex, setCheckoutDiscountPctIndex] = useState(-1)
+
+  // The 4 payment methods
+  const CHECKOUT_METHODS: PaymentMethod[] = ['Later' as PaymentMethod, 'Cash', 'QR', 'Meezan']
+  const DISCOUNT_PCTS = [3, 5, 10]
+  const QUICK_CASH_AMTS = [500, 1000, 5000, 8000]
 
   const { 
     cart, addToCart, removeFromCart, updateQuantity, duplicateItem,
@@ -137,6 +153,14 @@ export default function POS() {
     if (orderType === 'Delivery' && (!customer || !customer.phone)) {
       setCustomerModalOpen(true)
     } else {
+      // Reset checkout state every time modal opens
+      setSelectedPaymentMethod(null)
+      setAmountReceived('')
+      setDiscountAmount('')
+      setCheckoutFocusZone('methods')
+      setCheckoutMethodIndex(0)
+      setCheckoutQuickCashIndex(-1)
+      setCheckoutDiscountPctIndex(-1)
       setCheckoutModalOpen(true)
     }
   }
@@ -331,26 +355,125 @@ export default function POS() {
         return
       }
 
-      if (checkoutModalOpen || customizeModalOpen) {
+      if (customizeModalOpen) {
         if (e.key === "Escape") {
-          setCheckoutModalOpen(false)
           setCustomizeModalOpen(false)
           setTimeout(() => searchInputRef.current?.focus(), 100)
         }
-        if (e.key === "F6" && checkoutModalOpen) {
-          e.preventDefault()
-          setCheckoutModalOpen(false)
-          setTimeout(() => searchInputRef.current?.focus(), 100)
-        }
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n' && customizeModalOpen) {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
           e.preventDefault()
           setCustomizeModalOpen(false)
           setTimeout(() => searchInputRef.current?.focus(), 100)
         }
-        if (e.key === "Enter" && checkoutModalOpen) {
+        return
+      }
+
+      // ── Checkout Modal Arrow-Key Navigation ──
+      if (checkoutModalOpen) {
+        if (e.key === "Escape" || e.key === "F6") {
           e.preventDefault()
+          setCheckoutModalOpen(false)
+          setTimeout(() => searchInputRef.current?.focus(), 100)
+          return
+        }
+        if (e.key === "Enter" || (e.ctrlKey && e.key === 'Enter')) {
+          e.preventDefault()
+          // Ctrl+Enter always confirms immediately
+          if (e.ctrlKey) {
+            document.getElementById('confirm-payment-btn')?.click()
+            return
+          }
+          // Enter on methods zone: confirm/select the highlighted method
+          if (checkoutFocusZone === 'methods') {
+            const method = CHECKOUT_METHODS[checkoutMethodIndex]
+            if (method) {
+              setSelectedPaymentMethod(prev => prev === method ? null : method)
+            }
+            return
+          }
+          // Enter on discount-pct pill: apply that percentage
+          if (checkoutFocusZone === 'discountpct' && checkoutDiscountPctIndex >= 0) {
+            const pct = DISCOUNT_PCTS[checkoutDiscountPctIndex]
+            const raw = getNetTotal()
+            setDiscountAmount(Math.round(raw * pct / 100).toString())
+            return
+          }
+          // Enter on quick-cash button: apply that amount
+          if (checkoutFocusZone === 'quickcash' && checkoutQuickCashIndex >= 0) {
+            const amt = QUICK_CASH_AMTS[checkoutQuickCashIndex]
+            setAmountReceived(amt.toString())
+            return
+          }
+          // Enter on amount zone: move to confirm button
+          if (checkoutFocusZone === 'amount') {
+            setCheckoutFocusZone('confirm')
+            return
+          }
+          // Enter on confirm zone OR anywhere else: print
           document.getElementById('confirm-payment-btn')?.click()
+          return
         }
+
+        // Arrow navigation inside checkout modal
+        const isCash = selectedPaymentMethod === 'Cash'
+
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          e.preventDefault()
+          if (checkoutFocusZone === 'methods') {
+            const dir = e.key === 'ArrowRight' ? 1 : -1
+            setCheckoutMethodIndex(i => Math.max(0, Math.min(CHECKOUT_METHODS.length - 1, i + dir)))
+            setSelectedPaymentMethod(CHECKOUT_METHODS[Math.max(0, Math.min(CHECKOUT_METHODS.length - 1, checkoutMethodIndex + dir))])
+          } else if (checkoutFocusZone === 'quickcash') {
+            // 4 quick cash buttons: 500, 1000, 8000, Exact
+            const dir = e.key === 'ArrowRight' ? 1 : -1
+            setCheckoutQuickCashIndex(i => Math.max(0, Math.min(3, i + dir)))
+          } else if (checkoutFocusZone === 'discountpct') {
+            const dir = e.key === 'ArrowRight' ? 1 : -1
+            setCheckoutDiscountPctIndex(i => Math.max(0, Math.min(DISCOUNT_PCTS.length - 1, i + dir)))
+          }
+          return
+        }
+
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          if (checkoutFocusZone === 'methods') {
+            setCheckoutFocusZone('discount')
+            setCheckoutDiscountPctIndex(-1)
+          } else if (checkoutFocusZone === 'discount') {
+            setCheckoutFocusZone('discountpct')
+            setCheckoutDiscountPctIndex(0)
+          } else if (checkoutFocusZone === 'discountpct') {
+            setCheckoutFocusZone('amount')
+          } else if (checkoutFocusZone === 'amount') {
+            setCheckoutFocusZone('quickcash')
+            setCheckoutQuickCashIndex(0)
+          } else if (checkoutFocusZone === 'quickcash') {
+            setCheckoutFocusZone('confirm')
+            setCheckoutQuickCashIndex(-1)
+          }
+          return
+        }
+
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          if (checkoutFocusZone === 'confirm') {
+            setCheckoutFocusZone('quickcash')
+            setCheckoutQuickCashIndex(QUICK_CASH_AMTS.length - 1)
+          } else if (checkoutFocusZone === 'quickcash') {
+            setCheckoutFocusZone('amount')
+            setCheckoutQuickCashIndex(-1)
+          } else if (checkoutFocusZone === 'amount') {
+            setCheckoutFocusZone('discountpct')
+            setCheckoutDiscountPctIndex(0)
+          } else if (checkoutFocusZone === 'discountpct') {
+            setCheckoutFocusZone('discount')
+            setCheckoutDiscountPctIndex(-1)
+          } else if (checkoutFocusZone === 'discount') {
+            setCheckoutFocusZone('methods')
+          }
+          return
+        }
+
         return
       }
 
@@ -704,7 +827,10 @@ export default function POS() {
     activeProductForSize, clearCart, setCustomer, updateQuantity, 
     removeFromCart, editingOrderId, clearEditMode, duplicateItem,
     sizeSelectedIndex, gridSelectedIndex,
-    isCartMode, cartSelectedIndex, gridDensity
+    isCartMode, cartSelectedIndex, gridDensity,
+    checkoutModalOpen, checkoutFocusZone, checkoutMethodIndex,
+    checkoutQuickCashIndex, checkoutDiscountPctIndex,
+    selectedPaymentMethod, discountAmount
   ])
 
   // Keep cartSelectedIndex in bounds if cart shrinks
@@ -725,6 +851,16 @@ export default function POS() {
       if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
   }, [cartSelectedIndex, isCartMode])
+
+  // Auto-focus the discount or amount input when keyboard nav lands on them
+  useEffect(() => {
+    if (!checkoutModalOpen) return
+    if (checkoutFocusZone === 'discount') {
+      setTimeout(() => checkoutDiscountRef.current?.focus(), 30)
+    } else if (checkoutFocusZone === 'amount') {
+      setTimeout(() => checkoutAmountRef.current?.focus(), 30)
+    }
+  }, [checkoutFocusZone, checkoutModalOpen])
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
@@ -1536,118 +1672,265 @@ export default function POS() {
       
       {/* Checkout Modal */}
       <AnimatePresence>
-        {checkoutModalOpen && (
+        {checkoutModalOpen && (() => {
+          const discountVal = Number(discountAmount) || 0
+          const baseTotal = getNetTotal()
+          const finalTotal = Math.max(0, baseTotal - discountVal)
+          const isCash = selectedPaymentMethod === 'Cash'
+          return (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setCheckoutModalOpen(false)} className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-md bg-card border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden">
-               <div className="p-4 border-b border-border bg-secondary/30 text-center">
-                 <h2 className="text-xl font-black mb-1 text-foreground">Complete Payment</h2>
-                 <p className="text-sm text-muted-foreground font-bold">Total Amount Due</p>
-               </div>
-               
-               <div className="p-5 text-center flex flex-col gap-4">
-                 <p className="text-4xl font-black text-orange-500 tracking-tighter">Rs {getNetTotal().toLocaleString()}</p>
-                 
-                 <div className="grid grid-cols-3 gap-2">
-                   {(["Cash", "Credit Card", "Debit Card", "JazzCash", "EasyPaisa", "Meezan", "Bank Transfer"] as PaymentMethod[]).map(method => (
-                     <button
-                       key={method}
-                       onClick={() => {
-                         setSelectedPaymentMethod(method)
-                         if (method !== "Cash") setAmountReceived(getNetTotal().toString())
-                       }}
-                       className={`p-3 rounded-xl text-xs font-bold border transition-all ${selectedPaymentMethod === method ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/20' : 'bg-secondary text-muted-foreground border-border hover:border-orange-500/50 hover:bg-secondary/80'}`}
-                     >
-                       {method}
-                     </button>
-                   ))}
-                 </div>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setCheckoutModalOpen(false)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-card border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden"
+            >
+              {/* Header */}
+              <div className="p-4 border-b border-border bg-secondary/30 text-center">
+                <h2 className="text-xl font-black mb-0.5 text-foreground">Complete Payment</h2>
+                <p className="text-xs text-muted-foreground font-bold uppercase tracking-wider">Use Arrow Keys to Navigate</p>
+              </div>
 
-                 {selectedPaymentMethod === "Cash" && (
-                   <div className="bg-secondary/50 p-4 rounded-2xl border border-border space-y-3">
-                     <div className="flex items-center justify-between gap-4">
-                       <label className="font-bold text-sm text-muted-foreground">Amount Received:</label>
-                       <div className="relative w-1/2">
-                         <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-muted-foreground">Rs</span>
-                         <input 
-                           type="number"
-                           value={amountReceived}
-                           onChange={(e) => setAmountReceived(e.target.value)}
-                           className="w-full h-10 pl-9 pr-3 rounded-lg bg-background border border-border focus:border-orange-500 outline-none font-black text-base text-right"
-                           placeholder={getNetTotal().toString()}
-                           autoFocus
-                         />
-                       </div>
-                     </div>
-                     
-                     {Number(amountReceived) >= getNetTotal() && (
-                       <div className="flex items-center justify-between text-emerald-500 bg-emerald-500/10 p-2.5 rounded-lg border border-emerald-500/20">
-                         <span className="font-bold text-sm">Change Due:</span>
-                         <span className="font-black text-lg">Rs {(Number(amountReceived) - getNetTotal()).toLocaleString()}</span>
-                       </div>
-                     )}
-                     
-                     {Number(amountReceived) > 0 && Number(amountReceived) < getNetTotal() && (
-                       <div className="flex items-center justify-between text-destructive bg-destructive/10 p-2.5 rounded-lg border border-destructive/20">
-                         <span className="font-bold text-sm">Remaining:</span>
-                         <span className="font-black text-lg">Rs {(getNetTotal() - Number(amountReceived)).toLocaleString()}</span>
-                       </div>
-                     )}
+              <div className="p-4 flex flex-col gap-4 overflow-y-auto custom-scrollbar">
 
-                     {/* Quick Cash Buttons */}
-                     <div className="grid grid-cols-4 gap-2 pt-2">
-                       {[500, 1000, 5000, getNetTotal()].map(amt => (
-                         <button 
-                           key={amt}
-                           onClick={() => setAmountReceived(amt.toString())}
-                           className="py-2 bg-background border border-border rounded-lg text-xs font-bold hover:border-orange-500 hover:text-orange-500 transition-colors"
-                         >
-                           {amt === getNetTotal() ? "Exact" : amt}
-                         </button>
-                       ))}
-                     </div>
-                   </div>
-                 )}
-               </div>
+                {/* Total display */}
+                <div className="text-center">
+                  <p className="text-3xl font-black text-orange-500 tracking-tighter">
+                    Rs {finalTotal.toLocaleString()}
+                  </p>
+                  {discountVal > 0 && (
+                    <p className="text-xs text-muted-foreground font-bold mt-0.5">
+                      <span className="line-through">Rs {baseTotal.toLocaleString()}</span>
+                      <span className="ml-2 text-emerald-500">-Rs {discountVal.toLocaleString()} off</span>
+                    </p>
+                  )}
+                </div>
 
-               <div className="p-4 bg-secondary/30 border-t border-border flex gap-3">
-                 <button 
-                   id="confirm-payment-btn"
-                   disabled={selectedPaymentMethod === "Cash" && (Number(amountReceived) < getNetTotal() && amountReceived !== "")}
-                   onClick={() => {
-                     const amt = amountReceived ? Number(amountReceived) : getNetTotal()
-                     
-                     completeOrder(
-                       isPaidPrint ? [{ 
-                         id: `pay-${Date.now()}`, 
-                         method: selectedPaymentMethod, 
-                         amount: getNetTotal(),
-                         received: amt,
-                         change: Math.max(0, amt - getNetTotal()),
-                         timestamp: new Date().toISOString(),
-                         cashier: user?.name || "Ahmed",
-                         status: 'Completed'
-                       }] : []
-                     );
-                     
-                     window.print();
-                     setTimeout(() => {
-                       clearCart(); 
-                       setCheckoutModalOpen(false);
-                       setIsVIP(false);
-                       setOrderNotes("");
-                       setSelectedPaymentMethod("Cash");
-                       setAmountReceived("");
-                     }, 500);
-                   }} 
-                   className="w-full py-3 bg-orange-500 text-white font-black rounded-xl text-base hover:bg-orange-400 shadow-md shadow-orange-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
-                 >
-                   <Printer className="w-5 h-5" /> Confirm & Print Receipt
-                 </button>
-               </div>
+                {/* Payment Methods — 4 options */}
+                <div>
+                  <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${
+                    checkoutFocusZone === 'methods' ? 'text-orange-500' : 'text-muted-foreground'
+                  }`}>Payment Method {checkoutFocusZone === 'methods' && '← →'}</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {CHECKOUT_METHODS.map((method, idx) => {
+                      const isSelected = selectedPaymentMethod === method
+                      const isFocused = checkoutFocusZone === 'methods' && checkoutMethodIndex === idx
+                      const icons: Record<string, React.ReactNode> = {
+                        'Later': <Clock className="w-5 h-5" />,
+                        'Cash': <Banknote className="w-5 h-5" />,
+                        'QR': <QrCode className="w-5 h-5" />,
+                        'Meezan': <Building2 className="w-5 h-5" />,
+                      }
+                      return (
+                        <button
+                          key={method}
+                          onClick={() => {
+                            setSelectedPaymentMethod(method)
+                            setCheckoutMethodIndex(idx)
+                            setCheckoutFocusZone('methods')
+                          }}
+                          className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 font-bold text-xs transition-all ${
+                            isSelected
+                              ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/20'
+                              : isFocused
+                              ? 'bg-orange-500/10 border-orange-400 text-orange-400'
+                              : 'bg-secondary text-muted-foreground border-border hover:border-orange-500/40'
+                          }`}
+                        >
+                          {icons[method] ?? <Banknote className="w-5 h-5" />}
+                          <span>{method}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Discount Row */}
+                <div>
+                  <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${
+                    checkoutFocusZone === 'discount' || checkoutFocusZone === 'discountpct' ? 'text-orange-500' : 'text-muted-foreground'
+                  }`}>Discount {(checkoutFocusZone === 'discount' || checkoutFocusZone === 'discountpct') && '↑ ↓'}</p>
+                  <div className={`bg-secondary/50 rounded-xl border-2 p-3 space-y-2 transition-all ${
+                    checkoutFocusZone === 'discount' || checkoutFocusZone === 'discountpct'
+                      ? 'border-orange-500/60'
+                      : 'border-border'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <Percent className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <input
+                        ref={checkoutDiscountRef}
+                        id="checkout-discount-input"
+                        type="number"
+                        value={discountAmount}
+                        onChange={(e) => setDiscountAmount(e.target.value)}
+                        onFocus={() => setCheckoutFocusZone('discount')}
+                        min={0}
+                        max={baseTotal}
+                        placeholder="Enter discount amount (Rs)"
+                        className={`flex-1 h-9 px-3 rounded-lg bg-background border font-black text-sm outline-none transition-all ${
+                          checkoutFocusZone === 'discount' ? 'border-orange-500' : 'border-border'
+                        }`}
+                      />
+                    </div>
+                    {/* Discount % Quick Pills */}
+                    <div className="flex gap-2">
+                      {DISCOUNT_PCTS.map((pct, idx) => {
+                        const isFocused = checkoutFocusZone === 'discountpct' && checkoutDiscountPctIndex === idx
+                        const appliedAmt = Math.round(baseTotal * pct / 100)
+                        return (
+                          <button
+                            key={pct}
+                            onClick={() => {
+                              setDiscountAmount(appliedAmt.toString())
+                              setCheckoutFocusZone('discountpct')
+                              setCheckoutDiscountPctIndex(idx)
+                            }}
+                            className={`flex-1 py-1.5 rounded-lg text-xs font-black border-2 transition-all ${
+                              isFocused
+                                ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                                : 'bg-background border-border text-muted-foreground hover:border-orange-400 hover:text-orange-400'
+                            }`}
+                          >
+                            {pct}%
+                            <span className="block text-[9px] opacity-70">Rs {appliedAmt}</span>
+                          </button>
+                        )
+                      })}
+                      {discountVal > 0 && (
+                        <button
+                          onClick={() => setDiscountAmount('')}
+                          className="px-3 py-1.5 rounded-lg text-xs font-black border-2 border-red-500/40 text-red-500 hover:bg-red-500/10 transition-all"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Amount Received — always shown */}
+                <div>
+                    <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${
+                      checkoutFocusZone === 'amount' || checkoutFocusZone === 'quickcash' ? 'text-orange-500' : 'text-muted-foreground'
+                    }`}>Amount Received {(checkoutFocusZone === 'amount' || checkoutFocusZone === 'quickcash') && '↑ ↓'}</p>
+                    <div className={`bg-secondary/50 rounded-xl border-2 p-3 space-y-2 transition-all ${
+                      checkoutFocusZone === 'amount' || checkoutFocusZone === 'quickcash'
+                        ? 'border-orange-500/60'
+                        : 'border-border'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-muted-foreground text-sm">Rs</span>
+                        <input
+                          ref={checkoutAmountRef}
+                          id="checkout-amount-input"
+                          type="number"
+                          value={amountReceived}
+                          onChange={(e) => setAmountReceived(e.target.value)}
+                          onFocus={() => setCheckoutFocusZone('amount')}
+                          placeholder={finalTotal.toString()}
+                          className={`flex-1 h-9 px-3 rounded-lg bg-background border font-black text-sm outline-none transition-all text-right ${
+                            checkoutFocusZone === 'amount' ? 'border-orange-500' : 'border-border'
+                          }`}
+                        />
+                      </div>
+
+                      {/* Change / Remaining */}
+                      {Number(amountReceived) >= finalTotal && Number(amountReceived) > 0 && (
+                        <div className="flex items-center justify-between text-emerald-500 bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
+                          <span className="font-bold text-xs">Change Due:</span>
+                          <span className="font-black">Rs {(Number(amountReceived) - finalTotal).toLocaleString()}</span>
+                        </div>
+                      )}
+                      {Number(amountReceived) > 0 && Number(amountReceived) < finalTotal && (
+                        <div className="flex items-center justify-between text-destructive bg-destructive/10 p-2 rounded-lg border border-destructive/20">
+                          <span className="font-bold text-xs">Remaining:</span>
+                          <span className="font-black">Rs {(finalTotal - Number(amountReceived)).toLocaleString()}</span>
+                        </div>
+                      )}
+
+                      {/* Quick Cash Buttons */}
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {QUICK_CASH_AMTS.map((amt, idx) => {
+                          const isFocused = checkoutFocusZone === 'quickcash' && checkoutQuickCashIndex === idx
+                          return (
+                            <button
+                              key={amt}
+                              onClick={() => {
+                                setAmountReceived(amt.toString())
+                                setCheckoutFocusZone('quickcash')
+                                setCheckoutQuickCashIndex(idx)
+                              }}
+                              className={`py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${
+                                isFocused
+                                  ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                                  : 'bg-background border-border hover:border-orange-400 hover:text-orange-400'
+                              }`}
+                            >
+                              {amt}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                </div>
+              </div>
+
+              {/* Confirm Button */}
+              <div className="p-4 bg-secondary/30 border-t border-border flex gap-3">
+                <button
+                  id="confirm-payment-btn"
+                  disabled={false}
+                  onClick={() => {
+                    const amt = amountReceived ? Number(amountReceived) : finalTotal
+                    const method: PaymentMethod = selectedPaymentMethod ?? 'Cash'
+                    completeOrder(
+                      isPaidPrint ? [{
+                        id: `pay-${Date.now()}`,
+                        method: method,
+                        amount: finalTotal,
+                        received: amt,
+                        change: Math.max(0, amt - finalTotal),
+                        timestamp: new Date().toISOString(),
+                        cashier: user?.name || 'Cashier',
+                        status: 'Completed'
+                      }] : []
+                    )
+                    window.print()
+                    setTimeout(() => {
+                      clearCart()
+                      setCheckoutModalOpen(false)
+                      setIsVIP(false)
+                      setOrderNotes('')
+                      setSelectedPaymentMethod(null)
+                      setAmountReceived('')
+                      setDiscountAmount('')
+                      setCheckoutFocusZone('methods')
+                      setCheckoutMethodIndex(0)
+                    }, 500)
+                  }}
+                  className={`w-full py-3 font-black rounded-xl text-base active:scale-95 transition-all flex items-center justify-center gap-2 relative ${
+                    checkoutFocusZone === 'confirm'
+                      ? 'bg-orange-400 text-white ring-4 ring-orange-300 shadow-lg shadow-orange-500/40'
+                      : 'bg-orange-500 text-white hover:bg-orange-400 shadow-md shadow-orange-500/20'
+                  }`}
+                >
+                  <span className="w-5 h-5" />{/* spacer to balance right badge */}
+                  <Printer className="w-5 h-5" />
+                  <span className="font-black">Print</span>
+                  <span className="flex items-center gap-1 text-white/60 text-[10px] font-bold ml-auto">
+                    <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-[9px] font-black">Ctrl</kbd>
+                    <span>+</span>
+                    <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-[9px] font-black">↵</kbd>
+                  </span>
+                </button>
+              </div>
             </motion.div>
           </div>
-        )}
+        )})()}
       </AnimatePresence>
       
       {/* Hidden Receipt for Printing (80mm Thermal Style) */}
