@@ -96,6 +96,13 @@ export default function POS() {
   const [gridSelectedIndex, setGridSelectedIndex] = useState(0)
   const gridProductsRef = useRef<Product[]>([])
   
+  // Cart Mode Navigation
+  const [isCartMode, setIsCartMode] = useState(false)
+  const [cartSelectedIndex, setCartSelectedIndex] = useState(0)
+  
+  // Ref for the product grid container (to read column count)
+  const gridContainerRef = useRef<HTMLDivElement>(null)
+  
   // Edit Mode state
   const [removingCartItemId, setRemovingCartItemId] = useState<string | null>(null)
   const [removalReason, setRemovalReason] = useState("")
@@ -452,21 +459,37 @@ export default function POS() {
       // Function keys & Escape
       switch (e.key) {
         case "F1":
+          // Switch to Fast Food section
           e.preventDefault()
-          clearCart()
-          setCustomer(null)
+          usePosStore.getState().setMenuContext('Fast Food')
+          setActiveCategory("All")
+          setGridSelectedIndex(0)
+          setIsCartMode(false)
           break
         case "F2":
+          // Switch to Restaurant section
           e.preventDefault()
-          setCustomerModalOpen(prev => !prev)
+          usePosStore.getState().setMenuContext('Restaurant')
+          setActiveCategory("All")
+          setGridSelectedIndex(0)
+          setIsCartMode(false)
           break
         case "F3":
+          // Switch to Deals section
           e.preventDefault()
-          searchInputRef.current?.focus()
+          usePosStore.getState().setMenuContext('Deals')
+          setActiveCategory("All")
+          setGridSelectedIndex(0)
+          setIsCartMode(false)
           break
         case "F4":
           e.preventDefault()
           setRecentOrdersModalOpen(prev => !prev)
+          break
+        case "F5":
+          // Focus search
+          e.preventDefault()
+          searchInputRef.current?.focus()
           break
         case "F6":
           e.preventDefault()
@@ -485,10 +508,15 @@ export default function POS() {
           usePosStore.getState().setOrderType('Delivery')
           break
         case "Escape":
-          if (customerModalOpen) setCustomerModalOpen(false)
-          else if (tableModalOpen) setTableModalOpen(false)
-          else if (recentOrdersModalOpen) setRecentOrdersModalOpen(false)
-          else {
+          if (isCartMode) {
+            setIsCartMode(false)
+          } else if (customerModalOpen) {
+            setCustomerModalOpen(false)
+          } else if (tableModalOpen) {
+            setTableModalOpen(false)
+          } else if (recentOrdersModalOpen) {
+            setRecentOrdersModalOpen(false)
+          } else {
             e.preventDefault()
             clearCart()
           }
@@ -498,8 +526,21 @@ export default function POS() {
       // 3. Shortcuts that should ONLY run if NOT typing
       if (isTyping) return
 
-      // Autofocus search on any single character key press
-      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      // Tab key: toggle Cart Mode
+      if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (!checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !recentOrdersModalOpen) {
+          e.preventDefault()
+          const nextCartMode = !isCartMode
+          setIsCartMode(nextCartMode)
+          if (nextCartMode && cart.length > 0) {
+            setCartSelectedIndex(0)
+          }
+          return
+        }
+      }
+
+      // Autofocus search on any single character key press (only in menu mode)
+      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey && !isCartMode) {
         if (!checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !recentOrdersModalOpen) {
           searchInputRef.current?.focus()
         }
@@ -519,42 +560,125 @@ export default function POS() {
         }
       }
 
-      if (e.key === 'Backspace' || e.key === '-' || e.key === 'Subtract') {
-        if (e.repeat) return // Prevent holding key from sending multiple requests
-        if (usePosStore.getState().isLoadingOrder) return // Prevent multiple requests if already loading
-        if (cart.length > 0 && !checkoutModalOpen && !customizeModalOpen && !sizeModalOpen) {
+      // ── CART MODE Navigation ──
+      if (isCartMode && cart.length > 0 && !checkoutModalOpen && !customizeModalOpen && !sizeModalOpen) {
+        if (e.key === 'ArrowUp') {
           e.preventDefault()
-          const topItem = cart[0]
-          if (topItem.quantity > 1) {
-            updateQuantity(topItem.cartItemId, topItem.quantity - 1)
-          } else {
-            removeFromCart(topItem.cartItemId)
+          setCartSelectedIndex(s => Math.max(s - 1, 0))
+          return
+        }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          setCartSelectedIndex(s => Math.min(s + 1, cart.length - 1))
+          return
+        }
+        if (e.key === 'ArrowRight') {
+          // Increase quantity of selected cart item
+          e.preventDefault()
+          const selectedCartItem = cart[cartSelectedIndex]
+          if (selectedCartItem) {
+            updateQuantity(selectedCartItem.cartItemId, selectedCartItem.quantity + 1)
+          }
+          return
+        }
+        if (e.key === 'ArrowLeft') {
+          // Decrease quantity of selected cart item
+          e.preventDefault()
+          if (e.repeat) return
+          if (usePosStore.getState().isLoadingOrder) return
+          const selectedCartItem = cart[cartSelectedIndex]
+          if (selectedCartItem) {
+            if (selectedCartItem.quantity > 1) {
+              updateQuantity(selectedCartItem.cartItemId, selectedCartItem.quantity - 1)
+            } else {
+              // Remove item and adjust selection index
+              removeFromCart(selectedCartItem.cartItemId)
+              setCartSelectedIndex(s => Math.max(s - 1, 0))
+            }
+          }
+          return
+        }
+        if (e.key === 'Backspace') {
+          // Remove selected cart item
+          e.preventDefault()
+          if (e.repeat) return
+          if (usePosStore.getState().isLoadingOrder) return
+          const selectedCartItem = cart[cartSelectedIndex]
+          if (selectedCartItem) {
+            if (editingOrderId && selectedCartItem.editState !== 'new') {
+              setRemovingCartItemId(selectedCartItem.cartItemId)
+            } else {
+              removeFromCart(selectedCartItem.cartItemId)
+              setCartSelectedIndex(s => Math.max(s - 1, 0))
+            }
+          }
+          return
+        }
+        return // Consume all other keys in cart mode
+      }
+
+      // ── MENU MODE: Backspace removes top cart item ──
+      if (!isCartMode) {
+        if (e.key === 'Backspace' || e.key === '-' || e.key === 'Subtract') {
+          if (e.repeat) return
+          if (usePosStore.getState().isLoadingOrder) return
+          if (cart.length > 0 && !checkoutModalOpen && !customizeModalOpen && !sizeModalOpen) {
+            e.preventDefault()
+            const topItem = cart[0]
+            if (topItem.quantity > 1) {
+              updateQuantity(topItem.cartItemId, topItem.quantity - 1)
+            } else {
+              removeFromCart(topItem.cartItemId)
+            }
           }
         }
       }
 
-      // 4. Grid Navigation (if not typing, not in search bar)
-      if (!isTyping && !checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !recentOrdersModalOpen) {
+      // ── MENU MODE: 4-directional Grid Navigation ──
+      if (!isCartMode && !isTyping && !checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !recentOrdersModalOpen) {
+        // Helper: get number of columns in the grid
+        const getGridColumns = (): number => {
+          if (gridContainerRef.current) {
+            const style = window.getComputedStyle(gridContainerRef.current)
+            const cols = style.getPropertyValue('grid-template-columns')
+            if (cols && cols !== 'none') {
+              return cols.trim().split(/\s+/).length
+            }
+          }
+          // Fallback based on gridDensity
+          if (gridDensity === 'small') return 4
+          if (gridDensity === 'medium') return 3
+          return 2
+        }
+
         if (e.key === "ArrowDown") {
           e.preventDefault()
-          setGridSelectedIndex(s => Math.min(s + 1, Math.max(0, gridProductsRef.current.length - 1)))
+          const cols = getGridColumns()
+          const total = gridProductsRef.current.length
+          setGridSelectedIndex(s => Math.min(s + cols, total - 1))
         } else if (e.key === "ArrowUp") {
           e.preventDefault()
-          setGridSelectedIndex(s => Math.max(s - 1, 0))
+          const cols = getGridColumns()
+          setGridSelectedIndex(s => Math.max(s - cols, 0))
         } else if (e.key === "ArrowRight") {
           e.preventDefault()
-          const contexts: ('Fast Food' | 'Restaurant' | 'Deals')[] = ['Fast Food', 'Restaurant', 'Deals']
-          const currentContext = usePosStore.getState().menuContext
-          const nextIndex = (contexts.indexOf(currentContext as any) + 1) % contexts.length
-          usePosStore.getState().setMenuContext(contexts[nextIndex])
-          setGridSelectedIndex(0)
+          const total = gridProductsRef.current.length
+          const cols = getGridColumns()
+          const currentRow = Math.floor(gridSelectedIndex / cols)
+          const nextIndex = gridSelectedIndex + 1
+          // Only move right if staying in the same row
+          if (nextIndex < total && Math.floor(nextIndex / cols) === currentRow) {
+            setGridSelectedIndex(nextIndex)
+          }
         } else if (e.key === "ArrowLeft") {
           e.preventDefault()
-          const contexts: ('Fast Food' | 'Restaurant' | 'Deals')[] = ['Fast Food', 'Restaurant', 'Deals']
-          const currentContext = usePosStore.getState().menuContext
-          const nextIndex = (contexts.indexOf(currentContext as any) - 1 + contexts.length) % contexts.length
-          usePosStore.getState().setMenuContext(contexts[nextIndex])
-          setGridSelectedIndex(0)
+          const cols = getGridColumns()
+          const currentRow = Math.floor(gridSelectedIndex / cols)
+          const prevIndex = gridSelectedIndex - 1
+          // Only move left if staying in the same row
+          if (prevIndex >= 0 && Math.floor(prevIndex / cols) === currentRow) {
+            setGridSelectedIndex(prevIndex)
+          }
         } else if (e.key === "Enter" && !e.ctrlKey) {
           e.preventDefault()
           const selectedProduct = gridProductsRef.current[gridSelectedIndex]
@@ -579,8 +703,28 @@ export default function POS() {
     customerModalOpen, tableModalOpen, recentOrdersModalOpen, 
     activeProductForSize, clearCart, setCustomer, updateQuantity, 
     removeFromCart, editingOrderId, clearEditMode, duplicateItem,
-    sizeSelectedIndex, gridSelectedIndex
+    sizeSelectedIndex, gridSelectedIndex,
+    isCartMode, cartSelectedIndex, gridDensity
   ])
+
+  // Keep cartSelectedIndex in bounds if cart shrinks
+  useEffect(() => {
+    if (cartSelectedIndex >= cart.length && cart.length > 0) {
+      setCartSelectedIndex(cart.length - 1)
+    }
+    if (cart.length === 0) {
+      setIsCartMode(false)
+      setCartSelectedIndex(0)
+    }
+  }, [cart.length, cartSelectedIndex])
+
+  // Auto-scroll to selected cart item in cart mode
+  useEffect(() => {
+    if (isCartMode) {
+      const el = document.getElementById(`cart-item-${cartSelectedIndex}`)
+      if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [cartSelectedIndex, isCartMode])
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
@@ -906,15 +1050,18 @@ export default function POS() {
               </form>
 
               <div className="flex items-center gap-1 bg-card p-1 rounded-xl border border-border">
-                {(['Fast Food', 'Restaurant', 'Deals'] as const).map(context => (
+                {([['Fast Food', 'F1'], ['Restaurant', 'F2'], ['Deals', 'F3']] as const).map(([context, fkey]) => (
                   <button
                     key={context}
-                    onClick={() => { setMenuContext(context); setActiveCategory("All"); }}
-                    className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors duration-200 ${
+                    onClick={() => { setMenuContext(context as any); setActiveCategory("All"); setIsCartMode(false); }}
+                    className={`px-3 py-2 text-xs font-bold rounded-lg transition-colors duration-200 flex items-center gap-1.5 ${
                       menuContext === context ? 'bg-orange-500 shadow-sm text-white' : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     {context}
+                    <span className={`text-[9px] font-black px-1 py-0.5 rounded ${
+                      menuContext === context ? 'bg-white/20 text-white' : 'bg-secondary text-muted-foreground'
+                    }`}>{fkey}</span>
                   </button>
                 ))}
               </div>
@@ -922,7 +1069,7 @@ export default function POS() {
 
             {/* Product Grid */}
             <div className="flex-1 p-4 pt-0 overflow-y-auto custom-scrollbar">
-              <div className={`grid gap-4 ${
+              <div ref={gridContainerRef} className={`grid gap-4 ${
                 gridDensity === 'small' ? 'grid-cols-4 md:grid-cols-5 xl:grid-cols-6' :
                 gridDensity === 'medium' ? 'grid-cols-3 md:grid-cols-4 xl:grid-cols-5' :
                 'grid-cols-2 md:grid-cols-3 xl:grid-cols-4'
@@ -991,6 +1138,16 @@ export default function POS() {
               </div>
             ) : (
               <div className="flex-1 flex flex-col h-full overflow-hidden">
+                {/* Cart Mode Indicator */}
+                {isCartMode && (
+                  <div className="px-3 py-1.5 bg-orange-500/10 border-b border-orange-500/30 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                      <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">Cart Mode</span>
+                    </div>
+                    <span className="text-[9px] text-orange-400 font-bold">↑↓ Select · ← Minus · → Plus · Backspace Remove · Tab Exit</span>
+                  </div>
+                )}
                 {/* Header: Order Info */}
                 <div className="p-3 border-b border-border flex items-center justify-between bg-secondary/30">
                   <div>
@@ -1070,14 +1227,19 @@ export default function POS() {
                         </div>
                       ) : (
                         <AnimatePresence initial={false}>
-                          {cart.map((item, index) => (
+                          {cart.map((item, index) => {
+                            const isCartItemSelected = isCartMode && index === cartSelectedIndex
+                            return (
                             <motion.div 
                               layout
+                              id={`cart-item-${index}`}
                               key={item.cartItemId || `cart-item-${index}`} 
-                              className={`border rounded-xl p-3 flex gap-3 relative group ${
-                                item.editState === 'removed' ? 'bg-background border-border/50 opacity-50' :
-                                item.editState === 'new' ? 'bg-card border-green-500/50 shadow-[0_0_10px_rgba(34,197,94,0.1)]' :
-                                item.editState === 'modified' ? 'bg-card border-orange-500/50' : 'bg-card border-border'
+                              className={`border rounded-xl p-3 flex gap-3 relative group transition-all duration-100 ${
+                                isCartItemSelected
+                                  ? 'bg-orange-500/10 border-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.25)] scale-[1.01]'
+                                  : item.editState === 'removed' ? 'bg-background border-border/50 opacity-50' :
+                                    item.editState === 'new' ? 'bg-card border-green-500/50 shadow-[0_0_10px_rgba(34,197,94,0.1)]' :
+                                    item.editState === 'modified' ? 'bg-card border-orange-500/50' : 'bg-card border-border'
                               }`}
                             >
                               <div className="flex-1 min-w-0">
@@ -1137,7 +1299,8 @@ export default function POS() {
                                 )}
                               </div>
                             </motion.div>
-                          ))}
+                            )
+                          })}
                         </AnimatePresence>
                       )}
                     </div>
