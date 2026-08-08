@@ -97,7 +97,13 @@ class HistoryRepository {
    * @returns {Object|null}
    */
   findFullDetail(orderId) {
-    const order = dbEngine.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+    const order = dbEngine.prepare(`
+      SELECT o.*,
+        (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'service_charge') AS service_charge,
+        (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'delivery_charges') AS delivery_charges
+      FROM orders o 
+      WHERE o.id = ?
+    `).get(orderId);
     if (!order) return null;
 
     // Load all items in one query, joining products and categories for category_name

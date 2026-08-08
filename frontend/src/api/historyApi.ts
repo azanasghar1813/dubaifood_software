@@ -71,6 +71,7 @@ export interface HistoryOrderRow {
   completed_at:          string | null;
   item_count:            number;
   primary_payment_method: string | null;
+  is_edited?:            number | boolean;
 }
 
 export interface HistoryOrderDetail extends HistoryOrderRow {

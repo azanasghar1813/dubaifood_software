@@ -57,7 +57,9 @@ export interface Order {
   subtotal: number
   tax: number
   serviceCharge: number
+  deliveryCharge?: number
   discount: number
+  isEdited?: boolean
   total: number
   businessDate?: string
   status: OrderStatus
@@ -179,7 +181,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     id: row.id,
     orderNumber: row.order_number.replace('POS-', '').replace(new RegExp(`^\\d{8}-`), ''),
     cashierName: formatName(row.cashier_user_id),
-    customerName: row.customer_id || 'Walk-in',
+    customerName: row.customer_id || 'Guest',
     customerPhone: undefined,
     isVip: false,
     tableNumber: row.table_id || null,
@@ -188,7 +190,8 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     items,
     subtotal: Number(row.subtotal || 0),
     tax: Number(row.tax_total || 0),
-    serviceCharge: 0,
+    serviceCharge: Number(row.service_charge ?? detail?.service_charge ?? 0),
+    deliveryCharge: Number(row.delivery_charges ?? detail?.delivery_charges ?? 0),
     discount: Number(row.discount_total || 0),
     total: Number(row.grand_total || 0),
     businessDate: row.business_date,
@@ -271,16 +274,24 @@ export const useOrderStore = create<OrderState>((set, get) => ({
     set({ isSyncingFromBackend: true })
     try {
       const listResult = await fetchOrders({}, { page: 1, limit: 500, sort_by: 'NEWEST' })
-      const detailedOrders = await Promise.all(
-        (listResult.data || []).map(async (row: HistoryOrderRow) => {
-          try {
-            const detailResult = await fetchOrderDetail(row.id)
-            return mapHistoryDetailToOrder(row, detailResult.data)
-          } catch {
-            return mapHistoryDetailToOrder(row)
-          }
-        })
-      )
+      const rows = listResult.data || []
+      const detailedOrders = []
+      const chunkSize = 10
+      
+      for (let i = 0; i < rows.length; i += chunkSize) {
+        const chunk = rows.slice(i, i + chunkSize)
+        const chunkResults = await Promise.all(
+          chunk.map(async (row: HistoryOrderRow) => {
+            try {
+              const detailResult = await fetchOrderDetail(row.id)
+              return mapHistoryDetailToOrder(row, detailResult.data)
+            } catch {
+              return mapHistoryDetailToOrder(row)
+            }
+          })
+        )
+        detailedOrders.push(...chunkResults)
+      }
 
       const highestOrderNumber = detailedOrders.reduce((max, order) => {
         const parsed = Number(order.orderNumber)

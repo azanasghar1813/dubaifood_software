@@ -48,7 +48,7 @@ interface KdsState {
     kitchen: string | 'All'
     searchQuery: string
   }
-  
+
   // Actions
   fetchTickets: () => Promise<void>
   updateTicketStatus: (ticketId: string, status: KitchenStatus) => Promise<void>
@@ -92,7 +92,7 @@ export const useKdsStore = create<KdsState>((set, get) => ({
             orderId: row.id,
             orderNumber: row.order_number ? row.order_number.replace('POS-', '').replace(new RegExp(`^\\d{8}-`), '') : '',
             table: row.table_id || 'N/A',
-            customer: row.customer_id || 'Walk-in',
+            customer: row.customer_id || 'Guest',
             orderType: row.order_type,
             cashier: row.cashier_name || 'System',
             orderTime: row.created_at ? (row.created_at.includes('Z') ? row.created_at : row.created_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
@@ -108,7 +108,7 @@ export const useKdsStore = create<KdsState>((set, get) => ({
               if (is === 'SERVED') is = 'Served'
               if (is === 'COMPLETED') is = 'Served'
               if (is === 'CANCELLED') is = 'Cancelled'
-              
+
               let type = 'NORMAL'
               if (item.created_at && row.created_at) {
                 const itemTime = new Date(item.created_at.includes('Z') ? item.created_at : item.created_at.replace(' ', 'T') + 'Z').getTime()
@@ -142,13 +142,13 @@ export const useKdsStore = create<KdsState>((set, get) => ({
   updateTicketStatus: async (ticketId, status) => {
     // Optimistic update
     set(state => ({
-      tickets: state.tickets.map(t => t.id === ticketId ? { 
-        ...t, 
+      tickets: state.tickets.map(t => t.id === ticketId ? {
+        ...t,
         status,
         items: t.items.map(i => ({ ...i, status })) // Cascade status to items visually
       } : t)
     }))
-    
+
     // Backend doesn't have a batch order status endpoint, so we update each item
     try {
       const { kitchenService } = await import('../services/kitchenService')
@@ -175,9 +175,9 @@ export const useKdsStore = create<KdsState>((set, get) => ({
   updateItemStatus: async (ticketId, itemId, status) => {
     // Optimistic update
     set(state => ({
-      tickets: state.tickets.map(t => 
-        t.id === ticketId 
-          ? { ...t, items: t.items.map(i => i.id === itemId ? { ...i, status } : i) } 
+      tickets: state.tickets.map(t =>
+        t.id === ticketId
+          ? { ...t, items: t.items.map(i => i.id === itemId ? { ...i, status } : i) }
           : t
       )
     }))
@@ -188,7 +188,7 @@ export const useKdsStore = create<KdsState>((set, get) => ({
       else if (status === 'Ready') await kitchenService.markItemReady(itemId)
       else if (status === 'Served') await kitchenService.markItemServed(itemId)
       else if (status === 'Cancelled') await kitchenService.cancelItem(itemId)
-      
+
       // Refresh to ensure sync
       get().fetchTickets()
     } catch (error) {

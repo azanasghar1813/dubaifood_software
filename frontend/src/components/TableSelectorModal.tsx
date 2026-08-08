@@ -44,7 +44,7 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
       status = 'Occupied'
       if (orderForTable.orderStatus === 'Ready') status = 'Ready'
       if (orderForTable.orderStatus === 'Preparing') status = 'Preparing'
-      
+
       const sub = orderForTable.cart.reduce((total: number, item: any) => total + ((item.price * item.quantity) - item.discount), 0)
       amount = sub
       elapsed = Math.floor((new Date().getTime() - new Date(orderForTable.startTime).getTime()) / 60000)
@@ -124,7 +124,7 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
   const handleSelect = (table: Table) => {
     // If we click a table, we check if an order exists for it
     const orderForTable = Object.values(openOrders).find(o => o.tableNumber === table.label)
-    
+
     if (orderForTable) {
       switchOrder(orderForTable.id)
     } else {
@@ -156,20 +156,19 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
           <button
             key={t.id}
             onClick={() => handleSelect(t)}
-            className={`relative flex flex-col p-3 rounded-xl border-2 transition-all h-24 ${getStatusColor(t.status)} ${
-              selectedTableId === t.id 
-                ? 'ring-4 ring-blue-500 ring-offset-2 ring-offset-background scale-105 shadow-xl z-10' 
+            className={`relative flex flex-col p-3 rounded-xl border-2 transition-all h-24 ${getStatusColor(t.status)} ${selectedTableId === t.id
+                ? 'ring-4 ring-blue-500 ring-offset-2 ring-offset-background scale-105 shadow-xl z-10'
                 : (activeOrderId === t.label ? 'ring-2 ring-orange-500 ring-offset-2 ring-offset-background' : '')
-            }`}
+              }`}
           >
             <div className="flex items-center justify-between w-full mb-auto">
               <span className="font-black text-lg">{t.label}</span>
               {t.status !== 'Available' && <div className="w-2 h-2 rounded-full bg-white animate-pulse" />}
             </div>
-            
+
             {t.status !== 'Available' ? (
               <div className="w-full text-left mt-auto">
-                <p className="text-[10px] font-bold opacity-90 truncate">{t.customerName || 'Walk-in'}</p>
+                <p className="text-[10px] font-bold opacity-90 truncate">{t.customerName || 'Guest'}</p>
                 <div className="flex items-center justify-between text-[10px] font-bold mt-1 opacity-75">
                   <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {t.elapsed}m</span>
                   <span>AED {t.amount.toFixed(2)}</span>
@@ -190,15 +189,15 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
 
   return (
     <AnimatePresence>
-      <motion.div 
-        initial={{ opacity: 0 }} 
-        animate={{ opacity: 1 }} 
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       >
-        <motion.div 
-          initial={{ scale: 0.95, opacity: 0, y: 20 }} 
-          animate={{ scale: 1, opacity: 1, y: 0 }} 
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.95, opacity: 0, y: 20 }}
           className="bg-background w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[80vh] border border-border"
         >
@@ -207,13 +206,13 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
               <h2 className="text-lg font-black text-foreground">Table Management</h2>
               <p className="text-xs text-muted-foreground font-bold">Select a table or type to jump instantly</p>
             </div>
-            
+
             <div className="flex items-center gap-4">
               <div className="relative w-64">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input 
+                <input
                   ref={searchInputRef}
-                  type="text" 
+                  type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Type table (e.g. G5)..."
@@ -236,7 +235,7 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
                 <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-500"></div><span className="text-xs font-bold text-yellow-500">Preparing</span></div>
                 <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500"></div><span className="text-xs font-bold text-green-500">Ready</span></div>
               </div>
-              
+
               <div className="flex items-center gap-2">
                 <button className="px-4 py-2 text-xs font-bold bg-secondary hover:bg-orange-500 hover:text-white rounded-lg transition-colors border border-border hover:border-orange-500">Move Table</button>
                 <button className="px-4 py-2 text-xs font-bold bg-secondary hover:bg-orange-500 hover:text-white rounded-lg transition-colors border border-border hover:border-orange-500">Merge Tables</button>

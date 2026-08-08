@@ -33,10 +33,57 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
   const tax = order ? order.tax : (39.48 * (settings.taxRate / 100))
   const total = order ? order.total : (39.48 + tax)
   const items = order ? order.items : [
-    { name: "Classic Cheeseburger", quantity: 2, price: 12.99 },
-    { name: "Coca Cola", quantity: 2, price: 2.50 },
-    { name: "Truffle Fries", quantity: 1, price: 8.50 }
-  ]
+    { name: "Classic Cheeseburger", quantity: 2, price: 12.99, category: "Fast Food" },
+    { name: "Coca Cola", quantity: 2, price: 2.50, category: "Fast Food" },
+    { name: "Truffle Fries", quantity: 1, price: 8.50, category: "Restaurant" },
+    { name: "Combo Meal", quantity: 1, price: 15.00, category: "Deals" }
+  ] as any[]
+
+  // Group items by category
+  const groupedItems = items.reduce((acc: any, item) => {
+    let category = item.category || 'Restaurant';
+    const catLower = category.toLowerCase();
+    const nameLower = (item.name || '').toLowerCase();
+    if (
+      catLower.includes('fast food') || 
+      catLower.includes('pizza') || 
+      catLower.includes('burger') ||
+      catLower.includes('roll') ||
+      catLower.includes('pasta') ||
+      catLower.includes('appetizer') ||
+      catLower.includes('sandwich') ||
+      catLower.includes('shawarma') ||
+      catLower.includes('extra toppings') ||
+      nameLower.includes('pizza') ||
+      nameLower.includes('burger') ||
+      nameLower.includes('roll') ||
+      nameLower.includes('pasta') ||
+      nameLower.includes('appetizer') ||
+      nameLower.includes('sandwich') ||
+      nameLower.includes('shawarma') ||
+      nameLower.includes('topping')
+    ) {
+      category = 'Fast Food';
+    } else if (catLower.includes('deal') || nameLower.includes('deal')) {
+      category = 'Deals';
+    } else {
+      category = 'Restaurant';
+    }
+    if (!acc[category]) acc[category] = [];
+    acc[category].push(item);
+    return acc;
+  }, {} as Record<string, typeof items>)
+
+  // Sort categories: Fast Food first, then Restaurant, then Deals, then others
+  const categoryOrder = ["Fast Food", "Restaurant", "Deals"]
+  const sortedCategories = Object.keys(groupedItems).sort((a, b) => {
+    const idxA = categoryOrder.indexOf(a)
+    const idxB = categoryOrder.indexOf(b)
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB
+    if (idxA !== -1) return -1
+    if (idxB !== -1) return 1
+    return a.localeCompare(b)
+  })
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto pb-10 relative">
@@ -66,9 +113,9 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
         </div>
       )}
 
-      <div className="flex justify-center">
+      <div className="flex justify-center print:flex print:justify-center print:absolute print:top-0 print:left-0 print:w-full print:bg-white print:z-[9999]">
         {/* Receipt Paper UI */}
-        <div className="bg-white text-black w-full max-w-sm p-8 shadow-2xl relative">
+        <div className="bg-white text-black w-full max-w-sm p-8 shadow-2xl relative print:w-[80mm] print:max-w-[300px] print:shadow-none print:p-2 print:text-left">
           {/* Jagged edge top */}
           <div className="absolute top-0 left-0 w-full h-2 bg-repeat-x flex">
             {Array.from({length: 40}).map((_, i) => (
@@ -76,7 +123,8 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
             ))}
           </div>
 
-          <div className="text-center mb-6 pt-4 border-b border-gray-300 pb-6">
+          <div className="text-center mb-6 pt-4 border-b border-gray-300 pb-6 flex flex-col items-center">
+            <img src="/qr.png" alt="Logo" className="w-24 h-24 object-contain rounded-full mb-3" />
             <h2 className="text-2xl font-black mb-1">{settings.restaurantName.toUpperCase()}</h2>
             <p className="text-xs text-gray-600">{settings.address}</p>
             <p className="text-xs text-gray-600">Tel: {settings.phoneNumber}</p>
@@ -94,41 +142,36 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
             </div>
           </div>
 
-          <table className="w-full text-sm mb-4">
-            <thead>
-              <tr className="border-y border-dashed border-gray-400">
-                <th className="py-2 text-left w-2/3">Item</th>
-                <th className="py-2 text-center w-1/6">Qty</th>
-                <th className="py-2 text-right w-1/6">Total</th>
-              </tr>
-            </thead>
-            <tbody className="border-b border-dashed border-gray-400">
-              {items.map((item, idx) => {
-                // If it's a real order item from the store, it might have selectedModifiers.
-                // We'll calculate the item total if needed, or just use price * quantity.
-                let itemTotal = item.price * item.quantity;
-                if ((item as any).selectedModifiers && Array.isArray((item as any).selectedModifiers)) {
-                   const modTotal = (item as any).selectedModifiers.reduce((sum: number, mod: any) => sum + mod.price, 0);
-                   itemTotal = (item.price + modTotal) * item.quantity;
-                }
+          <div className="mb-4 flex flex-col">
+            {sortedCategories.map((category) => (
+              <div key={category} className="border-2 border-black border-b-0 last:border-b-2">
+                <div className="text-center font-bold text-[13px] py-1 border-b border-dashed border-gray-500 uppercase">
+                  {category}
+                </div>
+                {groupedItems[category].map((item: any, idx: number) => {
+                  let itemTotal = item.price * item.quantity;
+                  if (item.selectedModifiers && Array.isArray(item.selectedModifiers)) {
+                     const modTotal = item.selectedModifiers.reduce((sum: number, mod: any) => sum + mod.price, 0);
+                     itemTotal = (item.price + modTotal) * item.quantity;
+                  }
 
-                return (
-                  <tr key={idx}>
-                    <td className="py-2">
-                      <div>{item.name}</div>
-                      {(item as any).selectedModifiers && (item as any).selectedModifiers.length > 0 && (
+                  return (
+                    <div key={idx} className="border-b border-dashed border-gray-500 p-1 px-2 text-[11px] last:border-b-0">
+                      <div className="flex justify-between font-medium">
+                        <span>{item.quantity > 1 ? `${item.quantity}x ` : ''}{item.name}</span>
+                        <span>Rs {itemTotal.toFixed(2)}</span>
+                      </div>
+                      {item.selectedModifiers && item.selectedModifiers.length > 0 && (
                         <div className="text-[10px] text-gray-500 leading-tight">
-                          {(item as any).selectedModifiers.map((m: any) => `+${m.name}`).join(', ')}
+                          {item.selectedModifiers.map((m: any) => `+${m.name}`).join(', ')}
                         </div>
                       )}
-                    </td>
-                    <td className="py-2 text-center align-top">{item.quantity}</td>
-                    <td className="py-2 text-right align-top">{itemTotal.toLocaleString()}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
 
           <div className="space-y-1 text-sm text-right mb-6">
             <div className="flex justify-between">
@@ -145,8 +188,10 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
             </div>
           </div>
 
-          <div className="text-center text-xs text-gray-600">
-            <p className="font-bold mb-1">{settings.receiptFooter}</p>
+          <div className="text-center text-xs text-gray-600 mt-6 flex flex-col items-center">
+            <p className="font-bold mb-2">{settings.receiptFooter}</p>
+            <img src="/logo.jpg" alt="QR Code" className="mx-auto w-40 h-40 object-contain mb-1" />
+            <span className="text-[11px] font-bold mt-1">Scan to Pay</span>
           </div>
 
           {/* Jagged edge bottom */}

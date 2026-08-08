@@ -113,16 +113,12 @@ export default function Reports() {
       const rows = orders.map(o => [
         o.orderNumber,
         `"${new Date(o.timestamp).toLocaleString()}"`,
-        `"${o.customerName || 'Walk-in'}"`,
+        `"${o.customerName || 'Guest'}"`,
         `"${o.orderType}"`,
         o.subtotal.toFixed(2),
         o.tax.toFixed(2),
         (o.serviceCharge || 0).toFixed(2),
-        (() => {
-          const grandTotal = o.total - (o.roundOffAdjustment || 0)
-          const delivery = grandTotal - Math.max(0, o.subtotal - o.discount) - o.tax - o.serviceCharge
-          return Math.max(0, Math.round(delivery))
-        })().toFixed(2),
+        (o.deliveryCharge || 0).toFixed(2),
         o.discount.toFixed(2),
         o.total.toFixed(2),
         `"${o.payments?.[0]?.method || 'Cash'}"`,
@@ -308,11 +304,7 @@ export default function Reports() {
     const totalTax = todayOrders.reduce((sum, o) => sum + o.tax, 0)
     const totalService = todayOrders.reduce((sum, o) => sum + o.serviceCharge, 0)
     const totalDiscount = todayOrders.reduce((sum, o) => sum + o.discount, 0)
-    const totalDelivery = todayOrders.reduce((sum, o) => {
-      const grandTotal = o.total - (o.roundOffAdjustment || 0)
-      const delivery = grandTotal - Math.max(0, o.subtotal - o.discount) - o.tax - o.serviceCharge
-      return sum + Math.max(0, Math.round(delivery))
-    }, 0)
+    const totalDelivery = todayOrders.reduce((sum, o) => sum + (o.deliveryCharge || 0), 0)
 
     const paidCount = todayOrders.filter(o => o.paymentStatus === "Paid").length
     const unpaidCount = todayOrders.filter(o => o.paymentStatus === "Unpaid").length
@@ -770,7 +762,7 @@ export default function Reports() {
                           <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.fastFoodSales || 0)}</p>
                         </div>
                         <span className="text-sm font-bold text-orange-500 bg-orange-500/20 px-3 py-1.5 rounded-lg">
-                          {reportStats.totalCatSales > 0 ? Math.round(((reportStats.fastFoodSales || 0) / reportStats.totalCatSales) * 100) : 0}%
+                          {(reportStats.totalCatSales || 0) > 0 ? Math.round(((reportStats.fastFoodSales || 0) / (reportStats.totalCatSales || 1)) * 100) : 0}%
                         </span>
                       </div>
                       <div className="p-3 bg-blue-500/10 border border-blue-500/25 rounded-2xl flex justify-between items-center">
@@ -779,7 +771,7 @@ export default function Reports() {
                           <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.restaurantSales || 0)}</p>
                         </div>
                         <span className="text-sm font-bold text-blue-500 bg-blue-500/20 px-3 py-1.5 rounded-lg">
-                          {reportStats.totalCatSales > 0 ? Math.round(((reportStats.restaurantSales || 0) / reportStats.totalCatSales) * 100) : 0}%
+                          {(reportStats.totalCatSales || 0) > 0 ? Math.round(((reportStats.restaurantSales || 0) / (reportStats.totalCatSales || 1)) * 100) : 0}%
                         </span>
                       </div>
                       <div className="p-3 bg-purple-500/10 border border-purple-500/25 rounded-2xl flex justify-between items-center">
@@ -788,7 +780,7 @@ export default function Reports() {
                           <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.dealsSales || 0)}</p>
                         </div>
                         <span className="text-sm font-bold text-purple-500 bg-purple-500/20 px-3 py-1.5 rounded-lg">
-                          {reportStats.totalCatSales > 0 ? Math.round(((reportStats.dealsSales || 0) / reportStats.totalCatSales) * 100) : 0}%
+                          {(reportStats.totalCatSales || 0) > 0 ? Math.round(((reportStats.dealsSales || 0) / (reportStats.totalCatSales || 1)) * 100) : 0}%
                         </span>
                       </div>
                     </div>

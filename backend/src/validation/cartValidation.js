@@ -59,5 +59,7 @@ export const checkoutCartSchema = z.object({
   table_id: z.string().uuid().optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),
   branch_id: z.string().optional(),
-  business_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD').optional()
+  business_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD').optional(),
+  delivery_charges: z.number().nonnegative().optional(),
+  service_charge: z.number().nonnegative().optional()
 });

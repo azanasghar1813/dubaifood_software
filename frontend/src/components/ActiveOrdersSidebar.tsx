@@ -50,6 +50,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
   const [searchQuery, setSearchQuery] = useState("")
   const [filter, setFilter] = useState<string>("All")
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [selectedActionIndex, setSelectedActionIndex] = useState(0)
 
   useEffect(() => {
     if (isOpen) {
@@ -85,6 +86,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
 
   useEffect(() => {
     setSelectedIndex(0)
+    setSelectedActionIndex(0)
   }, [searchQuery, filter])
 
   useEffect(() => {
@@ -93,13 +95,29 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
       if (e.key === 'ArrowDown') {
         e.preventDefault()
         setSelectedIndex(s => Math.min(s + 1, activeOrders.length - 1))
+        setSelectedActionIndex(0)
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         setSelectedIndex(s => Math.max(s - 1, 0))
+        setSelectedActionIndex(0)
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        const order = activeOrders[selectedIndex]
+        if (order && order.paymentStatus === 'Unpaid') {
+          setSelectedActionIndex(1)
+        }
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        setSelectedActionIndex(0)
       } else if (e.key === 'Enter') {
         e.preventDefault()
-        if (activeOrders[selectedIndex]) {
-          handleEdit(activeOrders[selectedIndex])
+        const order = activeOrders[selectedIndex]
+        if (order) {
+          if (selectedActionIndex === 1 && order.paymentStatus === 'Unpaid') {
+            handleMarkComplete(null, order)
+          } else {
+            handleEdit(order)
+          }
         }
       } else if (e.ctrlKey && e.key.toLowerCase() === 'e') {
         e.preventDefault()
@@ -108,7 +126,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, activeOrders, selectedIndex])
+  }, [isOpen, activeOrders, selectedIndex, selectedActionIndex])
 
   const handleEdit = async (order: Order) => {
     try {
@@ -119,8 +137,8 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     onClose()
   }
 
-  const handleMarkComplete = async (e: React.MouseEvent, order: Order) => {
-    e.stopPropagation()
+  const handleMarkComplete = async (e: React.MouseEvent | null, order: Order) => {
+    if (e) e.stopPropagation()
     const confirmMsg = `Mark order #${order.orderNumber} as COMPLETED?\nTotal: PKR ${order.total.toLocaleString()}`
     if (!window.confirm(confirmMsg)) return
 
@@ -182,13 +200,29 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                     if (e.key === 'ArrowDown') {
                       e.preventDefault()
                       setSelectedIndex(s => Math.min(s + 1, activeOrders.length - 1))
+                      setSelectedActionIndex(0)
                     } else if (e.key === 'ArrowUp') {
                       e.preventDefault()
                       setSelectedIndex(s => Math.max(s - 1, 0))
+                      setSelectedActionIndex(0)
+                    } else if (e.key === 'ArrowRight') {
+                      e.preventDefault()
+                      const order = activeOrders[selectedIndex]
+                      if (order && order.paymentStatus === 'Unpaid') {
+                        setSelectedActionIndex(1)
+                      }
+                    } else if (e.key === 'ArrowLeft') {
+                      e.preventDefault()
+                      setSelectedActionIndex(0)
                     } else if (e.key === 'Enter') {
                       e.preventDefault()
-                      if (activeOrders[selectedIndex]) {
-                        handleEdit(activeOrders[selectedIndex])
+                      const order = activeOrders[selectedIndex]
+                      if (order) {
+                        if (selectedActionIndex === 1 && order.paymentStatus === 'Unpaid') {
+                          handleMarkComplete(null, order)
+                        } else {
+                          handleEdit(order)
+                        }
                       }
                     }
                   }}
@@ -241,12 +275,10 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                             <Clock className="w-3.5 h-3.5" />
                             {new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
-                          {order.tableNumber && (
-                            <span className="flex items-center gap-1 text-blue-400 font-medium">
-                              <Hash className="w-3.5 h-3.5" />
-                              Table {order.tableNumber}
-                            </span>
-                          )}
+                          <span className="flex items-center gap-1 text-blue-400 font-medium">
+                            <Hash className="w-3.5 h-3.5" />
+                            Table {order.tableNumber || 'N/A'}
+                          </span>
                         </div>
                       </div>
                       <div className="text-right">
@@ -271,7 +303,11 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                     <div className="flex gap-2 mt-2 pt-3 border-t border-border/50">
                       <button 
                         onClick={() => handleEdit(order)}
-                        className="flex-1 flex items-center justify-center gap-2 bg-secondary hover:bg-secondary/80 text-foreground py-2 rounded-lg text-sm font-medium transition-colors"
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          selectedIndex === index && selectedActionIndex === 0
+                            ? 'bg-primary text-primary-foreground ring-2 ring-primary/50 shadow-lg shadow-primary/20'
+                            : 'bg-secondary hover:bg-secondary/80 text-foreground'
+                        }`}
                       >
                         <Edit className="w-4 h-4" />
                         Edit / Load
@@ -280,7 +316,11 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                       {order.paymentStatus === 'Unpaid' && (
                         <button 
                           onClick={(e) => handleMarkComplete(e, order)}
-                          className="flex-1 flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/20 py-2 rounded-lg text-sm font-medium transition-colors"
+                          className={`flex-1 flex items-center justify-center gap-2 border py-2 rounded-lg text-sm font-medium transition-colors ${
+                            selectedIndex === index && selectedActionIndex === 1
+                              ? 'bg-emerald-500 text-white ring-2 ring-emerald-500/50 border-emerald-500 shadow-lg shadow-emerald-500/20'
+                              : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border-emerald-500/20'
+                          }`}
                         >
                           <CheckCircle2 className="w-4 h-4" />
                           Mark Complete

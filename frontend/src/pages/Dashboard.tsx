@@ -305,7 +305,7 @@ export default function Dashboard() {
           <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm flex-1">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border pb-4 mb-4 gap-2">
               <div>
-                <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Recent Active Orders</h3>
+                <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Today's Active Orders</h3>
                 <p className="text-xs text-muted-foreground font-bold mt-0.5">Showing live tickets. Orders with red outline are overdue (&gt;25 mins).</p>
               </div>
               <div className="relative w-full sm:w-64">

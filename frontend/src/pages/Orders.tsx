@@ -8,10 +8,10 @@ import { usePosStore } from "../store/posStore"
 import { useAuthStore } from "../store/authStore"
 import { fetchOrderDetail } from "../api/historyApi"
 import { apiClient } from "../api/client"
-import { 
-  Search, Filter, Clock, Pencil, History, Printer, 
-  X, AlertTriangle, FileText, Download, RotateCcw, Ban, Plus, 
-  RefreshCw, ChevronLeft, ChevronRight, CheckCircle2, 
+import {
+  Search, Filter, Clock, Pencil, History, Printer,
+  X, AlertTriangle, FileText, Download, RotateCcw, Ban, Plus,
+  RefreshCw, ChevronLeft, ChevronRight, CheckCircle2,
   Utensils, DollarSign, Calendar, Info, Copy, Server, MoreVertical, Trash2
 } from "lucide-react"
 import { deleteOrder } from "../api/historyApi"
@@ -51,11 +51,11 @@ export default function Orders() {
   // State Management
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [activeTab, setActiveTab] = useState<"general" | "items" | "billing" | "kitchen" | "timeline" | "history">("general")
-  
+
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("")
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
-  
+
   const [filterDate, setFilterDate] = useState<string>("Today") // Today, Yesterday, Last 7 Days, Last 30 Days, All
   const [filterType, setFilterType] = useState<string>("All")
   const [filterOrderState, setFilterOrderState] = useState<string>("All")
@@ -63,11 +63,11 @@ export default function Orders() {
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>("All")
   const [filterCashier, setFilterCashier] = useState<string>("All")
   const [sortBy, setSortBy] = useState<string>("Newest")
-  
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState<number>(25)
-  
+
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set())
   const [printOrder, setPrintOrder] = useState<Order | null>(null)
@@ -90,14 +90,14 @@ export default function Orders() {
   const handleBulkMarkPaid = async () => {
     if (selectedOrderIds.size === 0) return
     if (!confirm(`Mark ${selectedOrderIds.size} order(s) as paid?`)) return
-    
+
     for (const id of selectedOrderIds) {
       const order = orders.find(o => o.id === id)
       if (order && order.paymentStatus !== 'Paid') {
         try {
           await apiClient.post(`/payments/order/${id}`, { amount_received: order.total, payment_method: 'CASH' })
           updateOrder(id, { paymentStatus: 'Paid' })
-        } catch(e) {}
+        } catch (e) { }
       }
     }
     syncOrdersFromBackend()
@@ -107,14 +107,14 @@ export default function Orders() {
   const handleBulkMarkComplete = async () => {
     if (selectedOrderIds.size === 0) return
     if (!confirm(`Mark ${selectedOrderIds.size} order(s) as completed?`)) return
-    
+
     for (const id of selectedOrderIds) {
       const order = orders.find(o => o.id === id)
       if (order && order.status !== 'Completed') {
         try {
           await apiClient.post(`/orders/${id}/transition`, { targetState: 'COMPLETED' })
           updateOrder(id, { status: 'Completed', kitchenStatus: 'Served' })
-        } catch(e) {}
+        } catch (e) { }
       }
     }
     syncOrdersFromBackend()
@@ -127,9 +127,9 @@ export default function Orders() {
     if (pin !== '1234') { alert("Unauthorized."); return }
 
     if (!confirm(`Permanently delete ${selectedOrderIds.size} order(s)? This action cannot be undone.`)) return
-    
+
     for (const id of selectedOrderIds) {
-      try { await deleteOrder(id) } catch(e) {}
+      try { await deleteOrder(id) } catch (e) { }
     }
     syncOrdersFromBackend()
     setSelectedOrderIds(new Set())
@@ -168,12 +168,12 @@ export default function Orders() {
   const exportToPDF = () => {
     const doc = new jsPDF('landscape')
     doc.text("Enterprise Order History", 14, 15)
-    
+
     const headers = [["Order #", "Date", "Customer", "Table", "Total", "Pay Method", "Pay Status", "Order Status", "Items"]]
     const data = filteredAndSortedOrders.map(o => [
       o.orderNumber,
       new Date(o.timestamp).toLocaleString(),
-      o.customerName || 'Walk-in',
+      o.customerName || 'Guest',
       o.tableNumber || '-',
       o.total.toString(),
       o.payments?.[0]?.method || 'Cash',
@@ -200,7 +200,7 @@ export default function Orders() {
     const rows = filteredAndSortedOrders.map(o => [
       o.orderNumber,
       `"${new Date(o.timestamp).toLocaleString()}"`,
-      `"${o.customerName || 'Walk-in'}"`,
+      `"${o.customerName || 'Guest'}"`,
       `"${o.tableNumber || '-'}"`,
       o.total,
       `"${o.payments?.[0]?.method || 'Cash'}"`,
@@ -208,7 +208,7 @@ export default function Orders() {
       `"${o.status}"`,
       `"${o.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}"`
     ])
-    
+
     const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n")
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -222,12 +222,8 @@ export default function Orders() {
 
   const handleEditClick = async (order: Order) => {
     const cashierName = user?.name || 'Ahmed'
-    if (order.paymentStatus === 'Paid' || order.status === 'Cancelled') {
-      const pin = prompt("Modifying this order requires Manager Authorization. Enter PIN (1234):")
-      if (pin !== '1234') { alert("Unauthorized Manager PIN."); return }
-    }
     lockOrder(order.id, cashierName)
-    
+
     await loadOrderForEdit(order)
 
     navigate("/pos")
@@ -236,7 +232,7 @@ export default function Orders() {
   const handlePrintReceipt = async (order: Order) => {
     updateOrder(order.id, { receiptReprints: (order.receiptReprints || 0) + 1 })
     addTimelineEvent(order.id, { event: "Receipt Printed", remarks: "Printed thermal receipt", cashier: user?.name || "Ahmed" })
-    
+
     try {
       const res = await fetchOrderDetail(order.id)
       if (res.success && res.data) {
@@ -245,7 +241,7 @@ export default function Orders() {
       } else {
         setPrintOrder(order)
       }
-    } catch(e) {
+    } catch (e) {
       setPrintOrder(order)
     }
   }
@@ -255,29 +251,56 @@ export default function Orders() {
   }
 
   const handleCancelOrder = (order: Order) => {
-    if (!confirm("Are you sure you want to cancel this order?")) return;
+    const reason = prompt("Reason for cancelling this order:")
+    if (reason === null) return
     updateOrder(order.id, { status: "Cancelled", kitchenStatus: "Cancelled" })
-    addTimelineEvent(order.id, { event: "Order Cancelled", remarks: "Cancelled from Order History", cashier: user?.name || "Ahmed" })
-    addAuditLog(order.id, { actionType: "Order Cancelled", who: user?.name || "Ahmed", oldValue: order.status, newValue: "Cancelled", reason: "Manager override via OCC" })
+    addTimelineEvent(order.id, { event: "Order Cancelled", remarks: reason || "Cancelled from Order History", cashier: user?.name || "Ahmed" })
+    addAuditLog(order.id, { actionType: "Order Cancelled", who: user?.name || "Ahmed", oldValue: order.status, newValue: "Cancelled", reason: reason || "Manager override via OCC" })
     if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: "Cancelled", kitchenStatus: "Cancelled" } : null)
   }
 
   const handleRefund = (order: Order) => {
-    const pin = prompt("Processing a Refund requires Manager Authorization. Enter PIN (1234):")
-    if (pin !== '1234') { alert("Unauthorized."); return }
+    const reason = prompt("Reason for refunding this order:")
+    if (reason === null) return
     updateOrder(order.id, { paymentStatus: "Refunded", status: "Cancelled" })
-    addTimelineEvent(order.id, { event: "Order Refunded", remarks: "Full refund processed", cashier: user?.name || "Ahmed" })
-    addAuditLog(order.id, { actionType: "Refund Processed", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: "Refunded", reason: "Full Refund via OCC" })
+    addTimelineEvent(order.id, { event: "Order Refunded", remarks: reason || "Full refund processed", cashier: user?.name || "Ahmed" })
+    addAuditLog(order.id, { actionType: "Refund Processed", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: "Refunded", reason: reason || "Full Refund via OCC" })
     if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: "Refunded", status: "Cancelled" } : null)
+  }
+
+  const handleMarkPaid = async (order: Order) => {
+    try {
+      await apiClient.post(`/payments/order/${order.id}`, { amount_received: order.total, payment_method: 'CASH' })
+      updateOrder(order.id, { paymentStatus: 'Paid' })
+      addTimelineEvent(order.id, { event: "Marked Paid", remarks: "Marked paid from Order History", cashier: user?.name || "Ahmed" })
+      addAuditLog(order.id, { actionType: "Payment Received", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: "Paid", reason: "Action from History" })
+      await syncOrdersFromBackend()
+      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: "Paid" } : null)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const handleMarkComplete = async (order: Order) => {
+    try {
+      await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'COMPLETED' })
+      updateOrder(order.id, { status: 'Completed', kitchenStatus: 'Served' })
+      addTimelineEvent(order.id, { event: "Marked Complete", remarks: "Marked complete from Order History", cashier: user?.name || "Ahmed" })
+      addAuditLog(order.id, { actionType: "Status Changed", who: user?.name || "Ahmed", oldValue: order.status, newValue: "Completed", reason: "Action from History" })
+      await syncOrdersFromBackend()
+      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: "Completed", kitchenStatus: "Served" } : null)
+    } catch (e) {
+      console.error(e)
+    }
   }
 
   const handleDeleteOrder = async (order: Order) => {
     const pin = prompt("Deleting an order requires Authorization. Enter PIN (1234):")
     if (pin !== '1234') { alert("Unauthorized."); return }
 
-    
+
     if (!confirm(`Are you absolutely sure you want to permanently delete order ${order.orderNumber}? This action cannot be undone.`)) return
-    
+
     try {
       const res = await deleteOrder(order.id)
       if (res.success) {
@@ -287,7 +310,7 @@ export default function Orders() {
       } else {
         alert("Failed to delete order")
       }
-    } catch(e) {
+    } catch (e) {
       console.error(e)
       alert("Error deleting order. Make sure backend is running.")
     }
@@ -304,15 +327,15 @@ export default function Orders() {
     let result = orders.filter(order => {
       // Global Search Match
       const q = searchQuery.toLowerCase()
-      const searchMatches = !searchQuery || 
-        order.id.toLowerCase().includes(q) || 
+      const searchMatches = !searchQuery ||
+        order.id.toLowerCase().includes(q) ||
         order.orderNumber.includes(q) ||
         (order.customerName || '').toLowerCase().includes(q) ||
         (order.customerPhone || '').includes(q) ||
         (order.cashierName || '').toLowerCase().includes(q) ||
         (order.tableNumber || '').toLowerCase().includes(q) ||
         order.items.some(i => i.name.toLowerCase().includes(q) || (i.code || '').includes(q))
-      
+
       // Date Filter
       const orderDate = new Date(order.timestamp).getTime()
       let dateMatch = true
@@ -327,7 +350,7 @@ export default function Orders() {
       const matchPayment = filterPayment === "All" || order.paymentStatus === filterPayment
       const matchPaymentMethod = filterPaymentMethod === "All" || (order.payments && order.payments.length > 0 && order.payments[0].method === filterPaymentMethod)
       const matchCashierDrop = filterCashier === "All" || order.cashierName === filterCashier
-      
+
       return searchMatches && dateMatch && matchType && matchOrderState && matchPayment && matchPaymentMethod && matchCashierDrop
     })
 
@@ -349,7 +372,7 @@ export default function Orders() {
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto text-foreground">
-      
+
       {/* HEADER SECTION */}
       <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between p-6 bg-card border border-border rounded-3xl shadow-sm gap-4">
         <div>
@@ -366,11 +389,11 @@ export default function Orders() {
           <button onClick={handleRefresh} className={`p-3 bg-secondary hover:bg-border rounded-xl text-muted-foreground transition-colors ${isRefreshing ? 'animate-spin text-primary' : ''}`} title="Refresh">
             <RefreshCw className="w-5 h-5" />
           </button>
-          
+
           <button onClick={exportToPDF} className="flex items-center gap-2 px-4 py-3 bg-secondary border border-border rounded-xl text-sm font-black hover:bg-secondary/80 transition-colors">
             <Download className="w-4 h-4" /> PDF
           </button>
-          
+
           <button onClick={exportToCSV} className="flex items-center gap-2 px-4 py-3 bg-secondary border border-border rounded-xl text-sm font-black hover:bg-secondary/80 transition-colors">
             <FileText className="w-4 h-4" /> CSV
           </button>
@@ -386,7 +409,7 @@ export default function Orders() {
         <div className="flex gap-3 items-center flex-wrap md:flex-nowrap">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
-            <input 
+            <input
               ref={searchInputRef}
               type="text"
               value={searchQuery}
@@ -395,11 +418,10 @@ export default function Orders() {
               className="w-full h-12 pl-12 pr-4 rounded-xl bg-secondary/50 border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none text-sm font-bold transition-all"
             />
           </div>
-          <button 
+          <button
             onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-            className={`h-12 px-6 rounded-xl border text-xs font-black uppercase transition-all flex items-center gap-2 ${
-              showAdvancedFilters ? 'bg-primary/10 border-primary text-primary' : 'bg-secondary text-muted-foreground hover:border-muted-foreground'
-            }`}
+            className={`h-12 px-6 rounded-xl border text-xs font-black uppercase transition-all flex items-center gap-2 ${showAdvancedFilters ? 'bg-primary/10 border-primary text-primary' : 'bg-secondary text-muted-foreground hover:border-muted-foreground'
+              }`}
           >
             <Filter className="w-4 h-4" /> Advanced Filters
           </button>
@@ -508,7 +530,8 @@ export default function Orders() {
                 <th className="p-4">Order #</th>
                 <th className="p-4">Date & Time</th>
                 <th className="p-4">Customer</th>
-                <th className="p-4">Type & Table</th>
+                <th className="p-4">Type</th>
+                <th className="p-4">Table/Phone</th>
                 <th className="p-4">Items</th>
                 <th className="p-4">Total</th>
                 <th className="p-4">Badges (Pay/Status)</th>
@@ -532,12 +555,19 @@ export default function Orders() {
                     <div className="font-bold text-foreground">{new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                   </td>
                   <td className="p-4 font-bold">
-                    {order.customerName || "Walk-In"}
-                    {order.customerPhone && <div className="text-[10px] font-medium text-muted-foreground">{order.customerPhone}</div>}
+                    {order.customerName || "Guest"}
                   </td>
                   <td className="p-4">
                     <span className="font-bold text-xs bg-secondary px-2 py-1 rounded-md border border-border inline-block mb-1">{order.orderType}</span>
-                    <div className="text-[10px] font-bold text-muted-foreground">Table: {order.tableNumber || "—"}</div>
+                  </td>
+                  <td className="p-4">
+                    {order.orderType === 'Dine In' ? (
+                      <div className="text-[10px] font-bold text-muted-foreground">Table: {order.tableNumber || "—"}</div>
+                    ) : order.orderType === 'Delivery' ? (
+                      <div className="text-[10px] font-bold text-muted-foreground">{order.customerPhone || "—"}</div>
+                    ) : (
+                      <div className="text-[10px] font-bold text-muted-foreground">—</div>
+                    )}
                   </td>
                   <td className="p-4 font-bold text-xs">
                     {order.items.reduce((s, i) => s + i.quantity, 0)} Items
@@ -564,27 +594,16 @@ export default function Orders() {
                     </div>
                   </td>
                   <td className="p-4 text-right">
-                    <div className="flex justify-end gap-2" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => setSelectedOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors" title="View Details"><FileText className="w-4 h-4" /></button>
-                      <button onClick={async () => {
-                        try {
-                          await apiClient.post(`/payments/order/${order.id}`, { amount_received: order.total, payment_method: 'CASH' })
-                          updateOrder(order.id, { paymentStatus: 'Paid' })
-                          await syncOrdersFromBackend()
-                        } catch(e) {}
-                      }} disabled={order.paymentStatus === "Paid" || order.status === "Cancelled"} className="p-2 hover:bg-green-500/10 rounded-lg text-muted-foreground hover:text-green-500 disabled:opacity-30 transition-colors" title="Mark Paid"><DollarSign className="w-4 h-4" /></button>
-                      <button onClick={async () => {
-                        try {
-                          await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'COMPLETED' })
-                          updateOrder(order.id, { status: 'Completed', kitchenStatus: 'Served' })
-                          await syncOrdersFromBackend()
-                        } catch(e) {}
-                      }} disabled={order.status === "Completed" || order.status === "Cancelled"} className="p-2 hover:bg-blue-500/10 rounded-lg text-muted-foreground hover:text-blue-500 disabled:opacity-30 transition-colors" title="Mark Complete"><CheckCircle2 className="w-4 h-4" /></button>
-                      <button onClick={() => handlePrintReceipt(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-primary transition-colors" title="Print/Reprint Receipt"><Printer className="w-4 h-4" /></button>
-                      <button onClick={() => handleEditClick(order)} disabled={order.status === "Cancelled" || order.paymentStatus === "Paid"} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-amber-500 disabled:opacity-30 transition-colors" title="Edit Order"><Pencil className="w-4 h-4" /></button>
-                      <button onClick={() => handleRefund(order)} disabled={order.paymentStatus === "Unpaid" || order.paymentStatus === "Refunded"} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-purple-500 disabled:opacity-30 transition-colors" title="Refund"><RotateCcw className="w-4 h-4" /></button>
-                      <button onClick={() => handleCancelOrder(order)} disabled={order.status === "Cancelled" || order.status === "Completed"} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-red-500 disabled:opacity-30 transition-colors" title="Cancel Order"><Ban className="w-4 h-4" /></button>
-                      <button onClick={() => handleDeleteOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-red-600 transition-colors" title="Delete Order"><Trash2 className="w-4 h-4" /></button>
+                    <div className="grid grid-cols-4 gap-1 w-[140px] ml-auto" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => setSelectedOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" title="View Details"><FileText className="w-4 h-4" /></button>
+                      <button onClick={() => handleMarkPaid(order)} className="p-2 hover:bg-green-500/10 rounded-lg text-muted-foreground hover:text-green-500 transition-colors flex items-center justify-center" title="Mark Paid"><DollarSign className="w-4 h-4" /></button>
+                      <button onClick={() => handleMarkComplete(order)} className="p-2 hover:bg-blue-500/10 rounded-lg text-muted-foreground hover:text-blue-500 transition-colors flex items-center justify-center" title="Mark Complete"><CheckCircle2 className="w-4 h-4" /></button>
+                      <button onClick={() => handlePrintReceipt(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-primary transition-colors flex items-center justify-center" title="Print/Reprint Receipt"><Printer className="w-4 h-4" /></button>
+                      
+                      <button onClick={() => handleEditClick(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-amber-500 transition-colors flex items-center justify-center" title="Edit Order"><Pencil className="w-4 h-4" /></button>
+                      <button onClick={() => handleRefund(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-purple-500 transition-colors flex items-center justify-center" title="Refund"><RotateCcw className="w-4 h-4" /></button>
+                      <button onClick={() => handleCancelOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-red-500 transition-colors flex items-center justify-center" title="Cancel Order"><Ban className="w-4 h-4" /></button>
+                      <button onClick={() => handleDeleteOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-red-600 transition-colors flex items-center justify-center" title="Delete Order"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>
@@ -600,11 +619,11 @@ export default function Orders() {
             </tbody>
           </table>
         </div>
-        
+
         {/* Pagination */}
         <div className="p-4 bg-secondary/30 border-t border-border flex flex-wrap items-center justify-between gap-4 text-xs font-bold text-muted-foreground">
           <div className="flex items-center gap-2">
-            Show 
+            Show
             <select value={itemsPerPage} onChange={e => setItemsPerPage(Number(e.target.value))} className="bg-card border border-border rounded-lg px-2 py-1 outline-none">
               <option value={25}>25</option>
               <option value={50}>50</option>
@@ -629,7 +648,7 @@ export default function Orders() {
           <div className="fixed inset-0 z-50 flex justify-end">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setSelectedOrder(null)} />
             <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="relative w-full max-w-4xl bg-card h-full shadow-2xl flex flex-col border-l border-border">
-              
+
               {/* Drawer Header */}
               <div className="p-6 border-b border-border bg-secondary/30 flex items-start justify-between shrink-0">
                 <div>
@@ -663,14 +682,14 @@ export default function Orders() {
 
               {/* Drawer Content Area */}
               <div className="flex-1 overflow-auto p-6 bg-background custom-scrollbar">
-                
+
                 {/* 1. General Tab */}
                 {activeTab === "general" && (
                   <div className="space-y-6">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="p-4 bg-secondary/30 rounded-2xl border border-border">
                         <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Customer</p>
-                        <p className="text-base font-black">{selectedOrder.customerName || "Walk-In Guest"}</p>
+                        <p className="text-base font-black">{selectedOrder.customerName || "Guest"}</p>
                         <p className="text-sm font-bold mt-1 text-muted-foreground">{selectedOrder.customerPhone || "No Phone Number"}</p>
                       </div>
                       <div className="p-4 bg-secondary/30 rounded-2xl border border-border">
@@ -822,11 +841,11 @@ export default function Orders() {
                 )}
 
               </div>
-              
+
               {/* Drawer Footer Actions */}
               <div className="p-6 border-t border-border bg-secondary/30 flex justify-end gap-3 shrink-0">
                 <button onClick={() => handleDuplicate(selectedOrder)} className="px-5 py-2.5 bg-card hover:bg-secondary border border-border rounded-xl text-sm font-black transition-colors">Duplicate Order</button>
-                <button onClick={() => handleEditClick(selectedOrder)} disabled={selectedOrder.status === "Cancelled" || selectedOrder.paymentStatus === "Paid"} className="px-5 py-2.5 bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20 rounded-xl text-sm font-black transition-colors disabled:opacity-50">Edit Order</button>
+                <button onClick={() => handleEditClick(selectedOrder)} className="px-5 py-2.5 bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20 rounded-xl text-sm font-black transition-colors">Edit Order</button>
               </div>
 
             </motion.div>
