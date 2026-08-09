@@ -402,7 +402,11 @@ export const usePosStore = create<POSState>((set, get) => ({
       if (!order.order_number) {
         const checkoutResult = await cartService.checkout({
           order_type: order.order_type || order.orderType || 'DINE_IN',
-          customer_id: order.customer_id || null,
+          customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || order.customer_id || null,
+          customer_name: state.customer?.name || null,
+          customer_phone: state.customer?.phone || null,
+          customer_address: state.customer?.address || null,
+          is_vip: !!state.customer?.is_vip || !!state.customer?.isVip,
           table_id: order.table_id || null,
           notes: order.notes || null,
           branch_id: order.branch_id || 'DEFAULT_BRANCH',

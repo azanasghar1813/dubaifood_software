@@ -282,6 +282,9 @@ class OrderCreationService {
         discount_total: discountTotal,
         grand_total: grandTotal
       });
+      if (options.customer_name) orderMetadataRepository.setMeta(newOrderId, 'customer_name', options.customer_name);
+      if (options.customer_phone) orderMetadataRepository.setMeta(newOrderId, 'customer_phone', options.customer_phone);
+      if (options.customer_address) orderMetadataRepository.setMeta(newOrderId, 'customer_address', options.customer_address);
 
       // ── 3d. Create line items with full immutable snapshots ────────────────
       for (const cartItem of cart.items) {

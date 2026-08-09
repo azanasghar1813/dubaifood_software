@@ -49,6 +49,7 @@ export interface Order {
   cashierName: string
   customerName: string
   customerPhone?: string
+  customerAddress?: string
   isVip?: boolean
   tableNumber?: string | null
   guestCount?: number
@@ -181,8 +182,9 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     id: row.id,
     orderNumber: row.order_number.replace('POS-', '').replace(new RegExp(`^\\d{8}-`), ''),
     cashierName: formatName(row.cashier_user_id),
-    customerName: row.customer_id || 'Guest',
-    customerPhone: undefined,
+    customerName: detail?.metadata?.customer_name || row.customer_id || 'Guest',
+    customerPhone: detail?.metadata?.customer_phone || undefined,
+    customerAddress: detail?.metadata?.customer_address || undefined,
     isVip: false,
     tableNumber: row.table_id || null,
     guestCount: 1,

@@ -6,8 +6,8 @@ export const customerRepository = {
     const id = crypto.randomUUID();
     const customerNumber = data.customer_number || `CUST-${Date.now()}`;
     const stmt = dbEngine.db.prepare(`
-      INSERT INTO customers (id, customer_number, first_name, last_name, phone, email, address, loyalty_points)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO customers (id, customer_number, first_name, last_name, phone, email, address, loyalty_points, is_vip, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     stmt.run(
@@ -18,7 +18,9 @@ export const customerRepository = {
       data.phone || null,
       data.email || null,
       data.address || null,
-      data.loyalty_points || 0
+      data.loyalty_points || 0,
+      data.is_vip ? 1 : 0,
+      data.notes || null
     );
     
     return customerRepository.findById(id);
@@ -27,7 +29,7 @@ export const customerRepository = {
   update: (id, data) => {
     const stmt = dbEngine.db.prepare(`
       UPDATE customers 
-      SET first_name = ?, last_name = ?, phone = ?, email = ?, address = ?, loyalty_points = ?, updated_at = CURRENT_TIMESTAMP
+      SET first_name = ?, last_name = ?, phone = ?, email = ?, address = ?, loyalty_points = ?, is_vip = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
     
@@ -38,6 +40,8 @@ export const customerRepository = {
       data.email || null,
       data.address || null,
       data.loyalty_points || 0,
+      data.is_vip ? 1 : 0,
+      data.notes || null,
       id
     );
     

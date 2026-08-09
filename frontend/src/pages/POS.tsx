@@ -91,7 +91,6 @@ export default function POS() {
   const [activeCartItem, setActiveCartItem] = useState<CartItem | null>(null)
   const [tempModifiers, setTempModifiers] = useState<Modifier[]>([])
   const [tempNotes, setTempNotes] = useState("")
-  const [isVIP, setIsVIP] = useState(false)
 
   const [sizeModalOpen, setSizeModalOpen] = useState(false)
   const [activeProductForSize, setActiveProductForSize] = useState<Product | null>(null)
@@ -531,7 +530,12 @@ export default function POS() {
 
       if (e.ctrlKey && e.key.toLowerCase() === 'v') {
         e.preventDefault()
-        setIsVIP(prev => !prev)
+        const cust = usePosStore.getState().customer
+        if (cust) {
+          usePosStore.getState().setCustomer({ ...cust, is_vip: !(cust.is_vip || cust.isVip) })
+        } else {
+          usePosStore.getState().setCustomer({ name: 'Guest', is_temp: true, is_vip: true })
+        }
       }
 
       if (e.ctrlKey && e.key.toLowerCase() === 's') {
@@ -614,6 +618,7 @@ export default function POS() {
           setIsCartMode(false)
           break
         case "F4":
+          //recent orders
           e.preventDefault()
           setRecentOrdersModalOpen(prev => !prev)
           break
@@ -876,15 +881,15 @@ export default function POS() {
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
-      if (!checkoutModalOpen && !customizeModalOpen && !sizeModalOpen) {
-        if (target.tagName !== "BUTTON" && target.tagName !== "INPUT" && target.tagName !== "SELECT" && !target.closest('.panel-handle')) {
+      if (!checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !recentOrdersModalOpen) {
+        if (target.tagName !== "BUTTON" && target.tagName !== "INPUT" && target.tagName !== "TEXTAREA" && target.tagName !== "SELECT" && !target.closest('.panel-handle')) {
           searchInputRef.current?.focus()
         }
       }
     }
     window.addEventListener("click", handleGlobalClick)
     return () => window.removeEventListener("click", handleGlobalClick)
-  }, [checkoutModalOpen, customizeModalOpen, sizeModalOpen])
+  }, [checkoutModalOpen, customizeModalOpen, sizeModalOpen, customerModalOpen, tableModalOpen, recentOrdersModalOpen])
 
   // Grid Category Filtering
   const gridFilteredProducts = products.filter(p => {
@@ -1292,7 +1297,7 @@ export default function POS() {
                   <p className="font-black text-lg text-foreground leading-none">{orderType}</p>
                 </div>
 
-                {isVIP && (
+                {(customer?.is_vip || customer?.isVip) && (
                   <div className="flex flex-col items-center justify-center">
                     <span className="bg-gradient-to-r from-amber-200 to-yellow-500 text-yellow-950 font-black text-[11px] px-3 py-1 rounded-full uppercase tracking-widest shadow-sm border border-yellow-400/50 flex items-center gap-1">
                       <Star className="w-3 h-3 fill-yellow-950" /> VIP
@@ -1334,10 +1339,10 @@ export default function POS() {
               <div className="p-2 border-b border-border bg-card grid grid-cols-2 gap-2">
                 <button onClick={() => setCustomerModalOpen(true)} className="flex items-center gap-2 p-2 rounded-xl border border-border bg-secondary/50 hover:bg-secondary hover:border-orange-500/50 transition-all text-left">
                   <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
-                    {usePosStore.getState().customer?.isVip ? <Star className="w-4 h-4 text-orange-500 fill-orange-500" /> : <User className="w-4 h-4" />}
+                    {(usePosStore.getState().customer?.is_vip || usePosStore.getState().customer?.isVip) ? <Star className="w-4 h-4 text-orange-500 fill-orange-500" /> : <User className="w-4 h-4" />}
                   </div>
                   <div className="overflow-hidden">
-                    <p className="text-xs font-bold text-foreground truncate">{usePosStore.getState().customer?.name || "Select Customer"}</p>
+                    <p className="text-xs font-bold text-foreground truncate">{usePosStore.getState().customer?.name || usePosStore.getState().customer?.first_name || "Select Customer"}</p>
                     <p className="text-[10px] text-muted-foreground font-bold truncate flex items-center gap-1">
                       <Phone className="w-2.5 h-2.5" /> {usePosStore.getState().customer?.phone || "Press F2"}
                     </p>
@@ -1891,7 +1896,6 @@ export default function POS() {
                       setTimeout(() => {
                         clearCart()
                         setCheckoutModalOpen(false)
-                        setIsVIP(false)
                         setOrderNotes('')
                         setSelectedPaymentMethod(null)
                         setAmountReceived('')
@@ -1927,166 +1931,169 @@ export default function POS() {
 
           {/* Header section with Logo */}
           <div className="flex justify-center items-center mb-2">
-          {/* Logo */}
-          <div className="flex flex-col items-center">
-            <img src="/qr.png" alt="Dubai Food Point Logo" className="w-20 h-20 object-contain" />
-            <div className="text-center font-bold text-[15px] leading-tight mt-1">
-              Dubai Food &<br />Restaurant
-            </div>
-          </div>
-        </div>
-
-        {/* Address & Contact */}
-        <div className="text-center text-[10px] text-gray-800 leading-tight mb-3 mt-2 font-medium">
-          Opposite Akbar Plaza Near Waqas Nazir Printers Layyah<br />Road,<br />
-          Chowk Azam (Layyah)<br />
-          Contact: 0308-8020784, 0345-6420784
-        </div>
-
-        {/* VIP Badge */}
-        {isVIP && (
-          <div className="flex justify-center mb-3">
-            <div className="border border-black px-4 py-1 text-[11px] font-black tracking-widest uppercase flex items-center gap-2 rounded-sm shadow-sm">
-              ★ VIP ORDER ★
-            </div>
-          </div>
-        )}
-
-
-
-        <div className="w-full border-t border-gray-300 mb-3"></div>
-
-        {/* Order Details */}
-        <div className="text-[11px] flex flex-col gap-1 font-medium text-black mb-3">
-          <div className="flex"><span className="font-bold w-28">Order ID:</span> #{orderCounter}</div>
-          {orderType === 'Dine In' ? (
-            <div className="flex"><span className="font-bold w-28">Table No:</span> {tableNumber || 'N/A'}</div>
-          ) : (
-            <div className="flex"><span className="font-bold w-28">Customer:</span> {usePosStore.getState().customer?.name || 'Dummy'}</div>
-          )}
-          {orderType !== 'Dine In' && usePosStore.getState().customer?.phone && (
-            <div className="flex"><span className="font-bold w-28">Customer Contact:</span> {usePosStore.getState().customer?.phone}</div>
-          )}
-          {orderType !== 'Dine In' && usePosStore.getState().customer?.notes && (
-            <div className="flex"><span className="font-bold w-28">Notes:</span> <span className="flex-1 whitespace-pre-wrap">{usePosStore.getState().customer?.notes}</span></div>
-          )}
-          <div className="flex"><span className="font-bold w-28">Order Type:</span> {orderType}</div>
-          <div className="flex"><span className="font-bold w-28">Cashier:</span> {user?.name || "Cashier"}</div>
-          <div className="flex"><span className="font-bold w-28">Status:</span> {isPaidPrint ? 'Paid' : 'Unpaid'}</div>
-          <div className="flex">
-            <span className="font-bold w-28">Time:</span>
-            {currentTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-          </div>
-          {(() => {
-            const groupedItems = cart.reduce((acc: any, item) => {
-              let category = item.category || 'Restaurant';
-              const catLower = category.toLowerCase();
-              const nameLower = (item.name || '').toLowerCase();
-              if (
-                catLower.includes('fast food') || 
-                catLower.includes('pizza') || 
-                catLower.includes('burger') ||
-                catLower.includes('roll') ||
-                catLower.includes('pasta') ||
-                catLower.includes('appetizer') ||
-                catLower.includes('sandwich') ||
-                catLower.includes('shawarma') ||
-                catLower.includes('extra toppings') ||
-                nameLower.includes('pizza') ||
-                nameLower.includes('burger') ||
-                nameLower.includes('roll') ||
-                nameLower.includes('pasta') ||
-                nameLower.includes('appetizer') ||
-                nameLower.includes('sandwich') ||
-                nameLower.includes('shawarma') ||
-                nameLower.includes('topping')
-              ) {
-                category = 'Fast Food';
-              } else if (catLower.includes('deal') || nameLower.includes('deal')) {
-                category = 'Deals';
-              } else {
-                category = 'Restaurant';
-              }
-              if (!acc[category]) acc[category] = [];
-              acc[category].push(item);
-              return acc;
-            }, {} as Record<string, typeof cart>);
-
-            const categoryOrder = ["Fast Food", "Restaurant", "Deals"];
-            const sortedCategories = Object.keys(groupedItems).sort((a, b) => {
-              const idxA = categoryOrder.indexOf(a);
-              const idxB = categoryOrder.indexOf(b);
-              if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-              if (idxA !== -1) return -1;
-              if (idxB !== -1) return 1;
-              return a.localeCompare(b);
-            });
-
-            return (
-              <div className="mb-4 flex flex-col">
-                {sortedCategories.map((category) => (
-                  <div key={category} className="border-2 border-black border-b-0 last:border-b-2">
-                    <div className="text-center font-bold text-[13px] py-1 border-b border-dashed border-gray-500 uppercase">
-                      {category}
-                    </div>
-                    {groupedItems[category].map((item: any, idx: number) => {
-                      let itemTotal = item.price * item.quantity;
-                      if (item.selectedModifiers && Array.isArray(item.selectedModifiers)) {
-                         const modTotal = item.selectedModifiers.reduce((sum: number, mod: any) => sum + mod.price, 0);
-                         itemTotal = (item.price + modTotal) * item.quantity;
-                      }
-
-                      return (
-                        <div key={idx} className="border-b border-dashed border-gray-500 p-1 px-2 text-[11px] last:border-b-0">
-                          <div className="flex justify-between font-medium">
-                            <span>{item.quantity > 1 ? `${item.quantity}x ` : ''}{item.name}</span>
-                            <span>Rs {itemTotal.toFixed(2)}</span>
-                          </div>
-                          {item.selectedModifiers && item.selectedModifiers.length > 0 && (
-                            <div className="text-[10px] text-gray-500 leading-tight">
-                              {item.selectedModifiers.map((m: any) => `+${m.name}`).join(', ')}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                ))}
+            {/* Logo */}
+            <div className="flex flex-col items-center">
+              <img src="/qr.png" alt="Dubai Food Point Logo" className="w-20 h-20 object-contain" />
+              <div className="text-center font-bold text-[15px] leading-tight mt-1">
+                Dubai Food &<br />Restaurant
               </div>
-            )
-          })()}
-        </div>
+            </div>
+          </div>
 
-        {/* Totals */}
-        <div className="flex flex-col items-end text-[11px] mb-2 pr-1">
-          <div className="mb-1 text-right">Subtotal: Rs {getSubtotal().toFixed(2)}</div>
-          {orderType === 'Dine In' && getTax() > 0 && (
-            <div className="mb-1 text-right">Service Charges: Rs {getTax().toFixed(2)}</div>
+          {/* Address & Contact */}
+          <div className="text-center text-[10px] text-gray-800 leading-tight mb-3 mt-2 font-medium">
+            Opposite Akbar Plaza Near Waqas Nazir Printers Layyah<br />Road,<br />
+            Chowk Azam (Layyah)<br />
+            Contact: 0308-8020784, 0345-6420784
+          </div>
+
+          {/* VIP Badge */}
+          {(customer?.is_vip || customer?.isVip) && (
+            <div className="flex justify-center mb-3">
+              <div className="border border-black px-4 py-1 text-[11px] font-black tracking-widest uppercase flex items-center gap-2 rounded-sm shadow-sm">
+                ★ VIP ORDER ★
+              </div>
+            </div>
           )}
-          {orderType === 'Delivery' && deliveryCharges > 0 && (
-            <div className="mb-1 text-right">Delivery Charges: Rs {deliveryCharges.toFixed(2)}</div>
+
+
+
+          <div className="w-full border-t border-gray-300 mb-3"></div>
+
+          {/* Order Details */}
+          <div className="text-[11px] flex flex-col gap-1 font-medium text-black mb-3">
+            <div className="flex"><span className="font-bold w-28">Order ID:</span> #{orderCounter}</div>
+            {orderType === 'Dine In' ? (
+              <div className="flex"><span className="font-bold w-28">Table No:</span> {tableNumber || 'N/A'}</div>
+            ) : (
+              <div className="flex"><span className="font-bold w-28">Customer:</span> {usePosStore.getState().customer?.name || 'Dummy'}</div>
+            )}
+            {orderType !== 'Dine In' && usePosStore.getState().customer?.phone && (
+              <div className="flex"><span className="font-bold w-28">Customer Contact:</span> {usePosStore.getState().customer?.phone}</div>
+            )}
+            {orderType === 'Delivery' && usePosStore.getState().customer?.address && (
+              <div className="flex"><span className="font-bold w-28">Delivery To:</span> {usePosStore.getState().customer?.address}</div>
+            )}
+            {orderType !== 'Dine In' && usePosStore.getState().customer?.notes && (
+              <div className="flex"><span className="font-bold w-28">Notes:</span> <span className="flex-1 whitespace-pre-wrap">{usePosStore.getState().customer?.notes}</span></div>
+            )}
+            <div className="flex"><span className="font-bold w-28">Order Type:</span> {orderType}</div>
+            <div className="flex"><span className="font-bold w-28">Cashier:</span> {user?.name || "Cashier"}</div>
+            <div className="flex"><span className="font-bold w-28">Status:</span> {isPaidPrint ? 'Paid' : 'Unpaid'}</div>
+            <div className="flex">
+              <span className="font-bold w-28">Time:</span>
+              {currentTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </div>
+            {(() => {
+              const groupedItems = cart.reduce((acc: any, item) => {
+                let category = item.category || 'Restaurant';
+                const catLower = category.toLowerCase();
+                const nameLower = (item.name || '').toLowerCase();
+                if (
+                  catLower.includes('fast food') ||
+                  catLower.includes('pizza') ||
+                  catLower.includes('burger') ||
+                  catLower.includes('roll') ||
+                  catLower.includes('pasta') ||
+                  catLower.includes('appetizer') ||
+                  catLower.includes('sandwich') ||
+                  catLower.includes('shawarma') ||
+                  catLower.includes('extra toppings') ||
+                  nameLower.includes('pizza') ||
+                  nameLower.includes('burger') ||
+                  nameLower.includes('roll') ||
+                  nameLower.includes('pasta') ||
+                  nameLower.includes('appetizer') ||
+                  nameLower.includes('sandwich') ||
+                  nameLower.includes('shawarma') ||
+                  nameLower.includes('topping')
+                ) {
+                  category = 'Fast Food';
+                } else if (catLower.includes('deal') || nameLower.includes('deal')) {
+                  category = 'Deals';
+                } else {
+                  category = 'Restaurant';
+                }
+                if (!acc[category]) acc[category] = [];
+                acc[category].push(item);
+                return acc;
+              }, {} as Record<string, typeof cart>);
+
+              const categoryOrder = ["Fast Food", "Restaurant", "Deals"];
+              const sortedCategories = Object.keys(groupedItems).sort((a, b) => {
+                const idxA = categoryOrder.indexOf(a);
+                const idxB = categoryOrder.indexOf(b);
+                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                if (idxA !== -1) return -1;
+                if (idxB !== -1) return 1;
+                return a.localeCompare(b);
+              });
+
+              return (
+                <div className="mb-4 flex flex-col">
+                  {sortedCategories.map((category) => (
+                    <div key={category} className="border-2 border-black border-b-0 last:border-b-2">
+                      <div className="text-center font-bold text-[13px] py-1 border-b border-dashed border-gray-500 uppercase">
+                        {category}
+                      </div>
+                      {groupedItems[category].map((item: any, idx: number) => {
+                        let itemTotal = item.price * item.quantity;
+                        if (item.selectedModifiers && Array.isArray(item.selectedModifiers)) {
+                          const modTotal = item.selectedModifiers.reduce((sum: number, mod: any) => sum + mod.price, 0);
+                          itemTotal = (item.price + modTotal) * item.quantity;
+                        }
+
+                        return (
+                          <div key={idx} className="border-b border-dashed border-gray-500 p-1 px-2 text-[11px] last:border-b-0">
+                            <div className="flex justify-between font-medium">
+                              <span>{item.quantity > 1 ? `${item.quantity}x ` : ''}{item.name}</span>
+                              <span>Rs {itemTotal.toFixed(2)}</span>
+                            </div>
+                            {item.selectedModifiers && item.selectedModifiers.length > 0 && (
+                              <div className="text-[10px] text-gray-500 leading-tight">
+                                {item.selectedModifiers.map((m: any) => `+${m.name}`).join(', ')}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
+          </div>
+
+          {/* Totals */}
+          <div className="flex flex-col items-end text-[11px] mb-2 pr-1">
+            <div className="mb-1 text-right">Subtotal: Rs {getSubtotal().toFixed(2)}</div>
+            {orderType === 'Dine In' && getTax() > 0 && (
+              <div className="mb-1 text-right">Service Charges: Rs {getTax().toFixed(2)}</div>
+            )}
+            {orderType === 'Delivery' && deliveryCharges > 0 && (
+              <div className="mb-1 text-right">Delivery Charges: Rs {deliveryCharges.toFixed(2)}</div>
+            )}
+            <div className="font-black text-[13px] mt-1 underline decoration-2 underline-offset-2">
+              Total Amount: Rs {getNetTotal().toFixed(2)}
+            </div>
+          </div>
+
+          {/* Order Notes */}
+          {orderNotes && (
+            <div className="text-[11px] font-medium border-t border-black pt-2 mb-2 italic">
+              <span className="font-bold">Order Notes:</span> {orderNotes}
+            </div>
           )}
-          <div className="font-black text-[13px] mt-1 underline decoration-2 underline-offset-2">
-            Total Amount: Rs {getNetTotal().toFixed(2)}
-          </div>
-        </div>
 
-        {/* Order Notes */}
-        {orderNotes && (
-          <div className="text-[11px] font-medium border-t border-black pt-2 mb-2 italic">
-            <span className="font-bold">Order Notes:</span> {orderNotes}
+          {/* Footer */}
+          <div className="text-center mt-6 text-[11px] text-gray-800 flex flex-col items-center justify-center gap-2">
+            <p>Thank you for your order!</p>
+            <p>Please visit again.</p>
+            <div className="mt-2 flex flex-col items-center">
+              <img src="/logo.jpg" alt="QR Code" className="w-40 h-40 object-contain" />
+              <span className="text-[11px] font-bold mt-2">Scan to Pay</span>
+            </div>
           </div>
-        )}
-
-        {/* Footer */}
-        <div className="text-center mt-6 text-[11px] text-gray-800 flex flex-col items-center justify-center gap-2">
-          <p>Thank you for your order!</p>
-          <p>Please visit again.</p>
-          <div className="mt-2 flex flex-col items-center">
-            <img src="/logo.jpg" alt="QR Code" className="w-40 h-40 object-contain" />
-            <span className="text-[11px] font-bold mt-2">Scan to Pay</span>
-          </div>
-        </div>
         </div>
       </div>
 

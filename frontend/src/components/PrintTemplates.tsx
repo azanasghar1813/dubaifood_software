@@ -61,8 +61,18 @@ const ReceiptTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
         </div>
         <div className="flex justify-between">
           <span>Type: {order.orderType}</span>
-          <span>{order.customerName !== 'Guest' ? `Cust: ${order.customerName}` : ''}</span>
+          <span>{order.customerName && order.customerName !== 'Guest' ? `Cust: ${order.customerName}` : ''}</span>
         </div>
+        {order.customerPhone && (
+          <div className="flex justify-start text-xs mt-1">
+            <span>Phone: {order.customerPhone}</span>
+          </div>
+        )}
+        {order.orderType === 'Delivery' && order.customerAddress && (
+          <div className="flex justify-start text-xs font-bold mt-1">
+            <span>Deliver To: {order.customerAddress}</span>
+          </div>
+        )}
       </div>
 
       {/* Items */}

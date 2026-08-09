@@ -17,6 +17,7 @@ import {
 import { deleteOrder } from "../api/historyApi"
 
 // Theme Colors
+
 const orderStatusColors: Record<string, string> = {
   Draft: "bg-zinc-500/10 text-zinc-500 border-zinc-500/20",
   Held: "bg-purple-500/10 text-purple-500 border-purple-500/20",
@@ -164,6 +165,43 @@ export default function Orders() {
     await syncOrdersFromBackend()
     setTimeout(() => setIsRefreshing(false), 500)
   }
+
+  const handlePaymentStatusChange = async (order: Order, newStatus: string) => {
+    try {
+      if (newStatus === 'Paid' && order.paymentStatus !== 'Paid') {
+        await apiClient.post(`/payments/order/${order.id}`, { amount_received: order.total, payment_method: 'CASH' })
+      }
+      updateOrder(order.id, { paymentStatus: newStatus as any })
+      addTimelineEvent(order.id, { event: "Payment Status Changed", remarks: `Changed to ${newStatus}`, cashier: user?.name || "Ahmed" })
+      addAuditLog(order.id, { actionType: "Payment Status Changed", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: newStatus, reason: "Manual change from badge" })
+      await syncOrdersFromBackend()
+      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: newStatus as any } : null)
+    } catch (e) { console.error(e) }
+  }
+
+  const handleKitchenStatusChange = async (order: Order, newStatus: string) => {
+    try {
+      updateOrder(order.id, { kitchenStatus: newStatus as any })
+      addTimelineEvent(order.id, { event: "Kitchen Status Changed", remarks: `Changed to ${newStatus}`, cashier: user?.name || "Ahmed" })
+      addAuditLog(order.id, { actionType: "Kitchen Status Changed", who: user?.name || "Ahmed", oldValue: order.kitchenStatus, newValue: newStatus, reason: "Manual change from badge" })
+      await syncOrdersFromBackend()
+      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, kitchenStatus: newStatus as any } : null)
+    } catch (e) { console.error(e) }
+  }
+
+  const handleOrderStatusChange = async (order: Order, newStatus: string) => {
+    try {
+      if (newStatus === 'Completed' && order.status !== 'Completed') {
+        await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'COMPLETED' })
+      }
+      updateOrder(order.id, { status: newStatus as any })
+      addTimelineEvent(order.id, { event: "Order Status Changed", remarks: `Changed to ${newStatus}`, cashier: user?.name || "Ahmed" })
+      addAuditLog(order.id, { actionType: "Status Changed", who: user?.name || "Ahmed", oldValue: order.status, newValue: newStatus, reason: "Manual change from badge" })
+      await syncOrdersFromBackend()
+      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: newStatus as any } : null)
+    } catch (e) { console.error(e) }
+  }
+
 
   const exportToPDF = () => {
     const doc = new jsPDF('landscape')
@@ -604,28 +642,53 @@ export default function Orders() {
                     )}
                   </td>
                   <td className="p-4">
-                    <div className="flex flex-wrap gap-1">
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase border ${paymentStatusColors[order.paymentStatus] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}`}>
-                        Pay: {order.paymentStatus}
-                      </span>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase border ${kitchenStatusColors[order.kitchenStatus] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}`}>
-                        Kit: {order.kitchenStatus}
-                      </span>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase border ${orderStatusColors[order.status] || 'bg-gray-500/10 text-gray-500 border-gray-500/20'}`}>
-                        Ord: {order.status}
-                      </span>
+                    <div className="flex flex-col gap-1 w-max">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-bold w-6">PAY:</span>
+                        <select
+                          value={order.paymentStatus}
+                          onChange={(e) => handlePaymentStatusChange(order, e.target.value)}
+                          onClick={e => e.stopPropagation()}
+                          className={`text-[9px] pl-1.5 pr-4 py-0.5 rounded font-black uppercase border cursor-pointer outline-none ${paymentStatusColors[order.paymentStatus] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}`}
+                        >
+                          {Object.keys(paymentStatusColors).map(status => (
+                            <option key={status} value={status} className="bg-card text-foreground">{status}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-bold w-6">KIT:</span>
+                        <select
+                          value={order.kitchenStatus}
+                          onChange={(e) => handleKitchenStatusChange(order, e.target.value)}
+                          onClick={e => e.stopPropagation()}
+                          className={`text-[9px] pl-1.5 pr-4 py-0.5 rounded font-black uppercase border cursor-pointer outline-none ${kitchenStatusColors[order.kitchenStatus] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}`}
+                        >
+                          {Object.keys(kitchenStatusColors).map(status => (
+                            <option key={status} value={status} className="bg-card text-foreground">{status}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-bold w-6">ORD:</span>
+                        <select
+                          value={order.status}
+                          onChange={(e) => handleOrderStatusChange(order, e.target.value)}
+                          onClick={e => e.stopPropagation()}
+                          className={`text-[9px] pl-1.5 pr-4 py-0.5 rounded font-black uppercase border cursor-pointer outline-none ${orderStatusColors[order.status] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}`}
+                        >
+                          {Object.keys(orderStatusColors).map(status => (
+                            <option key={status} value={status} className="bg-card text-foreground">{status}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </td>
                   <td className="p-4 text-right">
                     <div className="grid grid-cols-4 gap-1 w-[140px] ml-auto" onClick={e => e.stopPropagation()}>
                       <button onClick={() => setSelectedOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" title="View Details"><FileText className="w-4 h-4" /></button>
-                      <button onClick={() => handleMarkPaid(order)} className={`p-2 rounded-lg transition-colors flex items-center justify-center ${order.paymentStatus === 'Paid' ? 'bg-green-500/20 text-green-500 font-bold shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'hover:bg-green-500/10 text-muted-foreground hover:text-green-500'}`} title={order.paymentStatus === 'Paid' ? 'Mark Unpaid' : 'Mark Paid'}><DollarSign className="w-4 h-4" /></button>
-                      <button onClick={() => handleMarkComplete(order)} className={`p-2 rounded-lg transition-colors flex items-center justify-center ${order.status === 'Completed' ? 'bg-blue-500/20 text-blue-500 font-bold shadow-[0_0_10px_rgba(59,130,246,0.3)]' : 'hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500'}`} title={order.status === 'Completed' ? 'Mark Incomplete' : 'Mark Complete'}><CheckCircle2 className="w-4 h-4" /></button>
                       <button onClick={() => handlePrintReceipt(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-primary transition-colors flex items-center justify-center" title="Print/Reprint Receipt"><Printer className="w-4 h-4" /></button>
-                      
                       <button onClick={() => handleEditClick(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-amber-500 transition-colors flex items-center justify-center" title="Edit Order"><Pencil className="w-4 h-4" /></button>
-                      <button onClick={() => handleRefund(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-purple-500 transition-colors flex items-center justify-center" title="Refund"><RotateCcw className="w-4 h-4" /></button>
-                      <button onClick={() => handleCancelOrder(order)} className={`p-2 rounded-lg transition-colors flex items-center justify-center ${order.status === 'Cancelled' ? 'bg-red-500/20 text-red-500 font-bold shadow-[0_0_10px_rgba(239,68,68,0.3)]' : 'hover:bg-secondary text-muted-foreground hover:text-red-500'}`} title={order.status === 'Cancelled' ? 'Uncancel Order' : 'Cancel Order'}><Ban className="w-4 h-4" /></button>
                       <button onClick={() => handleDeleteOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-red-600 transition-colors flex items-center justify-center" title="Delete Order"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>

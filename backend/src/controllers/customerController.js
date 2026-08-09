@@ -8,7 +8,9 @@ const customerSchema = z.object({
   phone: z.string().optional().nullable(),
   email: z.string().email().optional().nullable().or(z.literal('')),
   address: z.string().optional().nullable(),
-  loyalty_points: z.number().int().min(0).optional().default(0)
+  loyalty_points: z.number().int().min(0).optional().default(0),
+  is_vip: z.boolean().or(z.number()).optional().default(0),
+  notes: z.string().optional().nullable()
 });
 
 export const customerController = {

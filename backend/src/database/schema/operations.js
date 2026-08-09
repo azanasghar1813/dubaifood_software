@@ -9,6 +9,8 @@ export const operationsSchema = `
     email TEXT,
     address TEXT,
     loyalty_points INTEGER DEFAULT 0,
+    is_vip INTEGER DEFAULT 0,
+    notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
