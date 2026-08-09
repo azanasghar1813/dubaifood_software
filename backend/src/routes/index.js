@@ -17,6 +17,7 @@ import customerRoutes from './customerRoutes.js';
 import inventoryRoutes from './inventoryRoutes.js';
 import expenseRoutes from './expenseRoutes.js';
 import activityLogRoutes from './activityLogRoutes.js';
+import reportRoutes from './reportRoutes.js';
 
 const router = Router();
 
@@ -39,5 +40,6 @@ router.use('/customers', customerRoutes);
 router.use('/inventory', inventoryRoutes);
 router.use('/expenses', expenseRoutes);
 router.use('/activity-logs', activityLogRoutes);
+router.use('/reports', reportRoutes);
 
 export default router;

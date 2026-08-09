@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react"
+import React, { useState, useEffect, useMemo, useRef } from "react"
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Legend, PieChart, Pie, Cell
@@ -9,7 +9,8 @@ import {
 } from "lucide-react"
 import { useOrderStore } from "../store/orderStore"
 import { formatCurrency } from "../utils/currency"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
+import { fetchDetailedSales, type DetailedSaleRow } from "../api/reportApi"
 
 const COLORS = ['#f97316', '#3b82f6', '#10b981', '#8b5cf6', '#a855f7', '#ec4899', '#f43f5e']
 
@@ -24,6 +25,11 @@ export default function Reports() {
   const [filterPayment, setFilterPayment] = useState("All")
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
+
+  // Detailed Sales State
+  const [detailedSales, setDetailedSales] = useState<DetailedSaleRow[]>([])
+  const [loadingDetailedSales, setLoadingDetailedSales] = useState(false)
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({})
 
   // Product Sales State
   const [productSortBy, setProductSortBy] = useState<"qty" | "rev">("qty")
@@ -102,6 +108,44 @@ export default function Reports() {
     syncOrdersFromBackend()
   }, [syncOrdersFromBackend])
 
+  // Fetch Detailed Sales when active tab or filters change
+  useEffect(() => {
+    if (activeTab === "Detailed Sales") {
+      setLoadingDetailedSales(true)
+      fetchDetailedSales({
+        dateFilter: timeRange,
+        cashier: filterCashier,
+        paymentMethod: filterPayment
+      }).then(data => {
+        setDetailedSales(data)
+        setLoadingDetailedSales(false)
+      }).catch(err => {
+        console.error("Failed to fetch detailed sales", err)
+        setLoadingDetailedSales(false)
+      })
+    }
+  }, [activeTab, timeRange, filterCashier, filterPayment])
+
+  const groupedSales = useMemo(() => {
+    const tree: Record<string, any> = {};
+    detailedSales.forEach(row => {
+      const { main_category, sub_category, product_name, product_id, qty, gross, discount, tax, refunds, net } = row;
+      if (!tree[main_category]) tree[main_category] = { name: main_category, type: 'main', children: {}, qty: 0, gross: 0, discount: 0, tax: 0, refunds: 0, net: 0 };
+      if (!tree[main_category].children[sub_category]) tree[main_category].children[sub_category] = { name: sub_category, type: 'sub', children: [], qty: 0, gross: 0, discount: 0, tax: 0, refunds: 0, net: 0 };
+      
+      const main = tree[main_category];
+      const sub = main.children[sub_category];
+      
+      main.qty += qty; main.gross += gross; main.discount += discount; main.tax += tax; main.refunds += refunds; main.net += net;
+      sub.qty += qty; sub.gross += gross; sub.discount += discount; sub.tax += tax; sub.refunds += refunds; sub.net += net;
+      
+      sub.children.push({ name: product_name, id: product_id, type: 'product', qty, gross, discount, tax, refunds, net });
+    });
+    return Object.values(tree);
+  }, [detailedSales]);
+
+  const toggleExpand = (id: string) => setExpandedCategories(prev => ({ ...prev, [id]: !prev[id] }));
+
   const handleExportData = () => {
     // Build CSV content based on active tab
     let csvContent = ''
@@ -124,6 +168,12 @@ export default function Reports() {
         `"${o.payments?.[0]?.method || 'Cash'}"`,
         `"${o.paymentStatus}"`,
         `"${o.status}"`
+      ])
+      csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    } else if (activeTab === 'Detailed Sales') {
+      const headers = ['Main Category', 'Sub Category', 'Product', 'Qty Sold', 'Gross Sales', 'Discounts', 'Tax', 'Refunds', 'Net Sales']
+      const rows = detailedSales.map(r => [
+        `"${r.main_category}"`, `"${r.sub_category}"`, `"${r.product_name}"`, r.qty, r.gross.toFixed(2), r.discount.toFixed(2), r.tax.toFixed(2), r.refunds.toFixed(2), r.net.toFixed(2)
       ])
       csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
     } else if (activeTab === 'Product Sales') {
@@ -209,6 +259,13 @@ export default function Reports() {
               o.payments?.[0]?.method || 'Cash',
               o.status
             ]),
+            theme: 'striped'
+          })
+        } else if (activeTab === 'Detailed Sales') {
+          autoTable(doc, {
+            startY: 38,
+            head: [['Category', 'Product', 'Qty', 'Gross', 'Net']],
+            body: detailedSales.map(r => [`${r.main_category} > ${r.sub_category}`, r.product_name, r.qty, `Rs. ${formatCurrency(r.gross)}`, `Rs. ${formatCurrency(r.net)}`]),
             theme: 'striped'
           })
         } else if (activeTab === 'Product Sales') {
@@ -498,7 +555,7 @@ export default function Reports() {
 
   // Sidebar navigation links
   const sidebarLinks = [
-    "Dashboard Summary", "Orders Report",
+    "Dashboard Summary", "Detailed Sales", "Orders Report",
     "Product Sales", "Category Sales", "Deal Sales"
   ]
 
@@ -552,7 +609,7 @@ export default function Reports() {
           <div className="flex items-center gap-2">
             <span className="text-[10px] uppercase font-black text-muted-foreground tracking-wider">Time:</span>
             <div className="flex bg-secondary/50 p-1 rounded-lg border border-border/50">
-              {["Today", "Yesterday", "This Week"].map(opt => (
+              {["Today", "Yesterday", "This Week", "This Month"].map(opt => (
                 <button
                   key={opt}
                   onClick={() => setTimeRange(opt)}
@@ -578,6 +635,19 @@ export default function Reports() {
               <option value="Umar">Umar</option>
             </select>
           </div>
+
+          <div className="h-6 w-px bg-border hidden md:block"></div>
+          
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase font-black text-muted-foreground tracking-wider text-primary">Report View:</span>
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value)}
+              className="h-8 rounded-lg bg-primary/10 border border-primary/20 text-primary text-[10px] font-black px-3 focus:outline-none cursor-pointer"
+            >
+              {sidebarLinks.map(link => <option key={link} value={link}>{link}</option>)}
+            </select>
+          </div>
         </div>
 
         <div className="relative w-full md:w-64">
@@ -594,37 +664,101 @@ export default function Reports() {
       </div>
 
       {/* ====================================================
-          REPORT LAYOUT (LEFT SIDEBAR NAVIGATION, RIGHT MAIN PANEL)
+          REPORT LAYOUT (FULL WIDTH MAIN PANEL)
           ==================================================== */}
-      <div className="grid grid-cols-12 gap-6">
-
-        {/* Navigation Sidebar */}
-        <div className="col-span-12 lg:col-span-3 space-y-2">
-          <div className="p-4 bg-card border border-border rounded-3xl shadow-sm">
-            <span className="text-[9px] uppercase font-black text-muted-foreground tracking-wider mb-3 block pl-2">Report Navigation</span>
-            <nav className="space-y-1">
-              {sidebarLinks.map(link => {
-                const isActive = activeTab === link
-                return (
-                  <button
-                    key={link}
-                    onClick={() => setActiveTab(link)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${isActive
-                      ? 'bg-primary text-white shadow shadow-primary/15'
-                      : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-                      }`}
-                  >
-                    <span>{link}</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                )
-              })}
-            </nav>
-          </div>
-        </div>
+      <div className="flex flex-col gap-6">
 
         {/* Main Analytics Panel */}
-        <div className="col-span-12 lg:col-span-9 space-y-6">
+        <div className="w-full space-y-6">
+
+          {/* Active Tab View: Detailed Sales */}
+          {activeTab === "Detailed Sales" && (
+            <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm">
+              <h3 className="text-lg font-black uppercase tracking-wider text-foreground mb-6">Detailed Sales Report</h3>
+              {loadingDetailedSales ? (
+                <div className="py-12 flex justify-center items-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : detailedSales.length === 0 ? (
+                 <div className="p-12 text-center text-muted-foreground bg-secondary/50 rounded-2xl flex flex-col items-center justify-center min-h-[200px]">
+                   <Calendar className="w-8 h-8 mb-4 opacity-20" />
+                   <h4 className="text-base font-black text-foreground uppercase tracking-wide">No sales data</h4>
+                 </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-border text-[10px] uppercase font-black tracking-wider text-muted-foreground">
+                        <th className="py-3 px-4">Category / Product</th>
+                        <th className="py-3 px-4 text-right">Qty</th>
+                        <th className="py-3 px-4 text-right">Gross</th>
+                        <th className="py-3 px-4 text-right">Discounts</th>
+                        <th className="py-3 px-4 text-right">Tax</th>
+                        <th className="py-3 px-4 text-right">Refunds</th>
+                        <th className="py-3 px-4 text-right">Net Sales</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {groupedSales.map((main: any) => (
+                        <React.Fragment key={main.name}>
+                          <tr 
+                            className="border-b border-border hover:bg-secondary/20 transition-colors text-sm font-black text-foreground cursor-pointer bg-secondary/5"
+                            onClick={() => toggleExpand(`main_${main.name}`)}
+                          >
+                            <td className="py-3 px-4 flex items-center gap-2">
+                              <ChevronRight className={`w-4 h-4 transition-transform ${expandedCategories[`main_${main.name}`] ? 'rotate-90' : ''}`} />
+                              {main.name}
+                            </td>
+                            <td className="py-3 px-4 text-right">{main.qty}</td>
+                            <td className="py-3 px-4 text-right">Rs. {formatCurrency(main.gross)}</td>
+                            <td className="py-3 px-4 text-right text-rose-500">{main.discount > 0 ? `-Rs. ${formatCurrency(main.discount)}` : '-'}</td>
+                            <td className="py-3 px-4 text-right">Rs. {formatCurrency(main.tax)}</td>
+                            <td className="py-3 px-4 text-right text-rose-500">{main.refunds > 0 ? `-Rs. ${formatCurrency(main.refunds)}` : '-'}</td>
+                            <td className="py-3 px-4 text-right text-emerald-500">Rs. {formatCurrency(main.net)}</td>
+                          </tr>
+                          
+                          {expandedCategories[`main_${main.name}`] && Object.values(main.children).map((sub: any) => (
+                            <React.Fragment key={`${main.name}_${sub.name}`}>
+                              <tr 
+                                className="border-b border-border border-l-2 border-l-primary/30 hover:bg-secondary/30 transition-colors text-sm font-bold text-foreground cursor-pointer"
+                                onClick={() => toggleExpand(`sub_${main.name}_${sub.name}`)}
+                              >
+                                <td className="py-3 px-4 pl-10 flex items-center gap-2">
+                                  <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expandedCategories[`sub_${main.name}_${sub.name}`] ? 'rotate-90' : ''}`} />
+                                  {sub.name}
+                                </td>
+                                <td className="py-3 px-4 text-right text-muted-foreground">{sub.qty}</td>
+                                <td className="py-3 px-4 text-right text-muted-foreground">Rs. {formatCurrency(sub.gross)}</td>
+                                <td className="py-3 px-4 text-right text-rose-500/80">{sub.discount > 0 ? `-Rs. ${formatCurrency(sub.discount)}` : '-'}</td>
+                                <td className="py-3 px-4 text-right text-muted-foreground">Rs. {formatCurrency(sub.tax)}</td>
+                                <td className="py-3 px-4 text-right text-rose-500/80">{sub.refunds > 0 ? `-Rs. ${formatCurrency(sub.refunds)}` : '-'}</td>
+                                <td className="py-3 px-4 text-right text-emerald-500/80">Rs. {formatCurrency(sub.net)}</td>
+                              </tr>
+                              
+                              {expandedCategories[`sub_${main.name}_${sub.name}`] && sub.children.map((prod: any) => (
+                                <tr key={`${main.name}_${sub.name}_${prod.id}`} className="border-b border-border border-l-2 border-l-primary hover:bg-secondary/50 transition-colors text-xs font-semibold text-muted-foreground">
+                                  <td className="py-2 px-4 pl-16 flex flex-col">
+                                    <span className="text-foreground">{prod.name}</span>
+                                    <span className="text-[10px] opacity-70">ID: {prod.id.split('-')[0]}...</span>
+                                  </td>
+                                  <td className="py-2 px-4 text-right">{prod.qty}</td>
+                                  <td className="py-2 px-4 text-right">Rs. {formatCurrency(prod.gross)}</td>
+                                  <td className="py-2 px-4 text-right text-rose-500/60">{prod.discount > 0 ? `-Rs. ${formatCurrency(prod.discount)}` : '-'}</td>
+                                  <td className="py-2 px-4 text-right">Rs. {formatCurrency(prod.tax)}</td>
+                                  <td className="py-2 px-4 text-right text-rose-500/60">{prod.refunds > 0 ? `-Rs. ${formatCurrency(prod.refunds)}` : '-'}</td>
+                                  <td className="py-2 px-4 text-right text-emerald-500/60">Rs. {formatCurrency(prod.net)}</td>
+                                </tr>
+                              ))}
+                            </React.Fragment>
+                          ))}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Active Tab View: Dashboard Summary */}
           {activeTab === "Dashboard Summary" && (

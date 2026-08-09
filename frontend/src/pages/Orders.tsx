@@ -251,12 +251,19 @@ export default function Orders() {
   }
 
   const handleCancelOrder = (order: Order) => {
-    const reason = prompt("Reason for cancelling this order:")
-    if (reason === null) return
-    updateOrder(order.id, { status: "Cancelled", kitchenStatus: "Cancelled" })
-    addTimelineEvent(order.id, { event: "Order Cancelled", remarks: reason || "Cancelled from Order History", cashier: user?.name || "Ahmed" })
-    addAuditLog(order.id, { actionType: "Order Cancelled", who: user?.name || "Ahmed", oldValue: order.status, newValue: "Cancelled", reason: reason || "Manager override via OCC" })
-    if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: "Cancelled", kitchenStatus: "Cancelled" } : null)
+    if (order.status === 'Cancelled') {
+      updateOrder(order.id, { status: "Active", kitchenStatus: "Pending" })
+      addTimelineEvent(order.id, { event: "Order Uncancelled", remarks: "Uncancelled from Order History", cashier: user?.name || "Ahmed" })
+      addAuditLog(order.id, { actionType: "Status Changed", who: user?.name || "Ahmed", oldValue: "Cancelled", newValue: "Active", reason: "Uncancel" })
+      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: "Active", kitchenStatus: "Pending" } : null)
+    } else {
+      const reason = prompt("Reason for cancelling this order:")
+      if (reason === null) return
+      updateOrder(order.id, { status: "Cancelled", kitchenStatus: "Cancelled" })
+      addTimelineEvent(order.id, { event: "Order Cancelled", remarks: reason || "Cancelled from Order History", cashier: user?.name || "Ahmed" })
+      addAuditLog(order.id, { actionType: "Order Cancelled", who: user?.name || "Ahmed", oldValue: order.status, newValue: "Cancelled", reason: reason || "Manager override via OCC" })
+      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: "Cancelled", kitchenStatus: "Cancelled" } : null)
+    }
   }
 
   const handleRefund = (order: Order) => {
@@ -270,12 +277,20 @@ export default function Orders() {
 
   const handleMarkPaid = async (order: Order) => {
     try {
-      await apiClient.post(`/payments/order/${order.id}`, { amount_received: order.total, payment_method: 'CASH' })
-      updateOrder(order.id, { paymentStatus: 'Paid' })
-      addTimelineEvent(order.id, { event: "Marked Paid", remarks: "Marked paid from Order History", cashier: user?.name || "Ahmed" })
-      addAuditLog(order.id, { actionType: "Payment Received", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: "Paid", reason: "Action from History" })
-      await syncOrdersFromBackend()
-      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: "Paid" } : null)
+      if (order.paymentStatus === 'Paid') {
+        updateOrder(order.id, { paymentStatus: 'Unpaid' })
+        addTimelineEvent(order.id, { event: "Marked Unpaid", remarks: "Marked unpaid from Order History", cashier: user?.name || "Ahmed" })
+        addAuditLog(order.id, { actionType: "Payment Status Changed", who: user?.name || "Ahmed", oldValue: "Paid", newValue: "Unpaid", reason: "Toggle from History" })
+        await syncOrdersFromBackend()
+        if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: "Unpaid" } : null)
+      } else {
+        await apiClient.post(`/payments/order/${order.id}`, { amount_received: order.total, payment_method: 'CASH' })
+        updateOrder(order.id, { paymentStatus: 'Paid' })
+        addTimelineEvent(order.id, { event: "Marked Paid", remarks: "Marked paid from Order History", cashier: user?.name || "Ahmed" })
+        addAuditLog(order.id, { actionType: "Payment Received", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: "Paid", reason: "Action from History" })
+        await syncOrdersFromBackend()
+        if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: "Paid" } : null)
+      }
     } catch (e) {
       console.error(e)
     }
@@ -283,12 +298,20 @@ export default function Orders() {
 
   const handleMarkComplete = async (order: Order) => {
     try {
-      await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'COMPLETED' })
-      updateOrder(order.id, { status: 'Completed', kitchenStatus: 'Served' })
-      addTimelineEvent(order.id, { event: "Marked Complete", remarks: "Marked complete from Order History", cashier: user?.name || "Ahmed" })
-      addAuditLog(order.id, { actionType: "Status Changed", who: user?.name || "Ahmed", oldValue: order.status, newValue: "Completed", reason: "Action from History" })
-      await syncOrdersFromBackend()
-      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: "Completed", kitchenStatus: "Served" } : null)
+      if (order.status === 'Completed') {
+        updateOrder(order.id, { status: 'Active', kitchenStatus: 'Pending' })
+        addTimelineEvent(order.id, { event: "Marked Incomplete", remarks: "Marked incomplete from Order History", cashier: user?.name || "Ahmed" })
+        addAuditLog(order.id, { actionType: "Status Changed", who: user?.name || "Ahmed", oldValue: "Completed", newValue: "Active", reason: "Action from History" })
+        await syncOrdersFromBackend()
+        if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: "Active", kitchenStatus: "Pending" } : null)
+      } else {
+        await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'COMPLETED' })
+        updateOrder(order.id, { status: 'Completed', kitchenStatus: 'Served' })
+        addTimelineEvent(order.id, { event: "Marked Complete", remarks: "Marked complete from Order History", cashier: user?.name || "Ahmed" })
+        addAuditLog(order.id, { actionType: "Status Changed", who: user?.name || "Ahmed", oldValue: order.status, newValue: "Completed", reason: "Action from History" })
+        await syncOrdersFromBackend()
+        if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: "Completed", kitchenStatus: "Served" } : null)
+      }
     } catch (e) {
       console.error(e)
     }
@@ -596,13 +619,13 @@ export default function Orders() {
                   <td className="p-4 text-right">
                     <div className="grid grid-cols-4 gap-1 w-[140px] ml-auto" onClick={e => e.stopPropagation()}>
                       <button onClick={() => setSelectedOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" title="View Details"><FileText className="w-4 h-4" /></button>
-                      <button onClick={() => handleMarkPaid(order)} className="p-2 hover:bg-green-500/10 rounded-lg text-muted-foreground hover:text-green-500 transition-colors flex items-center justify-center" title="Mark Paid"><DollarSign className="w-4 h-4" /></button>
-                      <button onClick={() => handleMarkComplete(order)} className="p-2 hover:bg-blue-500/10 rounded-lg text-muted-foreground hover:text-blue-500 transition-colors flex items-center justify-center" title="Mark Complete"><CheckCircle2 className="w-4 h-4" /></button>
+                      <button onClick={() => handleMarkPaid(order)} className={`p-2 rounded-lg transition-colors flex items-center justify-center ${order.paymentStatus === 'Paid' ? 'bg-green-500/20 text-green-500 font-bold shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'hover:bg-green-500/10 text-muted-foreground hover:text-green-500'}`} title={order.paymentStatus === 'Paid' ? 'Mark Unpaid' : 'Mark Paid'}><DollarSign className="w-4 h-4" /></button>
+                      <button onClick={() => handleMarkComplete(order)} className={`p-2 rounded-lg transition-colors flex items-center justify-center ${order.status === 'Completed' ? 'bg-blue-500/20 text-blue-500 font-bold shadow-[0_0_10px_rgba(59,130,246,0.3)]' : 'hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500'}`} title={order.status === 'Completed' ? 'Mark Incomplete' : 'Mark Complete'}><CheckCircle2 className="w-4 h-4" /></button>
                       <button onClick={() => handlePrintReceipt(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-primary transition-colors flex items-center justify-center" title="Print/Reprint Receipt"><Printer className="w-4 h-4" /></button>
                       
                       <button onClick={() => handleEditClick(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-amber-500 transition-colors flex items-center justify-center" title="Edit Order"><Pencil className="w-4 h-4" /></button>
                       <button onClick={() => handleRefund(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-purple-500 transition-colors flex items-center justify-center" title="Refund"><RotateCcw className="w-4 h-4" /></button>
-                      <button onClick={() => handleCancelOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-red-500 transition-colors flex items-center justify-center" title="Cancel Order"><Ban className="w-4 h-4" /></button>
+                      <button onClick={() => handleCancelOrder(order)} className={`p-2 rounded-lg transition-colors flex items-center justify-center ${order.status === 'Cancelled' ? 'bg-red-500/20 text-red-500 font-bold shadow-[0_0_10px_rgba(239,68,68,0.3)]' : 'hover:bg-secondary text-muted-foreground hover:text-red-500'}`} title={order.status === 'Cancelled' ? 'Uncancel Order' : 'Cancel Order'}><Ban className="w-4 h-4" /></button>
                       <button onClick={() => handleDeleteOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-red-600 transition-colors flex items-center justify-center" title="Delete Order"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
