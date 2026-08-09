@@ -95,8 +95,8 @@ class ProductRepository {
     dbEngine.prepare(`
       UPDATE products 
       SET lifecycle_state = 'DELETED', 
-          product_code = product_code || '_del_' || substr(id, 1, 8),
-          barcode = CASE WHEN barcode IS NOT NULL THEN barcode || '_del_' || substr(id, 1, 8) ELSE NULL END,
+          product_code = product_code || '_del_' || id,
+          barcode = CASE WHEN barcode IS NOT NULL THEN barcode || '_del_' || id ELSE NULL END,
           version = version + 1, 
           updated_at = CURRENT_TIMESTAMP 
       WHERE id = ?
@@ -104,6 +104,12 @@ class ProductRepository {
   }
 
   // --- Image Handling ---
+
+  getImageById(imageId) {
+    return dbEngine.prepare(`
+      SELECT * FROM product_images WHERE id = ?
+    `).get(imageId);
+  }
 
   getImages(productId) {
     return dbEngine.prepare(`

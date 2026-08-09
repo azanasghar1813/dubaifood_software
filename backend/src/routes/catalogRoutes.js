@@ -57,6 +57,11 @@ router.post(
   upload.single('image'), 
   productController.uploadProductImage
 );
+router.delete(
+  '/products/:id/images/:imageId',
+  authorize('MANAGE_PRODUCTS'),
+  productController.deleteProductImage
+);
 
 // --- Deals ---
 router.get('/deals', dealController.getDeals);

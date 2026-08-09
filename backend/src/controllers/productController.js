@@ -77,3 +77,19 @@ export const uploadProductImage = (req, res) => {
     sendError(res, 500, 'Failed to upload image', error.message);
   }
 };
+
+export const deleteProductImage = (req, res) => {
+  try {
+    const { id, imageId } = req.params;
+    if (!id || !imageId) {
+      return sendError(res, 400, 'Product ID and Image ID are required');
+    }
+    productService.removeImage(imageId, req.user.id);
+    sendSuccess(res, null, 'Image deleted successfully');
+  } catch (error) {
+    if (error.message === 'Image not found') {
+      return sendError(res, 404, error.message);
+    }
+    sendError(res, 500, 'Failed to delete image', error.message);
+  }
+};

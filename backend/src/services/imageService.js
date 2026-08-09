@@ -46,15 +46,24 @@ class ImageService {
 
   deleteProductImage(imageId, userId) {
     // 1. Fetch image info
-    // For this we need to get the image from the db first, but we don't have a direct getImageById.
-    // Let's assume we implement it or we just delete it from DB.
-    // Ideally we physically delete the file to save disk space.
-    
-    // For simplicity, we just rely on repository
+    const imageInfo = productRepository.getImageById(imageId);
+    if (!imageInfo) {
+      throw new Error('Image not found');
+    }
+
+    // 2. Delete from database
     productRepository.removeImage(imageId);
     
-    // In a real implementation we would also delete the file:
-    // fs.unlinkSync(destPath);
+    // 3. Delete physical file
+    const destDir = storageManager.getPath('images', 'products');
+    const absolutePath = path.join(destDir, path.basename(imageInfo.image_path));
+    if (fs.existsSync(absolutePath)) {
+      try {
+        fs.unlinkSync(absolutePath);
+      } catch (err) {
+        console.error('Failed to delete physical image file:', err);
+      }
+    }
     
     activityLogService.logActivity(userId, 'PRODUCT_IMAGE_DELETED', 'CATALOG', imageId, {});
     menuCacheService.refresh();

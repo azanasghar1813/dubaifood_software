@@ -42,17 +42,20 @@ export const menuService = {
   deleteProduct: async (id: string) => {
     return apiClient.delete(`/catalog/products/${id}`)
   },
-
-  uploadProductImage: async (id: string, file: File) => {
+  
+  uploadProductImage: async (id: string, file: File, isPrimary: boolean = true) => {
     const formData = new FormData()
     formData.append('image', file)
-    
-    // Bypass default JSON header for multipart
+    formData.append('is_primary', String(isPrimary))
     return apiClient.post(`/catalog/products/${id}/images`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     })
+  },
+
+  deleteProductImage: async (productId: string, imageId: string) => {
+    return apiClient.delete(`/catalog/products/${productId}/images/${imageId}`)
   },
 
   // ==========================================

@@ -22,6 +22,7 @@ export default function Categories() {
     display_order: 0,
     lifecycle_state: "ACTIVE",
     visibility: "VISIBLE",
+    parent_id: "" as string | null,
   })
 
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -58,6 +59,7 @@ export default function Categories() {
       display_order: 0,
       lifecycle_state: "ACTIVE",
       visibility: "VISIBLE",
+      parent_id: null,
     })
     setIsDrawerOpen(true)
   }
@@ -70,6 +72,7 @@ export default function Categories() {
       display_order: category.display_order || 0,
       lifecycle_state: category.lifecycle_state || "ACTIVE",
       visibility: category.visibility || "VISIBLE",
+      parent_id: category.parent_id || null,
     })
     setIsDrawerOpen(true)
   }
@@ -174,6 +177,29 @@ export default function Categories() {
                   <EyeOff className="w-5 h-5 text-muted-foreground" />
                 )}
               </div>
+
+              {cat.sub_categories && cat.sub_categories.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-xs font-bold text-muted-foreground mb-2 uppercase">Subcategories</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {cat.sub_categories.map((sub: any) => (
+                      <div key={sub.id} className="bg-secondary/50 border border-border rounded-lg px-3 py-1.5 flex items-center gap-2 group/sub">
+                        <span className="text-sm font-semibold">{sub.name}</span>
+                        {canManageProducts && (
+                          <div className="flex items-center gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity ml-1">
+                            <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(sub) }} className="text-muted-foreground hover:text-foreground">
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDelete(sub.id) }} className="text-red-500/70 hover:text-red-500">
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               
               <div className="mt-auto flex justify-between items-center pt-4 border-t border-border/30">
                 <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
@@ -255,6 +281,25 @@ export default function Categories() {
                       className="w-full h-10 px-3 rounded-md bg-secondary/50 border border-border/50 focus:border-primary/50 focus:outline-none transition-colors"
                       placeholder="e.g. Premium Pizza"
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Parent Category</label>
+                    <select
+                      value={formData.parent_id || ""}
+                      onChange={e => setFormData({ ...formData, parent_id: e.target.value || null })}
+                      className="w-full h-10 px-3 rounded-md bg-secondary/50 border border-border/50 focus:border-primary/50 focus:outline-none transition-colors"
+                    >
+                      <option value="">None (Top Level Category)</option>
+                      {categories
+                        .filter((c) => c.id !== selectedCategory?.id)
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground">Select a parent if this is a subcategory.</p>
                   </div>
                   
                   <div className="space-y-2">

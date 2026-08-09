@@ -257,6 +257,22 @@ export default function Products() {
     }
   }
 
+  // Image Delete Handler
+  const handleDeleteImage = async () => {
+    if (!selectedProduct?.id || !selectedProduct?.images) return;
+    const existingImageId = selectedProduct.images?.find((img: any) => img.image_path === selectedProduct.image)?.id || selectedProduct.images?.[0]?.id;
+    if (!existingImageId) return;
+
+    try {
+      await menuService.deleteProductImage(selectedProduct.id, existingImageId);
+      toast.success("Image deleted successfully");
+      setSelectedProduct({ ...selectedProduct, image: undefined, images: [] });
+      fetchProductsAndCategories();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || "Failed to delete image");
+    }
+  }
+
   // Image Upload Handler
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !e.target.files.length) return
@@ -267,12 +283,18 @@ export default function Products() {
 
     const file = e.target.files[0]
     try {
-      const res: any = await menuService.uploadProductImage(selectedProduct.id, file)
+      // If replacing an existing image, delete the old one first
+      const existingImageId = selectedProduct.images?.find((img: any) => img.image_path === selectedProduct.image)?.id || selectedProduct.images?.[0]?.id;
+      if (existingImageId) {
+        await menuService.deleteProductImage(selectedProduct.id, existingImageId);
+      }
+
+      const res: any = await menuService.uploadProductImage(selectedProduct.id, file, true)
       const path = res?.data?.path || res?.path
       if (path) {
         toast.success("Image uploaded successfully")
         // The backend returns { id, path }. Update just the image field on the product
-        setSelectedProduct({ ...selectedProduct, image: path })
+        setSelectedProduct({ ...selectedProduct, image: path, images: [{ id: res.data?.id || res.id, image_path: path, is_primary: 1 }] })
         fetchProductsAndCategories()
       } else {
         // Just in case it succeeded but response is malformed
@@ -904,17 +926,31 @@ export default function Products() {
                     {/* Image Selector / Simulator */}
                     <div className="space-y-2">
                       <label className="text-xs uppercase font-black text-muted-foreground">Product Image</label>
-                      <div className="w-full h-44 bg-secondary border-2 border-dashed border-border rounded-2xl overflow-hidden flex flex-col items-center justify-center relative text-muted-foreground">
+                      <div className="w-full h-44 bg-secondary border-2 border-dashed border-border rounded-2xl overflow-hidden flex flex-col items-center justify-center relative text-muted-foreground group">
                         {selectedProduct.image ? (
                           <>
                             <img src={getImageUrl(selectedProduct.image)} alt={selectedProduct.name} className="w-full h-full object-cover" />
-                            <button
-                              type="button"
-                              onClick={() => setSelectedProduct({ ...selectedProduct, image: undefined })}
-                              className="absolute bottom-2 right-2 bg-black/60 text-white rounded-lg p-2 hover:bg-red-600 transition-colors"
-                            >
-                              <Trash className="w-4 h-4" />
-                            </button>
+                            
+                            {/* Overlay for change/delete actions */}
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                              <label className="cursor-pointer bg-white text-black text-xs font-black px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors">
+                                Change Image
+                                <input
+                                  type="file"
+                                  accept="image/png, image/jpeg"
+                                  onChange={handleImageUpload}
+                                  className="hidden"
+                                  disabled={!canManageProducts}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={handleDeleteImage}
+                                className="bg-red-500 text-white rounded-lg p-2 hover:bg-red-600 transition-colors"
+                              >
+                                <Trash className="w-4 h-4" />
+                              </button>
+                            </div>
                           </>
                         ) : (
                           <label className="text-center p-4 w-full h-full flex flex-col justify-center items-center cursor-pointer hover:bg-secondary/70 transition-colors">
