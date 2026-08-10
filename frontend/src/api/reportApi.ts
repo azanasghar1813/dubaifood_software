@@ -59,6 +59,12 @@ export const fetchReportTrends = async (filters: ReportFilters): Promise<TrendRo
   return res.data;
 };
 
+export const fetchRecentItems = async (filters: ReportFilters): Promise<any[]> => {
+  const query = new URLSearchParams(filters as Record<string, string>).toString();
+  const res = await apiClient.get(`/reports/recent-items?${query}`);
+  return res.data;
+};
+
 export const fetchProductDetails = async (productId: string, filters: ReportFilters): Promise<any> => {
   const query = new URLSearchParams(filters as Record<string, string>).toString();
   const res = await apiClient.get(`/reports/product/${productId}?${query}`);

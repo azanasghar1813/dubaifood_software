@@ -11,7 +11,7 @@ class DealRepository {
   findById(id) {
     const deal = dbEngine.prepare(`SELECT * FROM deals WHERE id = ?`).get(id);
     if (deal) {
-      deal.groups = this.getGroups(id);
+      deal.components = this.getComponents(id);
     }
     return deal;
   }
@@ -40,8 +40,8 @@ class DealRepository {
       now
     });
 
-    if (data.groups && Array.isArray(data.groups)) {
-      this._insertGroups(id, data.groups);
+    if (data.components && Array.isArray(data.components)) {
+      this._insertComponents(id, data.components);
     }
 
     return this.findById(id);
@@ -65,10 +65,9 @@ class DealRepository {
       dbEngine.prepare(`UPDATE deals SET ${updates.join(', ')} WHERE id = @id`).run(params);
     }
 
-    if (data.groups && Array.isArray(data.groups)) {
-      dbEngine.prepare(`DELETE FROM deal_groups WHERE deal_id = ?`).run(id);
+    if (data.components && Array.isArray(data.components)) {
       dbEngine.prepare(`DELETE FROM deal_components WHERE deal_id = ?`).run(id);
-      this._insertGroups(id, data.groups);
+      this._insertComponents(id, data.components);
     }
 
     return this.findById(id);
@@ -77,62 +76,33 @@ class DealRepository {
     dbEngine.prepare(`UPDATE deals SET lifecycle_state = 'DELETED', version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
   }
 
-  getGroups(dealId) {
-    const groups = dbEngine.prepare(`
-      SELECT * FROM deal_groups WHERE deal_id = ? ORDER BY display_order ASC
-    `).all(dealId);
-
-    for (const group of groups) {
-      group.components = this.getComponentsByGroup(group.id);
-    }
-    return groups;
-  }
-
-  getComponentsByGroup(groupId) {
+  getComponents(dealId) {
     return dbEngine.prepare(`
-      SELECT dc.*, p.name as product_name, p.product_code, p.price as base_price
-      FROM deal_components dc
-      JOIN products p ON dc.product_id = p.id
-      WHERE dc.deal_group_id = ?
-    `).all(groupId);
+      SELECT * FROM deal_components WHERE deal_id = ?
+    `).all(dealId);
   }
 
-  _insertGroups(dealId, groups) {
-    const insertGroup = dbEngine.prepare(`
-      INSERT INTO deal_groups (id, deal_id, name, min_selection, max_selection, display_order)
-      VALUES (?, ?, ?, ?, ?, ?)
+  _insertComponents(dealId, components) {
+    const insertComponent = dbEngine.prepare(`
+      INSERT INTO deal_components (
+        id, deal_id, name, component_type, product_id, quantity, target_category_id, target_variant_name, allowed_product_ids
+      ) VALUES (
+        @id, @deal_id, @name, @component_type, @product_id, @quantity, @target_category_id, @target_variant_name, @allowed_product_ids
+      )
     `);
 
-    const insertComp = dbEngine.prepare(`
-      INSERT INTO deal_components (id, deal_id, deal_group_id, product_id, quantity, max_quantity, price_adjustment, is_default)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    groups.forEach((group, groupIndex) => {
-      const groupId = crypto.randomUUID();
-      insertGroup.run(
-        groupId,
-        dealId,
-        group.name,
-        group.min_selection !== undefined ? group.min_selection : 1,
-        group.max_selection !== undefined ? group.max_selection : 1,
-        group.display_order !== undefined ? group.display_order : groupIndex
-      );
-
-      if (group.components && Array.isArray(group.components)) {
-        group.components.forEach(comp => {
-          insertComp.run(
-            crypto.randomUUID(),
-            dealId, // Keeping deal_id for quick lookup and cascading
-            groupId,
-            comp.product_id,
-            comp.quantity || 1,
-            comp.max_quantity || 1,
-            comp.price_adjustment || 0,
-            comp.is_default ? 1 : 0
-          );
-        });
-      }
+    components.forEach(comp => {
+      insertComponent.run({
+        id: crypto.randomUUID(),
+        deal_id: dealId,
+        name: comp.name || null,
+        component_type: comp.component_type || 'FIXED_PRODUCT',
+        product_id: comp.product_id || null,
+        quantity: comp.quantity || 1,
+        target_category_id: comp.target_category_id || null,
+        target_variant_name: comp.target_variant_name || null,
+        allowed_product_ids: comp.allowed_product_ids || null
+      });
     });
   }
 }

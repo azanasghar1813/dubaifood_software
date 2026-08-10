@@ -18,7 +18,6 @@ import Synchronization from './pages/Synchronization.tsx'
 import NotificationCenter from './pages/NotificationCenter.tsx'
 import ReceiptPreview from './pages/ReceiptPreview.tsx'
 import { KDS } from './pages/KDS.tsx'
-import PrinterSettings from './pages/PrinterSettings.tsx'
 import UsersPermissions from './pages/UsersPermissions.tsx'
 import ActivityLogs from './pages/ActivityLogs.tsx'
 import Backup from './pages/Backup.tsx'
@@ -60,7 +59,6 @@ const router = createBrowserRouter([
       { path: "/sync", element: <Synchronization /> },
       { path: "/notifications", element: <NotificationCenter /> },
       { path: "/receipt", element: <ReceiptPreview /> },
-      { path: "/settings/printer", element: <PrinterSettings /> },
       { path: "/permissions", element: <UsersPermissions /> },
       { path: "/activity-logs", element: <ActivityLogs /> },
       { path: "/backup", element: <Backup /> },

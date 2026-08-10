@@ -142,6 +142,10 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
             </div>
           </div>
 
+          <div className="flex justify-between text-xs font-bold border-b-2 border-black pb-1 mb-2">
+            <span>Item (Qty)</span>
+            <span>Amount</span>
+          </div>
           <div className="mb-4 flex flex-col">
             {sortedCategories.map((category) => (
               <div key={category} className="border-2 border-black border-b-0 last:border-b-2">
@@ -164,6 +168,13 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
                       {item.selectedModifiers && item.selectedModifiers.length > 0 && (
                         <div className="text-[10px] text-gray-500 leading-tight">
                           {item.selectedModifiers.map((m: any) => `+${m.name}`).join(', ')}
+                        </div>
+                      )}
+                      {item.combo_components && item.combo_components.length > 0 && (
+                        <div className="text-[10px] text-gray-500 leading-tight mt-0.5 ml-2 border-l border-gray-300 pl-1">
+                          {item.combo_components.map((c: any, cidx: number) => (
+                            <div key={cidx}>- {c.quantity > 1 ? `${c.quantity}x ` : ''}{c.product_name_snapshot} {c.variant_snapshot && `(${c.variant_snapshot})`}</div>
+                          ))}
                         </div>
                       )}
                     </div>

@@ -3,6 +3,35 @@ import { roleRepository } from '../repositories/roleRepository.js';
 import { activityLogService } from './activityLogService.js';
 import { securityUtils } from '../utils/security.js';
 
+const enforceRoleHierarchy = (actorId, targetRoleId = null, targetUserId = null) => {
+  const actor = userRepository.findById(actorId);
+  if (!actor) throw new Error('Actor not found');
+  
+  const actorRoleName = actor.role_name;
+  
+  if (actorRoleName === 'Super Admin') {
+    return; // Super Admin can do anything
+  }
+  
+  if (actorRoleName === 'Admin') {
+    if (targetRoleId) {
+      const targetRole = roleRepository.findById(targetRoleId);
+      if (targetRole && (targetRole.name === 'Super Admin' || targetRole.name === 'Admin')) {
+        throw new Error('Admins cannot assign Super Admin or Admin roles');
+      }
+    }
+    if (targetUserId) {
+      const targetUser = userRepository.findById(targetUserId);
+      if (targetUser && (targetUser.role_name === 'Super Admin' || targetUser.role_name === 'Admin')) {
+        throw new Error('Admins cannot modify Super Admin or other Admin accounts');
+      }
+    }
+    return;
+  }
+  
+  throw new Error('Unauthorized role management');
+};
+
 export const userService = {
   getAllUsers: () => {
     return userRepository.findAll();
@@ -20,6 +49,9 @@ export const userService = {
     // Validate role
     const role = roleRepository.findById(userData.roleId);
     if (!role) throw new Error('Invalid role ID');
+
+    // Enforce Hierarchy
+    enforceRoleHierarchy(actorId, userData.roleId);
 
     // Check unique username
     if (userRepository.findByUsername(userData.username)) {
@@ -48,6 +80,8 @@ export const userService = {
     const role = roleRepository.findById(updateData.roleId);
     if (!role) throw new Error('Invalid role ID');
 
+    enforceRoleHierarchy(actorId, updateData.roleId, targetUserId);
+
     userRepository.updateProfile(targetUserId, updateData);
     
     activityLogService.logActivity(actorId, 'USER_UPDATED', 'USER', targetUserId, { roleChanged: user.role_id !== updateData.roleId });
@@ -58,9 +92,11 @@ export const userService = {
     if (!user) throw new Error('User not found');
     
     // Prevent disabling Super Admin
-    if (user.username === 'admin' && !isActive) {
-      throw new Error('Cannot disable the primary Super Administrator account');
+    if (user.role_name === 'Super Admin' && !isActive) {
+      throw new Error('Cannot disable a Super Administrator account');
     }
+
+    enforceRoleHierarchy(actorId, null, targetUserId);
 
     userRepository.updateStatus(targetUserId, isActive);
     
@@ -71,6 +107,8 @@ export const userService = {
   resetUserPin: (actorId, targetUserId, newPin) => {
     const user = userRepository.findById(targetUserId);
     if (!user) throw new Error('User not found');
+
+    enforceRoleHierarchy(actorId, null, targetUserId);
 
     const hashedPin = securityUtils.hashPin(newPin);
     userRepository.updatePin(targetUserId, hashedPin);

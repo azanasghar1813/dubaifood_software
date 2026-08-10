@@ -44,7 +44,7 @@ class ConfigService {
   }
 
   getFinanceConfig() {
-    return this.getBusinessCategory('FINANCE');
+    return this.getBusinessCategory('FINANCIAL');
   }
 
   getOrderConfig() {

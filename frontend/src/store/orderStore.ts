@@ -144,6 +144,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     category: item.category || item.category_name || 'Unknown',
     code: item.code || item.product_code || '',
     selectedModifiers: item.modifiers || item.selectedModifiers || [],
+    combo_components: item.combo_components || [],
     notes: item.notes || '',
     isEdited: Boolean(item.is_edited || item.updated_at),
     discount: Number(item.discount_total ?? item.discount ?? 0),
@@ -182,8 +183,8 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     id: row.id,
     orderNumber: row.order_number.replace('POS-', '').replace(new RegExp(`^\\d{8}-`), ''),
     cashierName: formatName(row.cashier_user_id),
-    customerName: detail?.metadata?.customer_name || row.customer_id || 'Guest',
-    customerPhone: detail?.metadata?.customer_phone || undefined,
+    customerName: row.customer_name || detail?.metadata?.customer_name || row.customer_id || 'Guest',
+    customerPhone: row.customer_phone || detail?.metadata?.customer_phone || undefined,
     customerAddress: detail?.metadata?.customer_address || undefined,
     isVip: false,
     tableNumber: row.table_id || null,
@@ -192,8 +193,8 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     items,
     subtotal: Number(row.subtotal || 0),
     tax: Number(row.tax_total || 0),
-    serviceCharge: Number(row.service_charge ?? detail?.service_charge ?? 0),
-    deliveryCharge: Number(row.delivery_charges ?? detail?.delivery_charges ?? 0),
+    serviceCharge: Number(row.service_charge ?? detail?.metadata?.service_charge ?? 0),
+    deliveryCharge: Number(row.delivery_charges ?? detail?.metadata?.delivery_charges ?? 0),
     discount: Number(row.discount_total || 0),
     total: Number(row.grand_total || 0),
     businessDate: row.business_date,
@@ -312,4 +313,3 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   }
 }))
 
-void useOrderStore.getState().syncOrdersFromBackend()

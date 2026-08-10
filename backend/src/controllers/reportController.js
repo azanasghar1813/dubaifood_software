@@ -23,6 +23,17 @@ export const reportController = {
     }
   },
 
+  getRecentItems: async (req, res) => {
+    try {
+      const filters = req.query;
+      const data = await reportService.getRecentItems(filters);
+      res.json({ success: true, data });
+    } catch (error) {
+      console.error('Error in getRecentItems:', error);
+      res.status(500).json({ success: false, message: 'Failed to fetch recent items data' });
+    }
+  },
+
   getTrends: async (req, res) => {
     try {
       const filters = req.query;

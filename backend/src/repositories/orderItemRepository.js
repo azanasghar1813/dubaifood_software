@@ -99,9 +99,9 @@ class OrderItemRepository {
   addComboComponent(componentData) {
     dbEngine.prepare(`
       INSERT INTO order_combo_components (
-        id, order_item_id, component_id, product_id, product_name_snapshot, variant_snapshot, price_adjustment
+        id, order_item_id, component_id, product_id, product_name_snapshot, variant_snapshot, price_adjustment, quantity
       ) VALUES (
-        @id, @order_item_id, @component_id, @product_id, @product_name_snapshot, @variant_snapshot, @price_adjustment
+        @id, @order_item_id, @component_id, @product_id, @product_name_snapshot, @variant_snapshot, @price_adjustment, @quantity
       )
     `).run({
       id: componentData.id,
@@ -110,7 +110,8 @@ class OrderItemRepository {
       product_id: componentData.product_id,
       product_name_snapshot: componentData.product_name_snapshot,
       variant_snapshot: componentData.variant_snapshot || null,
-      price_adjustment: componentData.price_adjustment || 0
+      price_adjustment: componentData.price_adjustment || 0,
+      quantity: componentData.quantity || 1
     });
   }
 

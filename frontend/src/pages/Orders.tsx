@@ -826,7 +826,15 @@ export default function Orders() {
                       <h3 className="font-black text-lg mb-4 flex items-center gap-2"><FileText className="w-5 h-5 text-primary" /> Billing Summary</h3>
                       <div className="space-y-3 text-sm font-bold">
                         <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>Rs. {selectedOrder.subtotal.toLocaleString()}</span></div>
-                        <div className="flex justify-between text-muted-foreground"><span>{selectedOrder.orderType === 'Delivery' ? 'Delivery Charges' : 'Service Charges'}</span><span>Rs. {selectedOrder.tax.toLocaleString()}</span></div>
+                        {selectedOrder.serviceCharge > 0 && (
+                          <div className="flex justify-between text-muted-foreground"><span>Service Charges</span><span>Rs. {selectedOrder.serviceCharge.toLocaleString()}</span></div>
+                        )}
+                        {selectedOrder.deliveryCharge !== undefined && selectedOrder.deliveryCharge > 0 && (
+                          <div className="flex justify-between text-muted-foreground"><span>Delivery Charges</span><span>Rs. {selectedOrder.deliveryCharge.toLocaleString()}</span></div>
+                        )}
+                        {selectedOrder.tax > 0 && (
+                          <div className="flex justify-between text-muted-foreground"><span>Tax</span><span>Rs. {selectedOrder.tax.toLocaleString()}</span></div>
+                        )}
                         <div className="flex justify-between text-muted-foreground"><span>Discount</span><span>- Rs. {selectedOrder.discount.toLocaleString()}</span></div>
                         <div className="pt-3 border-t border-border flex justify-between text-lg font-black text-foreground">
                           <span>Grand Total</span><span>Rs. {selectedOrder.total.toLocaleString()}</span>

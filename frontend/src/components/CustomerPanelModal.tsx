@@ -78,7 +78,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
         setNewAddress("")
         setNewNotes("")
         setIsVip(false)
-        setIsFavourite(false)
+        setIsFavourite(true) // Default to true so it saves to DB
         setEditingCustomerId(null)
       }
       
@@ -158,7 +158,13 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
           }
         }
       } else if (inForm || document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'BUTTON') {
+        const el = document.activeElement as HTMLInputElement | HTMLTextAreaElement;
+        const isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
+        const atStart = isInput && typeof el.selectionStart === 'number' ? el.selectionStart === 0 : true;
+        const atEnd = isInput && typeof el.selectionEnd === 'number' ? el.selectionEnd === el.value?.length : true;
+
         if (e.key === 'ArrowUp') {
+          if (el.tagName === 'TEXTAREA' && !atStart) return; // Allow cursor movement inside textarea
           e.preventDefault()
           setActiveInput(prev => {
             let next = prev;
@@ -168,6 +174,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
             return next
           })
         } else if (e.key === 'ArrowDown') {
+          if (el.tagName === 'TEXTAREA' && !atEnd) return; // Allow cursor movement inside textarea
           e.preventDefault()
           setActiveInput(prev => {
             let next = prev;
@@ -178,12 +185,14 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
           })
         } else if (e.key === 'ArrowRight') {
           if (activeInput === 0) {
+            if (isInput && !atEnd) return; // Allow right arrow inside text
             e.preventDefault()
             setActiveInput(1)
             focusInput(1)
           }
         } else if (e.key === 'ArrowLeft') {
           if (activeInput === 1) {
+            if (isInput && !atStart) return; // Allow left arrow inside text
             e.preventDefault()
             setActiveInput(0)
             focusInput(0)
@@ -223,7 +232,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
     setNewAddress("")
     setNewNotes("")
     setIsVip(false)
-    setIsFavourite(false)
+    setIsFavourite(true) // Default to true so it saves to DB
     setEditingCustomerId(null)
   }
 

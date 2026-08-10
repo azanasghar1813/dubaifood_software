@@ -62,4 +62,4 @@ export const checkoutCartSchema = z.object({
   business_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD').optional(),
   delivery_charges: z.number().nonnegative().optional(),
   service_charge: z.number().nonnegative().optional()
-});
+}).passthrough();

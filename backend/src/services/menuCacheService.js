@@ -97,7 +97,7 @@ class MenuCacheService {
     this.deals = rawDeals;
     this.dealMap.clear();
     rawDeals.forEach(deal => {
-      deal.groups = dealRepository.getGroups(deal.id);
+      deal.components = dealRepository.getComponents(deal.id);
       this.dealMap.set(deal.id, deal);
     });
 

@@ -51,6 +51,8 @@ export interface HistoryOrderRow {
   cashier_user_id:       string;
   shift_id:              string;
   customer_id:           string | null;
+  customer_name?:        string | null;
+  customer_phone?:       string | null;
   table_id:              string | null;
   order_type:            string;
   lifecycle_state:       string;

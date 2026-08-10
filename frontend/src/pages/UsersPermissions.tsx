@@ -1,64 +1,52 @@
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { 
-  Key, Search, Plus, RefreshCw, X, Lock, Unlock
-} from "lucide-react"
+import { Search, Plus, RefreshCw, X, Shield, Lock, Edit2, Key, CheckCircle, XCircle } from "lucide-react"
 import { employeeService } from "../services/employeeService"
-import { activityLogService } from "../services/activityLogService"
-
-// Mock Permission Modules matrix data
-const defaultMatrix: Record<string, Record<string, boolean>> = {
-  "Dashboard": { view: true, create: false, edit: false, delete: false, approve: false, print: true, export: true },
-  "POS": { view: true, create: true, edit: true, delete: false, approve: false, print: true, export: false },
-  "Orders": { view: true, create: true, edit: true, delete: false, approve: true, print: true, export: true },
-  "Products": { view: true, create: false, edit: false, delete: false, approve: false, print: true, export: true },
-  "Categories": { view: true, create: false, edit: false, delete: false, approve: false, print: true, export: false },
-  "KDS": { view: true, create: false, edit: true, delete: false, approve: true, print: false, export: false },
-  "Reports": { view: false, create: false, edit: false, delete: false, approve: false, print: false, export: false },
-  "Employees": { view: false, create: false, edit: false, delete: false, approve: false, print: false, export: false },
-  "Settings": { view: false, create: false, edit: false, delete: false, approve: false, print: false, export: false }
-}
+import { useAuthStore } from "../store/authStore"
 
 export default function UsersPermissions() {
+  const { user: currentUser } = useAuthStore()
+  
   const [users, setUsers] = useState<any[]>([])
   const [roles, setRoles] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   
-  const [selectedRole, setSelectedRole] = useState("Cashier")
-  const [matrix, setMatrix] = useState(defaultMatrix)
-  
-  // States
   const [search, setSearch] = useState("")
-  const [filterRole, setFilterRole] = useState("All")
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  
+  const [statusFilter, setStatusFilter] = useState("All")
+  const [roleFilter, setRoleFilter] = useState("All")
 
-  // const [currentTime, setCurrentTime] = useState(new Date())
-  // Drawer States
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  const [drawerMode, setDrawerMode] = useState<"add" | "edit" | "reset-pin">("add")
   const [selectedUser, setSelectedUser] = useState<any | null>(null)
-  const [drawerMode, setDrawerMode] = useState<"view" | "edit" | "add">("view")
-
-  const searchInputRef = useRef<HTMLInputElement>(null)
-
-  // Audit Logs
-  const [auditLogs, setAuditLogs] = useState<any[]>([])
+  
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    username: "",
+    roleId: "",
+    pinCode: "",
+    confirmPinCode: "",
+    isActive: true
+  })
+  const [formError, setFormError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const fetchData = async () => {
     try {
-      setIsRefreshing(true)
-      const [usersRes, rolesRes, logsRes] = await Promise.all([
+      setIsLoading(true)
+      setError(null)
+      const [usersRes, rolesRes] = await Promise.all([
         employeeService.getEmployees(),
-        employeeService.getRoles(),
-        activityLogService.getLogs({ limit: 5 })
+        employeeService.getRoles()
       ])
-      
       setUsers(usersRes.data || usersRes)
       setRoles(rolesRes.data || rolesRes)
-      setAuditLogs(logsRes.data || logsRes)
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
+      setError(err.response?.data?.error || "Failed to load users")
     } finally {
-      setIsRefreshing(false)
+      setIsLoading(false)
     }
   }
 
@@ -66,625 +54,480 @@ export default function UsersPermissions() {
     fetchData()
   }, [])
 
-  // Live clock
-  // useEffect(() => {
-  //   const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-  //   return () => clearInterval(timer)
-  // }, [])
+  const filteredUsers = useMemo(() => {
+    return users.filter(user => {
+      const matchesSearch = 
+        user.first_name?.toLowerCase().includes(search.toLowerCase()) || 
+        user.last_name?.toLowerCase().includes(search.toLowerCase()) ||
+        user.username?.toLowerCase().includes(search.toLowerCase())
+      
+      const matchesStatus = 
+        statusFilter === "All" ? true :
+        statusFilter === "Active" ? user.is_active === 1 :
+        statusFilter === "Inactive" ? user.is_active === 0 :
+        statusFilter === "Locked" ? (user.locked_until && new Date(user.locked_until) > new Date()) : true
+        
+      const matchesRole = roleFilter === "All" ? true : user.role_name === roleFilter
 
-  // Keyboard Shortcuts Listener
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // F2 Focus Search
+      return matchesSearch && matchesStatus && matchesRole
+    })
+  }, [users, search, statusFilter, roleFilter])
 
-      if (e.key === "F2") {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-      }
-
-      if (e.ctrlKey && e.key === "n") {
-        e.preventDefault()
-        handleOpenAdd()
-      }
-
-      if (e.ctrlKey && e.shiftKey && e.key === "N") {
-        e.preventDefault()
-        handleAddRole()
-      }
-
-      if (e.key === "Escape" && isDrawerOpen) {
-        e.preventDefault()
-        setIsDrawerOpen(false)
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isDrawerOpen])
-
-  // KPI Statistics
   const stats = useMemo(() => {
     const total = users.length
-    const online = users.filter(u => u.device !== "—").length
-    const offline = total - online
-    const locked = users.filter(u => u.status === "Locked").length
-    const disabled = users.filter(u => u.status === "Inactive").length
-    
-    return { total, online, offline, locked, disabled }
+    const active = users.filter(u => u.is_active === 1).length
+    const inactive = users.filter(u => u.is_active === 0).length
+    const locked = users.filter(u => u.locked_until && new Date(u.locked_until) > new Date()).length
+    return { total, active, inactive, locked }
   }, [users])
 
-  // Filtered list
-  const filteredUsers = useMemo(() => {
-    return users.filter(usr => {
-      const q = search.toLowerCase()
-      const matchSearch = usr.name.toLowerCase().includes(q) || 
-                          usr.username.toLowerCase().includes(q) || 
-                          usr.empId.toLowerCase().includes(q) || 
-                          usr.role.toLowerCase().includes(q)
-      const matchRole = filterRole === "All" || usr.role === filterRole
-      const matchStatus = true; // filterStatus ignored
-
-      return matchSearch && matchRole && matchStatus
-    })
-  }, [users, search, filterRole])
-
-  // Trigger PIN reset
-  const handleResetPIN = (user: any) => {
-    const newPin = prompt(`Enter new 4-digit security PIN for ${user.name}:`)
-    if (!newPin) return
-    if (newPin.length !== 4 || isNaN(Number(newPin))) {
-      alert("PIN must be exactly 4 numeric digits.")
-      return
+  const openDrawer = (mode: "add" | "edit" | "reset-pin", user: any = null) => {
+    setDrawerMode(mode)
+    setSelectedUser(user)
+    setFormError(null)
+    if (mode === "add") {
+      setFormData({
+        firstName: "", lastName: "", username: "", roleId: "", pinCode: "", confirmPinCode: "", isActive: true
+      })
+    } else if (mode === "edit" && user) {
+      setFormData({
+        firstName: user.first_name || "",
+        lastName: user.last_name || "",
+        username: user.username || "",
+        roleId: user.role_id || "",
+        pinCode: "",
+        confirmPinCode: "",
+        isActive: user.is_active === 1
+      })
+    } else if (mode === "reset-pin" && user) {
+      setFormData({
+        ...formData,
+        pinCode: "",
+        confirmPinCode: ""
+      })
     }
-    setUsers(users.map(u => u.id === user.id ? { ...u, pin: newPin } : u))
-    setAuditLogs(prev => [
-      { time: new Date().toLocaleTimeString(), msg: `PIN changed successfully for ${user.name}`, user: "Super Admin" },
-      ...prev
-    ])
-    alert(`PIN updated successfully.`)
-  }
-
-  // Toggle account lock
-  const handleToggleLock = (user: any) => {
-    const isLocked = user.status === "Locked"
-    const nextStatus = isLocked ? "Active" : "Locked"
-    setUsers(users.map(u => u.id === user.id ? { ...u, status: nextStatus, failedAttempts: isLocked ? 0 : u.failedAttempts } : u))
-    alert(`Account ${isLocked ? 'Unlocked' : 'Locked'} successfully for ${user.name}.`)
-  }
-
-  // Add User Drawer
-  const handleOpenAdd = () => {
-    setSelectedUser({
-      id: `USR-0${users.length + 1}`,
-      name: "",
-      username: "",
-      empId: `EMP-${Math.floor(Math.random() * 800) + 100}`,
-      role: "Cashier",
-      status: "Active",
-      lastLogin: "Never",
-      device: "—",
-      shift: "Morning",
-      phone: "",
-      email: "",
-      branch: "Dubai Main Branch",
-      failedAttempts: 0,
-      sessionDuration: "—",
-      joinedDate: new Date().toISOString().split("T")[0],
-      pin: "0000"
-    })
-    setDrawerMode("add")
     setIsDrawerOpen(true)
   }
 
-  const handleOpenView = (user: any) => {
-    setSelectedUser({ ...user })
-    setDrawerMode("view")
-    setIsDrawerOpen(true)
-  }
-
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (drawerMode === "add") {
-      setUsers([...users, selectedUser])
-    } else {
-      setUsers(users.map(u => u.id === selectedUser.id ? selectedUser : u))
-    }
-    setIsDrawerOpen(false)
-  }
-
-  const handleAddRole = () => {
-    const roleName = prompt("Enter Custom Role Name:")
-    if (!roleName) return
-    const newRole = {
-      id: `R-${roles.length + 1}`,
-      name: roleName,
-      usersCount: 0,
-      permissionsCount: 8,
-      description: `Custom restaurant role with configured access rules.`,
-      status: "Active",
-      color: "border-zinc-500 text-zinc-500 bg-zinc-500/10"
-    }
-    setRoles([...roles, newRole])
-  }
-
-  const handleToggleMatrixCheckbox = (mod: string, perm: string) => {
-    setMatrix({
-      ...matrix,
-      [mod]: {
-        ...matrix[mod],
-        [perm]: !matrix[mod][perm]
+    setFormError(null)
+    
+    try {
+      setIsSubmitting(true)
+      
+      if (drawerMode === "add") {
+        if (!formData.firstName || !formData.username || !formData.roleId || !formData.pinCode) {
+          throw new Error("Please fill in all required fields")
+        }
+        if (formData.pinCode !== formData.confirmPinCode) {
+          throw new Error("PINs do not match")
+        }
+        if (formData.pinCode.length < 4) {
+          throw new Error("PIN must be at least 4 digits")
+        }
+        
+        await employeeService.createEmployee({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          username: formData.username,
+          roleId: formData.roleId,
+          pinCode: formData.pinCode
+        })
+      } else if (drawerMode === "edit") {
+        await employeeService.updateEmployee(selectedUser.id, {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          roleId: formData.roleId
+        })
+        
+        if (selectedUser.is_active !== (formData.isActive ? 1 : 0)) {
+          await employeeService.updateStatus(selectedUser.id, formData.isActive)
+        }
+      } else if (drawerMode === "reset-pin") {
+        if (!formData.pinCode) throw new Error("PIN is required")
+        if (formData.pinCode !== formData.confirmPinCode) throw new Error("PINs do not match")
+        if (formData.pinCode.length < 4) throw new Error("PIN must be at least 4 digits")
+        
+        await employeeService.resetPin(selectedUser.id, formData.pinCode)
       }
-    })
+      
+      setIsDrawerOpen(false)
+      fetchData()
+    } catch (err: any) {
+      setFormError(err.response?.data?.error || err.message || "An error occurred")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+  
+  const handleToggleStatus = async (user: any) => {
+    if (user.role_name === 'Super Admin' && user.is_active === 1) {
+       // Prevent easy disabling from table
+       alert("Cannot disable a Super Admin account directly.")
+       return
+    }
+    if (confirm(`Are you sure you want to ${user.is_active ? 'deactivate' : 'activate'} this user?`)) {
+      try {
+        await employeeService.updateStatus(user.id, !user.is_active)
+        fetchData()
+      } catch (err: any) {
+        alert(err.response?.data?.error || "Failed to update status")
+      }
+    }
   }
 
-  const handleRefresh = () => {
-    setIsRefreshing(true)
-    setTimeout(() => setIsRefreshing(false), 800)
+  // Role filtering logic based on logged in user
+  const canManageRole = (roleName: string) => {
+    if (currentUser?.role === 'Super Admin') return true
+    if (currentUser?.role === 'Admin') {
+      return roleName !== 'Super Admin' && roleName !== 'Admin'
+    }
+    return false // Other roles shouldn't even be here, but just in case
   }
+  
+  const availableRoles = roles.filter(r => canManageRole(r.name))
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto text-foreground pb-12">
-      
-      {/* ====================================================
-          HEADER
-          ==================================================== */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between p-6 bg-card border border-border rounded-3xl gap-4 shadow-sm">
+    <div className="h-full flex flex-col bg-slate-50 relative overflow-hidden">
+      {/* Header */}
+      <header className="bg-white px-6 py-4 border-b border-slate-200 flex justify-between items-center z-10 shrink-0">
         <div>
-          <h1 className="text-xl md:text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
-            Security & Access Control Center
-            <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">Enterprise User Roles</span>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
+            <Shield className="w-6 h-6 text-orange-500" />
+            Users
           </h1>
-          <p className="text-xs text-muted-foreground font-bold mt-1">
-            Manage system operators, configure module permission matrices, enforce cashier PIN rules, and monitor login audits.
-          </p>
+          <p className="text-sm text-slate-500 font-medium">Manage POS users and access</p>
         </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-3">
           <button 
-            onClick={handleRefresh}
-            className={`p-2.5 bg-secondary hover:bg-border rounded-xl text-muted-foreground hover:text-foreground border border-border relative transition-colors ${isRefreshing ? 'animate-spin' : ''}`}
+            onClick={fetchData}
+            className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
-          
           <button 
-            onClick={handleAddRole}
-            className="flex items-center gap-1.5 px-3 py-2 bg-secondary border border-border rounded-xl text-xs font-black text-foreground hover:bg-secondary/80 transition-colors"
+            onClick={() => openDrawer("add")}
+            className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all shadow-sm active:scale-95"
           >
-            <Plus className="w-4 h-4" /> Add Role [Ctrl+Shift+N]
-          </button>
-
-          <button 
-            onClick={handleOpenAdd}
-            className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-xl text-xs font-black hover:bg-primary/95 shadow-md shadow-primary/10 transition-all active:scale-95"
-          >
-            <Plus className="w-4 h-4" /> Add User [Ctrl+N]
+            <Plus className="w-4 h-4" />
+            Add User
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* ====================================================
-          STATISTICS CARDS
-          ==================================================== */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {[
-          { label: "Total Users", val: stats.total, color: "text-blue-500" },
-          { label: "Online Users", val: stats.online, color: "text-emerald-500 animate-pulse" },
-          { label: "Offline Users", val: stats.offline, color: "text-zinc-500" },
-          { label: "Locked Accounts", val: stats.locked, color: stats.locked > 0 ? "text-red-500 animate-bounce" : "text-emerald-500" },
-          { label: "Disabled Users", val: stats.disabled, color: "text-zinc-500" }
-        ].map((card, i) => (
-          <div key={i} className="p-4 bg-card border border-border rounded-2xl flex flex-col justify-between shadow-sm">
-            <div>
-              <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">{card.label}</span>
-              <h4 className="text-xl font-black mt-2 text-foreground">{card.val}</h4>
-            </div>
+      {/* Main Content */}
+      <main className="flex-1 overflow-auto p-6 flex flex-col gap-6">
+        {error && (
+          <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-medium border border-red-100 flex items-center gap-2">
+            <XCircle className="w-5 h-5" />
+            {error}
           </div>
-        ))}
-      </div>
-
-      {/* ====================================================
-          ROLE MANAGEMENT CARDS
-          ==================================================== */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {roles.map((role) => (
-          <div 
-            key={role.id}
-            onClick={() => setSelectedRole(role.name)}
-            className={`p-4 bg-card border rounded-2xl cursor-pointer hover:border-primary/50 transition-all flex flex-col justify-between h-40 relative overflow-hidden ${
-              selectedRole === role.name ? 'border-primary shadow shadow-primary/10' : 'border-border/60'
-            }`}
-          >
-            <div>
-              <div className="flex justify-between items-start">
-                <span className="text-xs font-black text-foreground">{role.name}</span>
-                <span className={`text-[8px] px-2 py-0.5 rounded-full font-black border ${role.color}`}>
-                  {role.usersCount} Users
-                </span>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed line-clamp-3 font-semibold">{role.description}</p>
-            </div>
-
-            <span className="text-[9px] font-black text-primary bg-secondary px-2 py-0.5 rounded border border-border w-fit mt-3">
-              {role.permissionsCount} Perms
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* ====================================================
-          PERMISSION MATRIX
-          ==================================================== */}
-      <div className="bg-card border border-border rounded-3xl p-6 shadow-sm space-y-4">
-        <div className="flex justify-between items-center pb-3 border-b border-border">
-          <div>
-            <h3 className="text-base font-black uppercase tracking-wider text-foreground">
-              Module Access Permissions: <span className="text-primary">{selectedRole}</span>
-            </h3>
-            <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">Toggle checkboxes to configure granular access privileges for this role group.</p>
-          </div>
-          <button 
-            onClick={() => alert("Permissions successfully saved.")}
-            className="px-4 py-1.5 bg-secondary hover:bg-border border border-border text-xs font-black rounded-lg transition-colors"
-          >
-            Save Role Permissions Matrix
-          </button>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left border-collapse">
-            <thead className="bg-secondary/35 text-muted-foreground text-xs uppercase font-bold border-b border-border">
-              <tr>
-                <th className="px-6 py-4">System Module</th>
-                <th className="px-4 py-4 text-center">View</th>
-                <th className="px-4 py-4 text-center">Create</th>
-                <th className="px-4 py-4 text-center">Edit</th>
-                <th className="px-4 py-4 text-center">Delete</th>
-                <th className="px-4 py-4 text-center">Approve</th>
-                <th className="px-4 py-4 text-center">Print</th>
-                <th className="px-4 py-4 text-center">Export</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {Object.keys(matrix).map((modKey) => (
-                <tr key={modKey} className="hover:bg-secondary/15 transition-colors">
-                  <td className="px-6 py-3 font-black text-foreground text-xs">{modKey}</td>
-                  {["view", "create", "edit", "delete", "approve", "print", "export"].map((permKey) => {
-                    const isChecked = matrix[modKey][permKey]
-                    return (
-                      <td key={permKey} className="px-4 py-3 text-center">
-                        <input 
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => handleToggleMatrixCheckbox(modKey, permKey)}
-                          className="w-4.5 h-4.5 rounded text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer"
-                        />
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ====================================================
-          USERS LIST
-          ==================================================== */}
-      <div className="bg-card border border-border rounded-3xl p-6 shadow-sm space-y-4">
+        )}
         
-        {/* Search / Filters header */}
-        <div className="flex justify-between items-center flex-wrap gap-2 border-b border-border pb-3">
-          <h3 className="text-base font-black uppercase tracking-wider text-foreground">Registered System Operators</h3>
-          <div className="flex gap-2 items-center flex-wrap">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input 
-                ref={searchInputRef}
-                type="text" 
-                value={search}
-                onChange={e=>setSearch(e.target.value)}
-                placeholder="Search user profile... (F2)"
-                className="h-9 pl-9 pr-3 rounded-xl bg-secondary/80 border border-border text-xs font-bold focus:outline-none"
-              />
-            </div>
-            
-            <select 
-              value={filterRole}
-              onChange={e=>setFilterRole(e.target.value)}
-              className="h-9 px-2.5 rounded-xl bg-secondary border border-border text-xs font-bold focus:outline-none"
-            >
-              <option value="All">All Roles</option>
-              <option value="Cashier">Cashier</option>
-              <option value="Manager">Manager</option>
-              <option value="Kitchen Staff">Kitchen Staff</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Users table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left border-collapse">
-            <thead className="bg-secondary/30 text-muted-foreground text-xs uppercase font-bold border-b border-border">
-              <tr>
-                <th className="px-6 py-4">Avatar</th>
-                <th className="px-6 py-4">User ID</th>
-                <th className="px-6 py-4">Full Name</th>
-                <th className="px-6 py-4">Username</th>
-                <th className="px-6 py-4">Role Group</th>
-                <th className="px-6 py-4">Active Terminal</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {filteredUsers.map((usr: any) => (
-                <tr 
-                  key={usr.id} 
-                  onClick={() => handleOpenView(usr)}
-                  className="hover:bg-secondary/20 transition-colors cursor-pointer group"
-                >
-                  <td className="px-6 py-3">
-                    <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-sm">
-                      {usr.name.charAt(0)}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 font-bold text-muted-foreground">{usr.id}</td>
-                  <td className="px-6 py-4 font-black text-foreground">{usr.name}</td>
-                  <td className="px-6 py-4 font-semibold text-muted-foreground">{usr.username}</td>
-                  <td className="px-6 py-4 text-xs font-bold">{usr.role}</td>
-                  <td className="px-6 py-4 text-xs font-medium">{usr.device}</td>
-                  <td className="px-6 py-4">
-                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider border ${
-                      usr.status === "Active" ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
-                      usr.status === "Locked" ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' :
-                      'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
-                    }`}>
-                      {usr.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right" onClick={e=>e.stopPropagation()}>
-                    <div className="flex justify-end gap-1.5">
-                      <button 
-                        onClick={() => handleResetPIN(usr)}
-                        className="p-2 bg-secondary hover:bg-border border border-border rounded-xl transition-colors"
-                        title="Reset Security PIN"
-                      >
-                        <Key className="w-3.5 h-3.5 text-amber-500" />
-                      </button>
-                      <button 
-                        onClick={() => handleToggleLock(usr)}
-                        className="p-2 bg-secondary hover:bg-border border border-border rounded-xl transition-colors"
-                        title={usr.status === "Locked" ? "Unlock Account" : "Lock Account"}
-                      >
-                        {usr.status === "Locked" ? <Unlock className="w-3.5 h-3.5 text-emerald-500" /> : <Lock className="w-3.5 h-3.5 text-rose-500" />}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ====================================================
-          AUDIT LOG PREVIEW
-          ==================================================== */}
-      <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4">
-        <h3 className="text-base font-black uppercase tracking-wider text-foreground">Recent Security Audits</h3>
-        <div className="space-y-2 font-mono text-[10px]">
-          {auditLogs.map((log, idx) => (
-            <div key={idx} className="flex justify-between items-center py-2 border-b border-border/20">
-              <div className="flex gap-2">
-                <span className="text-muted-foreground">{log.time}</span>
-                <span className="text-foreground font-semibold">{log.msg}</span>
-              </div>
-              <span className="text-primary font-black">{log.user}</span>
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-4 shrink-0">
+          {[
+            { label: "Total Users", value: stats.total, color: "text-blue-600", bg: "bg-blue-50" },
+            { label: "Active", value: stats.active, color: "text-emerald-600", bg: "bg-emerald-50" },
+            { label: "Inactive", value: stats.inactive, color: "text-slate-600", bg: "bg-slate-100" },
+            { label: "Locked", value: stats.locked, color: "text-red-600", bg: "bg-red-50" },
+          ].map((stat, i) => (
+            <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+              <p className="text-sm text-slate-500 font-medium mb-1">{stat.label}</p>
+              <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
             </div>
           ))}
         </div>
-      </div>
 
-      {/* ====================================================
-          USER DETAILS DRAWER (RIGHT-SIDE)
-          ==================================================== */}
+        {/* Filters */}
+        <div className="flex gap-4 shrink-0 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex-1 relative">
+            <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search by name or username..." 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+            />
+          </div>
+          <select 
+            value={statusFilter} 
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-40 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+          >
+            <option value="All">All Status</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+            <option value="Locked">Locked</option>
+          </select>
+          <select 
+            value={roleFilter} 
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="w-40 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+          >
+            <option value="All">All Roles</option>
+            {roles.map(r => (
+              <option key={r.id} value={r.name}>{r.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Table */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex-1 flex flex-col">
+          <div className="overflow-auto flex-1">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-600 font-medium sticky top-0 z-10">
+                <tr>
+                  <th className="px-6 py-4 border-b border-slate-200">Name</th>
+                  <th className="px-6 py-4 border-b border-slate-200">Username</th>
+                  <th className="px-6 py-4 border-b border-slate-200">Role</th>
+                  <th className="px-6 py-4 border-b border-slate-200">Status</th>
+                  <th className="px-6 py-4 border-b border-slate-200">Last Login</th>
+                  <th className="px-6 py-4 border-b border-slate-200 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                      No users found matching your filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUsers.map(user => {
+                    const isLocked = user.locked_until && new Date(user.locked_until) > new Date()
+                    return (
+                      <tr key={user.id} className="hover:bg-slate-50/50 transition-colors group">
+                        <td className="px-6 py-4 font-medium text-slate-800">
+                          {user.first_name} {user.last_name}
+                        </td>
+                        <td className="px-6 py-4 text-slate-600">{user.username}</td>
+                        <td className="px-6 py-4">
+                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+                            {user.role_name}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {isLocked ? (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-100 inline-flex items-center gap-1">
+                              <Lock className="w-3 h-3" /> Locked
+                            </span>
+                          ) : user.is_active ? (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 inline-flex items-center gap-1">
+                              <CheckCircle className="w-3 h-3" /> Active
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                              <XCircle className="w-3 h-3" /> Inactive
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-slate-500">
+                          {user.last_login ? new Date(user.last_login).toLocaleString() : 'Never'}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                              onClick={() => openDrawer("reset-pin", user)}
+                              title="Reset PIN"
+                              className="p-1.5 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded transition-colors"
+                            >
+                              <Key className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => openDrawer("edit", user)}
+                              title="Edit User"
+                              className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-colors"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleToggleStatus(user)}
+                              title={user.is_active ? "Deactivate" : "Activate"}
+                              className={`p-1.5 rounded transition-colors ${user.is_active ? 'text-slate-400 hover:text-red-500 hover:bg-red-50' : 'text-slate-400 hover:text-emerald-500 hover:bg-emerald-50'}`}
+                            >
+                              {user.is_active ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
+
+      {/* Drawer */}
       <AnimatePresence>
-        {isDrawerOpen && selectedUser && (
-          <div className="fixed inset-0 z-50 flex justify-end">
-            
-            {/* Backdrop */}
+        {isDrawerOpen && (
+          <>
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40"
               onClick={() => setIsDrawerOpen(false)}
-              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             />
-
-            {/* Drawer Body */}
             <motion.div 
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 220 }}
-              className="relative w-full max-w-lg bg-card border-l border-border shadow-2xl flex flex-col h-full z-10 overflow-hidden text-foreground"
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 bottom-0 w-[450px] bg-white z-50 shadow-2xl flex flex-col border-l border-slate-200"
             >
-              <form onSubmit={handleSaveUser} className="flex flex-col h-full">
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+                <h2 className="text-xl font-bold text-slate-800">
+                  {drawerMode === 'add' ? 'Add User' : drawerMode === 'edit' ? 'Edit User' : 'Reset PIN'}
+                </h2>
+                <button 
+                  onClick={() => setIsDrawerOpen(false)}
+                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-auto p-6">
+                {formError && (
+                  <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-sm font-medium border border-red-100 flex items-start gap-2">
+                    <XCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                    {formError}
+                  </div>
+                )}
                 
-                {/* Header */}
-                <div className="p-6 border-b border-border bg-secondary/30 flex justify-between items-center shrink-0">
-                  <div>
-                    <h2 className="text-lg font-black text-foreground">
-                      {drawerMode === 'add' ? "Add Security Account" : "Operator Details"}
-                    </h2>
-                    <p className="text-xs text-muted-foreground font-semibold mt-1">
-                      {drawerMode === 'add' ? "Create user profile" : `Operator ID: ${selectedUser.id}`}
-                    </p>
-                  </div>
-                  <button 
-                    type="button"
-                    onClick={() => setIsDrawerOpen(false)}
-                    className="p-2 bg-secondary hover:bg-border rounded-xl text-muted-foreground border border-border transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Form fields */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 bg-background/40">
-                  
-                  <div className="flex flex-col items-center py-4 bg-card border border-border rounded-2xl">
-                    <div className="w-16 h-16 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-2xl">
-                      {selectedUser.name ? selectedUser.name.charAt(0) : "?"}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs uppercase font-black text-muted-foreground">Full Name</label>
-                      <input 
-                        required
-                        disabled={drawerMode === "view"}
-                        type="text"
-                        value={selectedUser.name}
-                        onChange={e => setSelectedUser({ ...selectedUser, name: e.target.value })}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border outline-none text-xs font-black text-foreground disabled:opacity-60"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs uppercase font-black text-muted-foreground">Username</label>
-                      <input 
-                        required
-                        disabled={drawerMode === "view"}
-                        type="text"
-                        value={selectedUser.username}
-                        onChange={e => setSelectedUser({ ...selectedUser, username: e.target.value })}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border outline-none text-xs font-black text-foreground disabled:opacity-60"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs uppercase font-black text-muted-foreground">Assigned Role</label>
-                      <select 
-                        disabled={drawerMode === "view"}
-                        value={selectedUser.role}
-                        onChange={e => setSelectedUser({ ...selectedUser, role: e.target.value })}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border outline-none text-xs font-bold text-foreground disabled:opacity-60"
-                      >
-                        <option value="Cashier">Cashier Operator</option>
-                        <option value="Manager">Override Manager</option>
-                        <option value="Kitchen Staff">Kitchen Staff</option>
-                        <option value="Super Admin">Super Administrator</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs uppercase font-black text-muted-foreground">Security PIN</label>
-                      <input 
-                        required
-                        disabled={drawerMode === "view"}
-                        type="password"
-                        maxLength={4}
-                        placeholder="••••"
-                        value={selectedUser.pin}
-                        onChange={e => setSelectedUser({ ...selectedUser, pin: e.target.value })}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border outline-none text-xs font-black text-foreground disabled:opacity-60"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs uppercase font-black text-muted-foreground">Phone Number</label>
-                      <input 
-                        disabled={drawerMode === "view"}
-                        type="text"
-                        value={selectedUser.phone}
-                        onChange={e => setSelectedUser({ ...selectedUser, phone: e.target.value })}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border outline-none text-xs font-black text-foreground disabled:opacity-60"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs uppercase font-black text-muted-foreground">Account Status</label>
-                      <select 
-                        disabled={drawerMode === "view"}
-                        value={selectedUser.status}
-                        onChange={e => setSelectedUser({ ...selectedUser, status: e.target.value })}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border outline-none text-xs font-bold text-foreground disabled:opacity-60"
-                      >
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
-                        <option value="Locked">Locked</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {drawerMode === "view" && (
-                    <div className="p-4 bg-secondary/40 border border-border rounded-2xl text-xs space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Current Active Session:</span>
-                        <span className="font-black text-foreground">{selectedUser.sessionDuration}</span>
+                <form id="user-form" onSubmit={handleSave} className="space-y-5">
+                  {(drawerMode === 'add' || drawerMode === 'edit') && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-slate-700">First Name *</label>
+                          <input 
+                            type="text" 
+                            required
+                            value={formData.firstName}
+                            onChange={(e) => setFormData({...formData, firstName: e.target.value})}
+                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-slate-700">Last Name</label>
+                          <input 
+                            type="text" 
+                            value={formData.lastName}
+                            onChange={(e) => setFormData({...formData, lastName: e.target.value})}
+                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                          />
+                        </div>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Joined Date:</span>
-                        <span className="font-black text-foreground">{selectedUser.joinedDate}</span>
+                      
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-slate-700">Username *</label>
+                        <input 
+                          type="text" 
+                          required
+                          disabled={drawerMode === 'edit'}
+                          value={formData.username}
+                          onChange={(e) => setFormData({...formData, username: e.target.value})}
+                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all disabled:opacity-50 disabled:bg-slate-100"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-slate-700">Role *</label>
+                        <select 
+                          required
+                          value={formData.roleId}
+                          onChange={(e) => setFormData({...formData, roleId: e.target.value})}
+                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                        >
+                          <option value="">Select a role...</option>
+                          {availableRoles.map(r => (
+                            <option key={r.id} value={r.id}>{r.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {drawerMode === 'edit' && (
+                         <div className="flex items-center gap-3 mt-4">
+                           <input 
+                             type="checkbox" 
+                             id="isActive"
+                             checked={formData.isActive}
+                             onChange={(e) => setFormData({...formData, isActive: e.target.checked})}
+                             className="w-5 h-5 text-orange-500 border-slate-300 rounded focus:ring-orange-500"
+                           />
+                           <label htmlFor="isActive" className="text-sm font-medium text-slate-700 cursor-pointer">
+                             Active Account
+                           </label>
+                         </div>
+                      )}
+                    </>
+                  )}
+
+                  {(drawerMode === 'add' || drawerMode === 'reset-pin') && (
+                    <div className="pt-4 border-t border-slate-100 space-y-4">
+                      {drawerMode === 'add' && <h3 className="font-semibold text-slate-800">Security</h3>}
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-slate-700">PIN (min 4 digits) *</label>
+                        <input 
+                          type="password"
+                          required
+                          maxLength={6}
+                          pattern="\d*"
+                          inputMode="numeric"
+                          value={formData.pinCode}
+                          onChange={(e) => setFormData({...formData, pinCode: e.target.value.replace(/\D/g, '')})}
+                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-slate-700">Confirm PIN *</label>
+                        <input 
+                          type="password"
+                          required
+                          maxLength={6}
+                          pattern="\d*"
+                          inputMode="numeric"
+                          value={formData.confirmPinCode}
+                          onChange={(e) => setFormData({...formData, confirmPinCode: e.target.value.replace(/\D/g, '')})}
+                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                        />
                       </div>
                     </div>
                   )}
+                </form>
+              </div>
 
-                </div>
-
-                {/* Footer Buttons */}
-                <div className="p-6 border-t border-border bg-card grid grid-cols-2 gap-2 shrink-0">
-                  {drawerMode === "view" ? (
-                    <>
-                      <button 
-                        type="button" 
-                        onClick={() => setDrawerMode("edit")}
-                        className="py-3 bg-primary text-white hover:bg-primary/95 font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md"
-                      >
-                        Edit Operator
-                      </button>
-                      <button 
-                        type="button" 
-                        onClick={() => handleResetPIN(selectedUser)}
-                        className="py-3 bg-secondary hover:bg-border border border-border text-foreground font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
-                      >
-                        Reset PIN
-                      </button>
-                    </>
+              <div className="p-6 border-t border-slate-100 bg-slate-50 shrink-0 flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setIsDrawerOpen(false)}
+                  className="flex-1 px-4 py-3 bg-white border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  form="user-form"
+                  disabled={isSubmitting}
+                  className="flex-1 px-4 py-3 bg-orange-500 text-white font-semibold rounded-xl hover:bg-orange-600 transition-colors disabled:opacity-50 flex justify-center items-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <RefreshCw className="w-5 h-5 animate-spin" />
                   ) : (
-                    <>
-                      <button 
-                        type="submit"
-                        className="py-3 bg-primary text-white hover:bg-primary/95 font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md"
-                      >
-                        Save User
-                      </button>
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          if (drawerMode === "add") {
-                            setIsDrawerOpen(false)
-                          } else {
-                            setDrawerMode("view")
-                          }
-                        }}
-                        className="py-3 bg-secondary hover:bg-border border border-border text-foreground font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </>
+                    "Save Changes"
                   )}
-                </div>
-
-              </form>
+                </button>
+              </div>
             </motion.div>
-          </div>
+          </>
         )}
       </AnimatePresence>
-
     </div>
   )
 }

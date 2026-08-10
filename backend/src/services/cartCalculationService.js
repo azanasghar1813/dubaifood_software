@@ -122,9 +122,11 @@ class CartCalculationService {
     // 4. Combo components
     const resolvedCombos = [];
     let comboPriceAdj = 0;
+    
+    const inputComboComps = itemInput.comboComponents || itemInput.combo_components;
 
-    if (Array.isArray(itemInput.comboComponents) && itemInput.comboComponents.length > 0) {
-      for (const comp of itemInput.comboComponents) {
+    if (Array.isArray(inputComboComps) && inputComboComps.length > 0) {
+      for (const comp of inputComboComps) {
         const compProd = productRepository.findById(comp.product_id);
         if (compProd) {
           const adj = Number(comp.price_adjustment || 0);
@@ -132,9 +134,17 @@ class CartCalculationService {
           resolvedCombos.push({
             component_id: comp.component_id || null,
             product_id: compProd.id,
-            product_name: compProd.display_name || compProd.name,
-            variant_name: comp.variant_name || null,
+            product_name: compProd.display_name || compProd.name || comp.product_name_snapshot,
+            variant_name: comp.variant_snapshot || comp.variant_name || null,
             price_adjustment: adj
+          });
+        } else if (comp.is_dummy || comp.product_id?.startsWith('dummy')) {
+          resolvedCombos.push({
+            component_id: comp.component_id || null,
+            product_id: comp.product_id || 'DUMMY',
+            product_name: comp.product_name_snapshot || comp.product_name || comp.name || 'Generic Item',
+            variant_name: comp.variant_snapshot || comp.variant_name || null,
+            price_adjustment: 0
           });
         }
       }

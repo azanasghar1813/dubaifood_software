@@ -89,8 +89,11 @@ const ReceiptTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
             <tr key={idx} className="align-top">
               <td className="py-1">
                 <div className="font-bold">{item.name}</div>
-                {item.selectedModifiers?.map(m => (
+                {item.selectedModifiers?.map((m: any) => (
                   <div key={m.name} className="text-xs pl-2">+ {m.name}</div>
+                ))}
+                {(item as any).combo_components?.map((c: any, idx: number) => (
+                  <div key={idx} className="text-xs pl-2">- {c.quantity > 1 ? `${c.quantity}x ` : ''}{c.product_name_snapshot} {c.variant_snapshot && `(${c.variant_snapshot})`}</div>
                 ))}
               </td>
               <td className="text-center py-1">{item.quantity}</td>
@@ -186,8 +189,16 @@ const KitchenTicketTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
             
             {item.modifiers?.length > 0 && (
               <div className="pl-8 text-sm mt-1 space-y-1">
-                {item.modifiers.map(m => (
+                {item.modifiers.map((m: any) => (
                   <div key={m.name}>- {m.name}</div>
+                ))}
+              </div>
+            )}
+            
+            {(item as any).combo_components && (item as any).combo_components.length > 0 && (
+              <div style={{ fontSize: '10px', color: '#555', marginTop: '2px', paddingLeft: '4px', borderLeft: '1px solid #ccc', marginLeft: '8px' }}>
+                {(item as any).combo_components.map((c: any, cidx: number) => (
+                  <div key={cidx}>- {c.quantity > 1 ? `${c.quantity}x ` : ''}{c.product_name_snapshot} {c.variant_snapshot && `(${c.variant_snapshot})`}</div>
                 ))}
               </div>
             )}

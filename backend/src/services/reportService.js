@@ -67,11 +67,12 @@ export const reportService = {
     const summaryQuery = `
       SELECT 
         COUNT(DISTINCT o.id) as ordersCount,
-        SUM(o.grand_total) as netSales,
-        SUM(o.subtotal) as grossSales,
+        SUM(o.subtotal + o.tax_total - o.discount_total) as netSales,
+        SUM(o.grand_total) as grossSales,
         SUM(o.discount_total) as discounts,
         SUM(o.tax_total) as tax,
         SUM(o.delivery_fee) as deliveryCharges,
+        SUM(COALESCE(o.service_charge, 0)) as serviceCharges,
         SUM(CASE WHEN o.lifecycle_state IN ('CANCELLED', 'REFUNDED') THEN o.grand_total ELSE 0 END) as refunds
       FROM orders o
       WHERE ${where}
@@ -94,13 +95,13 @@ export const reportService = {
     const ordersCount = summary.ordersCount || 0;
 
     return {
-      grossSales: summary.grossSales || 0,
+      grossSales: (summary.grossSales || 0) - refunds,
       netSales: actualNet,
       ordersCount: ordersCount,
       itemsSold: items.itemsSold || 0,
       discounts: summary.discounts || 0,
       tax: summary.tax || 0,
-      serviceCharges: 0, // Currently no explicit service charge col in orders, relying on items or tax
+      serviceCharges: summary.serviceCharges || 0,
       deliveryCharges: summary.deliveryCharges || 0,
       refunds: refunds,
       averageOrderValue: ordersCount > 0 ? (actualNet / ordersCount) : 0
@@ -113,21 +114,54 @@ export const reportService = {
     // Fetch hierarchical sales
     // We group by main category, sub category, product
     const query = `
+      WITH AllSales AS (
+        -- Regular Items
+        SELECT 
+          oi.order_id,
+          oi.product_id,
+          oi.quantity as qty,
+          oi.base_unit_price,
+          oi.discount_amount,
+          oi.tax_amount,
+          oi.total_amount
+        FROM order_items oi
+        
+        UNION ALL
+        
+        -- Deal Components
+        SELECT 
+          oi.order_id,
+          occ.product_id,
+          occ.quantity as qty,
+          occ.price_adjustment as base_unit_price,
+          0 as discount_amount,
+          0 as tax_amount,
+          (occ.quantity * occ.price_adjustment) as total_amount
+        FROM order_combo_components occ
+        JOIN order_items oi ON occ.order_item_id = oi.id
+      )
       SELECT 
-        COALESCE(c2.name, c1.name, 'Uncategorized') as main_category,
-        COALESCE(c1.name, 'Uncategorized') as sub_category,
-        p.name as product_name,
-        p.id as product_id,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN oi.quantity ELSE 0 END) as qty,
+        COALESCE(
+          CASE WHEN d.id IS NOT NULL THEN 'Deals' END,
+          c2.name, c1.name, 'Uncategorized'
+        ) as main_category,
+        COALESCE(
+          CASE WHEN d.id IS NOT NULL THEN d.name END,
+          c1.name, 'Uncategorized'
+        ) as sub_category,
+        COALESCE(p.name, d.name) as product_name,
+        COALESCE(p.id, d.id) as product_id,
+        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.qty ELSE 0 END) as qty,
         COUNT(DISTINCT CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN o.id END) as orders,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN oi.quantity * oi.base_unit_price ELSE 0 END) as gross,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN oi.discount_amount ELSE 0 END) as discount,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN oi.tax_amount ELSE 0 END) as tax,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN oi.total_amount ELSE 0 END) as net,
-        SUM(CASE WHEN o.lifecycle_state IN ('CANCELLED', 'REFUNDED') THEN oi.total_amount ELSE 0 END) as refunds
-      FROM order_items oi
-      JOIN orders o ON oi.order_id = o.id
-      LEFT JOIN products p ON oi.product_id = p.id
+        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.qty * a.base_unit_price ELSE 0 END) as gross,
+        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.discount_amount ELSE 0 END) as discount,
+        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.tax_amount ELSE 0 END) as tax,
+        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.total_amount ELSE 0 END) as net,
+        SUM(CASE WHEN o.lifecycle_state IN ('CANCELLED', 'REFUNDED') THEN a.total_amount ELSE 0 END) as refunds
+      FROM AllSales a
+      JOIN orders o ON a.order_id = o.id
+      LEFT JOIN products p ON a.product_id = p.id
+      LEFT JOIN deals d ON a.product_id = d.id
       LEFT JOIN categories c1 ON p.category_id = c1.id
       LEFT JOIN categories c2 ON c1.parent_id = c2.id
       WHERE ${where}
@@ -138,6 +172,29 @@ export const reportService = {
     
     const rows = dbEngine.all(query, ...params);
     return rows;
+  },
+  
+  getRecentItems: async (filters) => {
+    const { where, params } = buildWhereClause(filters, 'o');
+    
+    const query = `
+      SELECT 
+        COALESCE(oi.product_name_snapshot, p.name, d.name, 'Unknown') as name,
+        COALESCE(c.name, 'Other') as cat,
+        oi.quantity as qty,
+        oi.total_amount as price,
+        o.created_at as time
+      FROM order_items oi
+      JOIN orders o ON oi.order_id = o.id
+      LEFT JOIN products p ON oi.product_id = p.id
+      LEFT JOIN deals d ON oi.product_id = d.id
+      LEFT JOIN categories c ON p.category_id = c.id
+      WHERE ${where} AND o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED')
+      ORDER BY o.created_at DESC
+      LIMIT 10
+    `;
+    
+    return dbEngine.all(query, ...params);
   },
   
   getTrends: async (filters) => {
@@ -162,13 +219,20 @@ export const reportService = {
     // removed getDb
     
     const query = `
+      WITH AllSales AS (
+        SELECT order_id, product_id, quantity as qty, total_amount as net FROM order_items
+        UNION ALL
+        SELECT oi.order_id, occ.product_id, occ.quantity as qty, (occ.quantity * occ.price_adjustment) as net
+        FROM order_combo_components occ
+        JOIN order_items oi ON occ.order_item_id = oi.id
+      )
       SELECT 
         o.order_type,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN oi.quantity ELSE 0 END) as qty,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN oi.total_amount ELSE 0 END) as net
-      FROM order_items oi
-      JOIN orders o ON oi.order_id = o.id
-      WHERE ${where} AND oi.product_id = ?
+        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.qty ELSE 0 END) as qty,
+        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.net ELSE 0 END) as net
+      FROM AllSales a
+      JOIN orders o ON a.order_id = o.id
+      WHERE ${where} AND a.product_id = ?
       GROUP BY o.order_type
     `;
     

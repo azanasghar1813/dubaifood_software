@@ -1,32 +1,73 @@
 import { useState, useRef, useEffect } from "react"
 import { useUIStore } from "../store/uiStore"
 import { useAuthStore } from "../store/authStore"
-import { Bell,  LogOut, Users, X, ChevronDown, Lock, User as UserIcon, Wifi, Printer, Clock, RefreshCw, Calendar, Search, Settings, Sun, Moon, Minus, Square } from "lucide-react"
+import { authService } from "../services/authService"
+import { usePrinterStore } from "../store/printerStore"
+import { apiClient } from "../api/client"
+import { Bell,  LogOut, Users, X, ChevronDown, Lock, User as UserIcon, Wifi, WifiOff, Printer, Clock, RefreshCw, Calendar, Search, Settings, Sun, Moon, Minus, Square, Loader2 } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 
 export default function TopNavbar() {
   const {} = useUIStore()
-  const { user, logout } = useAuthStore()
+  const { user, logout, setSession } = useAuthStore()
   const navigate = useNavigate()
   
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [isSwitchModalOpen, setIsSwitchModalOpen] = useState(false)
   
   // Switch Cashier State
-  const dummyCashiers = [{ id: '1', name: 'Ali (Mock)', role: 'cashier', shift_id: '1', initial_float: 0 }]
-  const [selectedCashier, setSelectedCashier] = useState(dummyCashiers[0])
+  const [cashiers, setCashiers] = useState<{ id: string, name: string, username: string }[]>([])
+  const [selectedCashier, setSelectedCashier] = useState<any>(null)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [pin, setPin] = useState("")
   const [error, setError] = useState("")
+  const [isLoadingSwitch, setIsLoadingSwitch] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
+  
+  // Status Indicators State
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [isServerOnline, setIsServerOnline] = useState(true)
+  const [isCheckingServer, setIsCheckingServer] = useState(false)
+  const printers = usePrinterStore((state) => state.printers)
+  const activePrintersCount = printers.filter(p => p.status === 'Online' || p.current_status === 'ONLINE').length
 
   const profileRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    // Network status
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    // Initial server check
+    checkServerHealth()
+    
+    // Server polling every 30 seconds
+    const serverCheckInterval = setInterval(checkServerHealth, 30000)
+    
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    return () => clearInterval(timer)
+    
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+      clearInterval(serverCheckInterval)
+      clearInterval(timer)
+    }
   }, [])
+
+  const checkServerHealth = async () => {
+    setIsCheckingServer(true)
+    try {
+      await apiClient.get('/health')
+      setIsServerOnline(true)
+    } catch (e) {
+      setIsServerOnline(false)
+    } finally {
+      setIsCheckingServer(false)
+    }
+  }
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -43,17 +84,47 @@ export default function TopNavbar() {
     navigate("/login")
   }
 
-  const handleSwitchCashier = (e: React.FormEvent) => {
+  const handleSwitchCashier = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError("Shift Engine not yet integrated. Please logout.")
+    if (!selectedCashier) return
+    setIsLoadingSwitch(true)
+    setError("")
+    try {
+      const response = await authService.login({ username: selectedCashier.username, pin })
+      if (response.success && response.data) {
+        setSession(response.data.user as any, response.data.token, response.data.cashierSessionId)
+        setIsSwitchModalOpen(false)
+        navigate('/dashboard')
+      }
+    } catch (e: any) {
+      setError(e.response?.data?.message || "Invalid PIN")
+    } finally {
+      setIsLoadingSwitch(false)
+    }
   }
 
-  const openSwitchModal = () => {
+  const openSwitchModal = async () => {
     setIsProfileOpen(false)
     setIsSwitchModalOpen(true)
-    setSelectedCashier(dummyCashiers[0])
     setPin("")
     setError("")
+    setIsLoadingSwitch(true)
+    try {
+      const res = await authService.getUsers()
+      if (res.data) {
+        const users = (res.data as any).map((u: any) => ({
+          id: u.id,
+          username: u.username,
+          name: `${u.firstName || u.username} ${u.lastName || ''}`.trim()
+        }))
+        setCashiers(users)
+        if (users.length > 0) setSelectedCashier(users[0])
+      }
+    } catch (e: any) {
+      setError("Failed to load users.")
+    } finally {
+      setIsLoadingSwitch(false)
+    }
   }
 
   return (
@@ -75,11 +146,23 @@ export default function TopNavbar() {
           
           {/* Status Indicators */}
           <div className="hidden lg:flex items-center gap-4 px-4 py-1.5 border-r border-border/50 text-muted-foreground">
-            <button className="flex items-center gap-1.5 hover:text-foreground transition-colors" title="Sync Data">
-              <RefreshCw className="w-4 h-4 text-blue-500" />
+            <button 
+              onClick={checkServerHealth}
+              className="flex items-center gap-1.5 hover:text-foreground transition-colors" 
+              title={isServerOnline ? "Server Connected" : "Server Disconnected (Click to retry)"}
+            >
+              <RefreshCw className={`w-4 h-4 ${isServerOnline ? 'text-blue-500' : 'text-red-500'} ${isCheckingServer ? 'animate-spin' : ''}`} />
             </button>
-            <Wifi className="w-4 h-4 text-emerald-500" />
-            <Printer className="w-4 h-4 text-emerald-500" />
+            <div title={isOnline ? "Internet Connected" : "No Internet Connection"}>
+              {isOnline ? (
+                <Wifi className="w-4 h-4 text-emerald-500" />
+              ) : (
+                <WifiOff className="w-4 h-4 text-red-500" />
+              )}
+            </div>
+            <div title={`${activePrintersCount} Printer(s) Online`}>
+              <Printer className={`w-4 h-4 ${activePrintersCount > 0 ? 'text-emerald-500' : 'text-amber-500'}`} />
+            </div>
             <div className="flex flex-col items-end justify-center px-4 py-1 border-r border-border/50">
               <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-widest">
                 <Calendar className="w-3.5 h-3.5" />
@@ -226,7 +309,7 @@ export default function TopNavbar() {
                       <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                         <UserIcon className="w-4 h-4" />
                       </div>
-                      <span className="font-bold">{selectedCashier.name}</span>
+                      <span className="font-bold">{selectedCashier?.name || "Loading..."}</span>
                       <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
                     </div>
                     
@@ -236,16 +319,16 @@ export default function TopNavbar() {
                         animate={{ opacity: 1, y: 0 }}
                         className="absolute top-full left-0 w-full mt-1 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden"
                       >
-                        {dummyCashiers.map(cashier => (
+                        {cashiers.map(cashier => (
                           <div 
                             key={cashier.id}
                             onClick={() => {
                               setSelectedCashier(cashier)
                               setIsDropdownOpen(false)
                             }}
-                            className={`px-4 py-2 text-sm cursor-pointer hover:bg-secondary transition-colors font-bold ${selectedCashier.id === cashier.id ? 'bg-primary/10 text-primary' : ''}`}
+                            className={`px-4 py-2 text-sm cursor-pointer hover:bg-secondary transition-colors font-bold ${selectedCashier?.id === cashier.id ? 'bg-primary/10 text-primary' : ''}`}
                           >
-                            {cashier.name}
+                            {cashier.name} ({cashier.username})
                           </div>
                         ))}
                       </motion.div>
@@ -276,10 +359,10 @@ export default function TopNavbar() {
 
                 <button 
                   type="submit" 
-                  disabled={pin.length < 4}
-                  className="w-full h-12 mt-2 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary/90 transition-all shadow-md shadow-primary/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={pin.length < 4 || isLoadingSwitch}
+                  className="w-full h-12 mt-2 flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary/90 transition-all shadow-md shadow-primary/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Switch Session
+                  {isLoadingSwitch ? <Loader2 className="w-5 h-5 animate-spin" /> : "Switch Session"}
                 </button>
               </form>
             </motion.div>

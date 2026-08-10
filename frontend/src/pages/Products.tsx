@@ -241,13 +241,28 @@ export default function Products() {
           fetchProductsAndCategories()
         }
       } else if (drawerMode === "edit") {
-        const res = await menuService.updateProduct(selectedProduct.id, payload)
-        if (res.data) {
-          toast.success("Product updated")
-          setDrawerMode("view")
-          setIsDrawerOpen(false)
-          setSelectedProduct(formatResponseProduct(res.data))
-          fetchProductsAndCategories()
+        if (selectedProduct.isDeal) {
+          const res = await menuService.updateDeal(selectedProduct.id, {
+            name: payload.name,
+            code: payload.product_code,
+            price: payload.price,
+            is_active: payload.status === "AVAILABLE" ? 1 : 0
+          })
+          if (res.data) {
+            toast.success("Deal updated")
+            setDrawerMode("view")
+            setIsDrawerOpen(false)
+            fetchProductsAndCategories()
+          }
+        } else {
+          const res = await menuService.updateProduct(selectedProduct.id, payload)
+          if (res.data) {
+            toast.success("Product updated")
+            setDrawerMode("view")
+            setIsDrawerOpen(false)
+            setSelectedProduct(formatResponseProduct(res.data))
+            fetchProductsAndCategories()
+          }
         }
       }
     } catch (error: any) {
@@ -310,7 +325,6 @@ export default function Products() {
   const handleOpenAdd = () => {
     setSelectedProduct({
       id: "",
-      code: Math.floor(1000 + Math.random() * 9000).toString(),
       barcode: `8801${Math.floor(100000 + Math.random() * 900000)}`,
       name: "",
       category: "Burgers",
@@ -343,10 +357,11 @@ export default function Products() {
     }
     const duplicated = {
       ...prod,
-      code: (parseInt(prod.code) + 1).toString(),
       name: `${prod.name} (Copy)`
     }
     delete duplicated.id // Backend will assign a new ID
+    delete duplicated.code
+    delete duplicated.product_code
     delete duplicated._id
 
     try {
@@ -975,17 +990,6 @@ export default function Products() {
                     {/* Core Properties */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="text-xs uppercase font-black text-muted-foreground">Product Code</label>
-                        <input
-                          required
-                          disabled={drawerMode === "view"}
-                          type="text"
-                          value={selectedProduct.code}
-                          onChange={e => setSelectedProduct({ ...selectedProduct, code: e.target.value })}
-                          className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-black text-foreground disabled:opacity-60"
-                        />
-                      </div>
-                      <div className="space-y-1">
                         <label className="text-xs uppercase font-black text-muted-foreground">Kitchen Assignment</label>
                         <select
                           disabled={drawerMode === "view"}
@@ -998,6 +1002,20 @@ export default function Products() {
                           <option value="Drinks">Drinks Bar</option>
                         </select>
                       </div>
+                      <div className="space-y-1">
+                        <label className="text-xs uppercase font-black text-muted-foreground">Status</label>
+                        <select
+                          disabled={drawerMode === "view"}
+                          value={selectedProduct.status}
+                          onChange={e => setSelectedProduct({ ...selectedProduct, status: e.target.value })}
+                          className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-bold text-foreground disabled:opacity-60"
+                        >
+                          <option value="Active">Active</option>
+                          <option value="Draft">Draft</option>
+                          <option value="Archived">Archived</option>
+                        </select>
+                      </div>
+
                       <div className="col-span-2 space-y-1">
                         <label className="text-xs uppercase font-black text-muted-foreground">Product Name</label>
                         <input

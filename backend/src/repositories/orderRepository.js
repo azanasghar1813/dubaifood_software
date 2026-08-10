@@ -6,13 +6,13 @@ class OrderRepository {
       INSERT INTO orders (
         id, order_number, business_date, branch_id, cashier_user_id, shift_id,
         customer_id, table_id, order_type, lifecycle_state, kitchen_state, payment_state, delivery_state,
-        subtotal, tax_total, discount_total, tip_total, delivery_fee, grand_total,
+        subtotal, tax_total, discount_total, tip_total, delivery_fee, service_charge, grand_total,
         paid_total, due_total, hold_name, held_at, notes, sync_status, sync_version,
         created_at, updated_at
       ) VALUES (
         @id, @order_number, @business_date, @branch_id, @cashier_user_id, @shift_id,
         @customer_id, @table_id, @order_type, @lifecycle_state, @kitchen_state, @payment_state, @delivery_state,
-        @subtotal, @tax_total, @discount_total, @tip_total, @delivery_fee, @grand_total,
+        @subtotal, @tax_total, @discount_total, @tip_total, @delivery_fee, @service_charge, @grand_total,
         @paid_total, @due_total, @hold_name, @held_at, @notes, @sync_status, @sync_version,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       )
@@ -35,6 +35,7 @@ class OrderRepository {
       discount_total: orderData.discount_total || 0,
       tip_total: orderData.tip_total || 0,
       delivery_fee: orderData.delivery_fee || 0,
+      service_charge: orderData.service_charge || 0,
       grand_total: orderData.grand_total || 0,
       paid_total: orderData.paid_total || 0,
       due_total: orderData.due_total || 0,

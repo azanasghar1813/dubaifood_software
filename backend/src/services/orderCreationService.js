@@ -114,6 +114,7 @@ class OrderCreationService {
       }
 
       for (const comp of item.comboComponents || []) {
+        if (comp.is_dummy || comp.product_id === 'DUMMY' || comp.product_id?.startsWith('dummy')) continue;
         const comboProduct = productRepository.findById(comp.product_id);
         if (!availabilityService.isOrderable(comboProduct)) {
           throw new Error(`Combo component ${comp.product_id} is not currently orderable.`);
@@ -135,18 +136,14 @@ class OrderCreationService {
       if (!product) continue;
 
       const comboSelections = Array.isArray(item.comboComponents) ? item.comboComponents.length : 0;
-      const groups = Array.isArray(product.groups) ? product.groups : [];
-      if (groups.length === 0) continue;
+      const components = Array.isArray(product.components) ? product.components : [];
+      if (components.length === 0) continue;
 
-      const minRequired = groups.reduce((total, group) => total + (Number(group.min_selection) || 0), 0);
-      const maxAllowed = groups.reduce((total, group) => total + (Number(group.max_selection) || 0), 0);
-
+      const minRequired = components.reduce((total, comp) => total + (Number(comp.quantity) || 1), 0);
+      
+      // In the new system, we just check if they provided the exact required quantity for the deal.
       if (comboSelections < minRequired) {
         throw new Error(`Combo rules are not satisfied for ${product.name || product.display_name || 'deal'}.`);
-      }
-
-      if (maxAllowed > 0 && comboSelections > maxAllowed) {
-        throw new Error(`Combo rules exceed the maximum allowed selections for ${product.name || product.display_name || 'deal'}.`);
       }
     }
   }
@@ -263,6 +260,7 @@ class OrderCreationService {
         tax_total: taxTotal,
         discount_total: discountTotal,
         delivery_fee: deliveryCharges,
+        service_charge: serviceCharge,
         grand_total: grandTotal,
         paid_total: 0,
         due_total: grandTotal,
@@ -300,6 +298,11 @@ class OrderCreationService {
         const resolvedKitchenStation = cartItem.kitchen_station_id || null;
         const resolvedKitchenStationName = resolvedKitchenStation ? printerRepository.findById(resolvedKitchenStation)?.name || null : null;
 
+        const itemTaxAmount = isTaxEnabled ? (Number(cartItem.tax_amount) || 0) : 0;
+        const itemTotalAmount = isTaxEnabled
+          ? (Number(cartItem.total_amount) || 0)
+          : (Number(cartItem.subtotal) || 0);
+
         // Insert order_items row
         orderItemRepository.addItem({
           id: itemId,
@@ -312,9 +315,9 @@ class OrderCreationService {
           quantity: Number(cartItem.quantity) || 1,
           subtotal: Number(cartItem.subtotal) || 0,
           discount_amount: Number(cartItem.discount_amount) || 0,
-          tax_amount: Number(cartItem.tax_amount) || 0,
-          total_amount: Number(cartItem.total_amount) || 0,
-          tax_rate: Number(cartItem.tax_rate) || 0,
+          tax_amount: itemTaxAmount,
+          total_amount: itemTotalAmount,
+          tax_rate: isTaxEnabled ? (Number(cartItem.tax_rate) || 0) : 0,
           tax_name: cartItem.tax_name || 'VAT',
           is_tax_inclusive: cartItem.is_tax_inclusive ? 1 : 0,
           kitchen_station_id: resolvedKitchenStation,

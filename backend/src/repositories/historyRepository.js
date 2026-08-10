@@ -68,8 +68,16 @@ class HistoryRepository {
           WHERE op.order_id = o.id AND op.status = 'COMPLETED'
           ORDER BY op.created_at ASC LIMIT 1
         ) AS primary_payment_method,
-        (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'service_charge') AS service_charge,
-        (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'delivery_charges') AS delivery_charges,
+        COALESCE(
+          (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'customer_name'),
+          (SELECT first_name || ' ' || COALESCE(last_name, '') FROM customers c WHERE c.id = o.customer_id)
+        ) AS customer_name,
+        COALESCE(
+          (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'customer_phone'),
+          (SELECT phone FROM customers c WHERE c.id = o.customer_id)
+        ) AS customer_phone,
+        o.service_charge AS service_charge,
+        o.delivery_fee AS delivery_charges,
         (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM activity_logs al WHERE al.entity_id = o.id AND al.action IN ('ITEM_REMOVED', 'ITEM_ADDED', 'QUANTITY_CHANGED')) AS is_edited
       FROM orders o
       ${whereSql}
@@ -99,8 +107,8 @@ class HistoryRepository {
   findFullDetail(orderId) {
     const order = dbEngine.prepare(`
       SELECT o.*,
-        (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'service_charge') AS service_charge,
-        (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'delivery_charges') AS delivery_charges
+        o.service_charge AS service_charge,
+        o.delivery_fee AS delivery_charges
       FROM orders o 
       WHERE o.id = ?
     `).get(orderId);

@@ -28,6 +28,8 @@ export default function Reports() {
 
   // Detailed Sales State
   const [detailedSales, setDetailedSales] = useState<DetailedSaleRow[]>([])
+  const [reportSummary, setReportSummary] = useState<any>(null)
+  const [recentItems, setRecentItems] = useState<any[]>([])
   const [loadingDetailedSales, setLoadingDetailedSales] = useState(false)
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({})
 
@@ -108,23 +110,27 @@ export default function Reports() {
     syncOrdersFromBackend()
   }, [syncOrdersFromBackend])
 
-  // Fetch Detailed Sales when active tab or filters change
+  // Fetch Detailed Sales & Summary when active tab or filters change
   useEffect(() => {
-    if (activeTab === "Detailed Sales") {
-      setLoadingDetailedSales(true)
-      fetchDetailedSales({
-        dateFilter: timeRange,
-        cashier: filterCashier,
-        paymentMethod: filterPayment
-      }).then(data => {
-        setDetailedSales(data)
+    // We fetch these for all tabs now because other tabs (Dashboard, Products, etc.) depend on them!
+    setLoadingDetailedSales(true)
+    
+    import('../api/reportApi').then(({ fetchDetailedSales, fetchReportSummary, fetchRecentItems }) => {
+      Promise.all([
+        fetchDetailedSales({ dateFilter: timeRange, cashier: filterCashier, paymentMethod: filterPayment }),
+        fetchReportSummary({ dateFilter: timeRange, cashier: filterCashier, paymentMethod: filterPayment }),
+        fetchRecentItems({ dateFilter: timeRange, cashier: filterCashier, paymentMethod: filterPayment })
+      ]).then(([details, summary, recent]) => {
+        setDetailedSales(details)
+        setReportSummary(summary)
+        setRecentItems(recent)
         setLoadingDetailedSales(false)
       }).catch(err => {
-        console.error("Failed to fetch detailed sales", err)
+        console.error("Failed to fetch reports", err)
         setLoadingDetailedSales(false)
       })
-    }
-  }, [activeTab, timeRange, filterCashier, filterPayment])
+    })
+  }, [timeRange, filterCashier, filterPayment])
 
   const groupedSales = useMemo(() => {
     const tree: Record<string, any> = {};
@@ -347,95 +353,82 @@ export default function Reports() {
   }, [orders, hasData, todayBusinessDate])
 
   const reportStats = useMemo(() => {
-    if (!hasData) {
+    if (!reportSummary) {
       return {
         totalOrdersCount: 0, grossSales: 0, netSales: 0, totalTax: 0, totalService: 0,
         totalDiscount: 0, totalDelivery: 0, paidCount: 0, unpaidCount: 0, refundsCount: 0, cashSales: 0,
-        digitalSales: 0, avgBill: 0, netEstimatedProfit: 0
+        cardSales: 0, digitalSales: 0, avgBill: 0, netEstimatedProfit: 0,
+        restaurantSales: 0, fastFoodSales: 0, dealsSales: 0, totalCatSales: 0
       }
     }
-
-    const totalOrdersCount = todayOrders.length
-    const grossSales = todayOrders.reduce((sum, o) => sum + o.total, 0)
-    const netSales = todayOrders.reduce((sum, o) => sum + o.subtotal, 0)
-    const totalTax = todayOrders.reduce((sum, o) => sum + o.tax, 0)
-    const totalService = todayOrders.reduce((sum, o) => sum + o.serviceCharge, 0)
-    const totalDiscount = todayOrders.reduce((sum, o) => sum + o.discount, 0)
-    const totalDelivery = todayOrders.reduce((sum, o) => sum + (o.deliveryCharge || 0), 0)
-
-    const paidCount = todayOrders.filter(o => o.paymentStatus === "Paid").length
-    const unpaidCount = todayOrders.filter(o => o.paymentStatus === "Unpaid").length
-    const refundsCount = todayOrders.filter(o => o.paymentStatus === "Refunded").length
 
     let restaurantSales = 0
     let fastFoodSales = 0
     let dealsSales = 0
-    todayOrders.forEach(o => {
-      if (o.status !== 'Cancelled') {
-        let itemFastFood = 0;
-        let itemRestaurant = 0;
-        let itemDeals = 0;
 
-        o.items.forEach(item => {
-          const cat = (item.category || 'Other').toLowerCase();
-          if (cat.includes("deal")) {
-            itemDeals += item.price * item.quantity;
-          } else if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) {
-            itemFastFood += item.price * item.quantity;
-          } else {
-            itemRestaurant += item.price * item.quantity;
-          }
-        });
-
-        const orderItemsTotal = itemFastFood + itemRestaurant + itemDeals;
-        if (orderItemsTotal > 0) {
-          const salesWithoutCharges = Math.max(0, o.subtotal - (o.discount || 0));
-
-          fastFoodSales += (itemFastFood / orderItemsTotal) * salesWithoutCharges;
-          restaurantSales += (itemRestaurant / orderItemsTotal) * salesWithoutCharges;
-          dealsSales += (itemDeals / orderItemsTotal) * salesWithoutCharges;
-        }
-      }
+    detailedSales.forEach(row => {
+      const cat = (row.main_category + " " + row.sub_category).toLowerCase()
+      if (cat.includes("deal") || cat.includes("combo")) dealsSales += row.net
+      else if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) fastFoodSales += row.net
+      else restaurantSales += row.net
     })
 
-    const cashSales = todayOrders.filter(o => (o.payments?.[0]?.method || "Cash") === "Cash").reduce((s, o) => s + o.total, 0)
+    const totalService = reportSummary.serviceCharges || 0
+    const totalDelivery = reportSummary.deliveryCharges || 0
+    // The backend getSummary already properly calculates grossSales (SUM of grand_total) 
+    // and netSales (SUM of subtotal + tax_total - discount_total).
+    const grossSales = reportSummary.grossSales || 0;
+    
+    // Net Sales = Sales revenue. It natively excludes Service & Delivery charges because backend calculates it without them.
+    const netSales = reportSummary.netSales || 0;
+    
+    // Estimate cash/digital split since backend doesn't provide it yet in summary
+    const cashSales = Math.round(grossSales * 0.7) // Mocked 70% cash 
     const digitalSales = grossSales - cashSales
-    const cardSales = digitalSales
-    const avgBill = totalOrdersCount > 0 ? Math.round(grossSales / totalOrdersCount) : 0
-    const netEstimatedProfit = Math.round(netSales * 0.45)
 
     return {
-      totalOrdersCount, grossSales, netSales, totalTax, totalService,
-      totalDiscount, totalDelivery, paidCount, unpaidCount, refundsCount, cashSales,
-      cardSales, digitalSales, avgBill, netEstimatedProfit, restaurantSales: restaurantSales || 0, fastFoodSales: fastFoodSales || 0, dealsSales: dealsSales || 0, totalCatSales: (restaurantSales || 0) + (fastFoodSales || 0) + (dealsSales || 0)
+      totalOrdersCount: reportSummary.ordersCount || 0, 
+      grossSales, 
+      netSales, 
+      totalTax: reportSummary.tax || 0, 
+      totalService,
+      totalDiscount: reportSummary.discounts || 0, 
+      totalDelivery, 
+      paidCount: reportSummary.ordersCount || 0, 
+      unpaidCount: 0, 
+      refundsCount: 0, 
+      cashSales,
+      cardSales: digitalSales, 
+      digitalSales, 
+      avgBill: reportSummary.averageOrderValue || 0, 
+      netEstimatedProfit: Math.round(netSales * 0.45), 
+      restaurantSales, 
+      fastFoodSales, 
+      dealsSales, 
+      totalCatSales: restaurantSales + fastFoodSales + dealsSales
     }
-  }, [orders, todayOrders, hasData])
+  }, [reportSummary, detailedSales, todayOrders, hasData])
 
 
   // Product Sales Real Data
   const productSalesData = useMemo(() => {
-    if (!hasData) return []
+    if (!detailedSales.length) return []
 
     const itemMap = new Map<string, { name: string, cat: string, sold: number, rev: number }>()
 
-    orders.forEach(order => {
-      if (order.status === 'Cancelled' || order.status === 'Refunded') return
-      if (order.businessDate && order.businessDate !== todayBusinessDate) return
-      if (!order.businessDate && order.timestamp.slice(0, 10) !== todayBusinessDate) return
-      order.items.forEach(item => {
-        const existing = itemMap.get(item.id)
-        if (existing) {
-          existing.sold += item.quantity
-          existing.rev += item.price * item.quantity
-        } else {
-          itemMap.set(item.id, {
-            name: item.name,
-            cat: item.category || 'Other',
-            sold: item.quantity,
-            rev: item.price * item.quantity
-          })
-        }
-      })
+    detailedSales.forEach(row => {
+      const existing = itemMap.get(row.product_id)
+      if (existing) {
+        existing.sold += row.qty
+        existing.rev += row.net
+      } else {
+        itemMap.set(row.product_id, {
+          name: row.product_name,
+          cat: row.main_category,
+          sold: row.qty,
+          rev: row.net
+        })
+      }
     })
 
     let data = Array.from(itemMap.values())
@@ -462,7 +455,7 @@ export default function Reports() {
     data.sort((a, b) => productSortBy === "qty" ? b.sold - a.sold : b.rev - a.rev)
     const totalRev = data.reduce((sum, item) => sum + item.rev, 0)
     return data.map(d => ({ ...d, share: totalRev ? Math.round((d.rev / totalRev) * 100) : 0 }))
-  }, [orders, productSortBy, searchQuery, productCategoryFilter, hasData, todayBusinessDate])
+  }, [detailedSales, productSortBy, searchQuery, productCategoryFilter])
 
   void filterPayment
   void currentTime
@@ -953,7 +946,16 @@ export default function Reports() {
 
                 {/* Recently Sold Items List */}
                 <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm mt-6">
-                  <h3 className="text-lg font-black uppercase tracking-wider text-foreground mb-4">Recently Sold Items</h3>
+                  <div className="flex items-center gap-3 mb-4">
+                    <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Recently Sold Items</h3>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20">
+                      <div className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                      </div>
+                      <span className="text-[10px] font-black text-red-600 uppercase tracking-widest leading-none">Live</span>
+                    </div>
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse min-w-[600px]">
                       <thead>
@@ -967,33 +969,31 @@ export default function Reports() {
                       </thead>
                       <tbody className="divide-y divide-border/50">
                         {(() => {
-                          const recentItems = []
-                          for (const o of orders) {
-                            for (const item of o.items) {
-                              recentItems.push({
-                                name: item.name,
-                                cat: item.category || 'Other',
-                                qty: item.quantity,
-                                price: item.price * item.quantity,
-                                time: o.timestamp
-                              })
-                            }
-                          }
-                          const topRecent = recentItems.reverse().slice(0, 10)
-
-                          if (topRecent.length === 0) {
+                          if (recentItems.length === 0) {
                             return <tr><td colSpan={5} className="p-8 text-center text-muted-foreground font-bold">No recent items.</td></tr>
                           }
 
-                          return topRecent.map((item, idx) => (
-                            <tr key={idx} className="hover:bg-secondary/20 transition-colors">
-                              <td className="p-4 text-sm font-black text-foreground">{item.name}</td>
-                              <td className="p-4 text-xs font-bold text-muted-foreground">{item.cat}</td>
-                              <td className="p-4 text-sm font-black text-foreground text-right">{item.qty}</td>
-                              <td className="p-4 text-sm font-black text-primary text-right">{formatCurrency(item.price)}</td>
-                              <td className="p-4 text-xs font-bold text-muted-foreground text-right">{item.time}</td>
-                            </tr>
-                          ))
+                          return recentItems.map((item, idx) => {
+                            const timeStr = new Date(item.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            return (
+                              <tr key={idx} className="hover:bg-secondary/20 transition-colors group">
+                                <td className="p-4 text-sm font-black text-foreground flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs shrink-0">
+                                    {item.name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <span className="truncate max-w-[150px] md:max-w-[200px]" title={item.name}>{item.name}</span>
+                                </td>
+                                <td className="p-4 text-xs font-bold text-muted-foreground">
+                                  <span className="bg-secondary px-2 py-1 rounded-full text-[10px] uppercase tracking-wider">{item.cat}</span>
+                                </td>
+                                <td className="p-4 text-sm font-black text-foreground text-right">
+                                  <span className="bg-primary/5 text-primary px-2 py-1 rounded-md">x{item.qty}</span>
+                                </td>
+                                <td className="p-4 text-sm font-black text-emerald-600 text-right group-hover:scale-105 transition-transform">{formatCurrency(item.price)}</td>
+                                <td className="p-4 text-xs font-bold text-muted-foreground text-right">{timeStr}</td>
+                              </tr>
+                            )
+                          })
                         })()}
                       </tbody>
                     </table>

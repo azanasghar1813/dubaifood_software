@@ -20,6 +20,7 @@ import { menuService } from "../services/menuService"
 import { CustomerPanelModal } from "../components/CustomerPanelModal"
 import { TableSelectorModal } from "../components/TableSelectorModal"
 import { ActiveOrdersSidebar } from "../components/ActiveOrdersSidebar"
+import { DealConfigurationModal } from "../components/DealConfigurationModal"
 import type { PaymentMethod } from "../store/orderStore"
 
 type Product = any
@@ -96,6 +97,9 @@ export default function POS() {
   const [activeProductForSize, setActiveProductForSize] = useState<Product | null>(null)
   const [sizeSelectedIndex, setSizeSelectedIndex] = useState(0)
 
+  const [dealModalOpen, setDealModalOpen] = useState(false)
+  const [activeDeal, setActiveDeal] = useState<any | null>(null)
+
   const [gridSelectedIndex, setGridSelectedIndex] = useState(0)
   const gridProductsRef = useRef<Product[]>([])
 
@@ -135,13 +139,13 @@ export default function POS() {
 
   const {
     cart, addToCart, removeFromCart, updateQuantity, duplicateItem,
-    getSubtotal, getTax, getGrandTotal, clearCart, getNetTotal,
+    getSubtotal, getTax, getServiceCharge, getGrandTotal, clearCart, getNetTotal,
     updateItemModifiers, updateItemNotes, orderType, setOrderType,
     setCustomer, gridDensity, tableNumber, customer,
     isTaxEnabled, toggleTax, menuContext, setMenuContext,
     editingOrderId, clearEditMode, completeOrder,
     deliveryCharges, setDeliveryCharges,
-    fetchDraftOrder
+    fetchDraftOrder, financeConfig
   } = usePosStore()
 
   const { orderCounter } = useOrderStore()
@@ -312,6 +316,8 @@ export default function POS() {
       const isTyping = isInput && (isSearchInput ? inputValue !== "" : true)
 
       // 1. Modal specific shortcuts that override everything
+      if (dealModalOpen) return;
+
       if (sizeModalOpen && activeProductForSize) {
         if (e.key === "Escape") {
           setSizeModalOpen(false)
@@ -592,6 +598,8 @@ export default function POS() {
       }
 
       // Function keys & Escape
+      if (dealModalOpen && e.key !== 'Escape') return;
+
       switch (e.key) {
         case "F1":
           // Switch to Fast Food section
@@ -661,6 +669,8 @@ export default function POS() {
 
       // 3. Shortcuts that should ONLY run if NOT typing
       if (isTyping) return
+
+      if (dealModalOpen) return
 
       // Tab key: toggle Cart Mode
       if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
@@ -815,7 +825,10 @@ export default function POS() {
           e.preventDefault()
           const selectedProduct = gridProductsRef.current[gridSelectedIndex]
           if (selectedProduct) {
-            if (selectedProduct.variants && selectedProduct.variants.length > 0) {
+            if (selectedProduct.isDeal && selectedProduct.components && selectedProduct.components.length > 0) {
+              setActiveDeal(selectedProduct)
+              setDealModalOpen(true)
+            } else if (selectedProduct.variants && selectedProduct.variants.length > 0) {
               setActiveProductForSize(selectedProduct)
               setSizeSelectedIndex(0)
               setSizeModalOpen(true)
@@ -994,7 +1007,8 @@ export default function POS() {
         activeEl.scrollIntoView({ block: 'nearest' })
       }
     }
-  }, [searchSelectedIndex, isSearchFocused, searchResults.length])
+  }, [isSearchFocused, searchResults, searchSelectedIndex])
+
   const scrollToTop = () => {
     setTimeout(() => {
       cartTopRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -1002,16 +1016,77 @@ export default function POS() {
   }
 
   const handleProductClick = (product: Product) => {
+    // Handle Deals
+    if (product.isDeal && product.components && product.components.length > 0) {
+      const availableProducts = products.filter(p => !p.isDeal);
+      let needsConfiguration = false;
+      const autoComboComponents: any[] = [];
+
+      for (const comp of product.components) {
+        let allowedProducts = availableProducts;
+        if (comp.component_type === 'FIXED_PRODUCT') {
+          const p = availableProducts.find(prod => prod.id === comp.product_id);
+          allowedProducts = p ? [p] : [];
+        } else {
+          if (comp.target_category_id) {
+            allowedProducts = allowedProducts.filter(p => p.category_id === comp.target_category_id);
+          }
+          if (comp.allowed_product_ids) {
+            const ids = comp.allowed_product_ids.split(',');
+            allowedProducts = allowedProducts.filter(p => ids.includes(p.id));
+          }
+        }
+
+        if (allowedProducts.length > 1) {
+          needsConfiguration = true;
+          break;
+        } else {
+          const p = allowedProducts.length === 1 ? allowedProducts[0] : {
+            id: 'dummy-' + comp.id,
+            name: comp.name,
+            product_name_snapshot: comp.name,
+            variant_snapshot: comp.target_variant_name || '',
+            is_dummy: true,
+            price: 0
+          };
+          autoComboComponents.push({
+            component_id: comp.id,
+            product_id: p.id,
+            product_name_snapshot: p.name || p.product_name_snapshot,
+            variant_snapshot: comp.target_variant_name || p.variant_snapshot || null,
+            price_adjustment: comp.price_adjustment || 0,
+            quantity: comp.quantity || 1
+          });
+        }
+      }
+
+      if (!needsConfiguration) {
+        addToCart({ ...product, combo_components: autoComboComponents });
+        setSearchQuery("");
+        searchInputRef.current?.focus();
+        scrollToTop();
+        return;
+      }
+
+      setActiveDeal(product);
+      setDealModalOpen(true);
+      setSearchQuery("") // Clear search
+      searchInputRef.current?.blur() // Remove focus so modal can capture events
+      return;
+    }
+
+    // Check if variant selection is needed
     if (product.variants && product.variants.length > 0) {
       setActiveProductForSize(product)
-      setSizeSelectedIndex(0)
       setSizeModalOpen(true)
-    } else {
-      addToCart(product)
-      setSearchQuery("") // Auto clear search
-      searchInputRef.current?.focus()
-      scrollToTop()
+      setSizeSelectedIndex(0)
+      return
     }
+    
+    addToCart(product)
+    setSearchQuery("") // Auto clear search
+    searchInputRef.current?.focus()
+    scrollToTop()
   }
 
   // Fast Order Entry
@@ -1230,7 +1305,17 @@ export default function POS() {
                   >
                     {gridDensity !== 'small' && (
                       <div className={`${gridDensity === 'large' ? 'h-40' : 'h-32'} w-full relative overflow-hidden shrink-0 ${!product.image ? getCategoryGradient(product.category || categories.find(c => c.id === product.category_id)?.name) : ''}`}>
-                        {product.image ? (
+                        {product.isDeal ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center p-2 text-white/90 bg-black/10 mix-blend-overlay">
+                            <span className="font-bold mb-1 border-b border-white/20 pb-1 text-[10px] w-full text-center uppercase tracking-wider">Includes</span>
+                            <div className="w-full text-[10px] overflow-hidden text-center space-y-0.5">
+                              {product.components?.slice(0, gridDensity === 'large' ? 5 : 4).map((c: any, i: number) => (
+                                <p key={i} className="truncate">{c.quantity}x {c.name}</p>
+                              ))}
+                              {product.components?.length > (gridDensity === 'large' ? 5 : 4) && <p>...</p>}
+                            </div>
+                          </div>
+                        ) : product.image ? (
                           <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center text-white/50 mix-blend-overlay">
@@ -1418,6 +1503,21 @@ export default function POS() {
                                     <XOctagon className="w-3 h-3" /> {item.removalReason}
                                   </p>
                                 )}
+                                {/* Combo components visualizer */}
+                                {item.combo_components && item.combo_components.length > 0 && (
+                                  <div className="mt-2 text-[11px] text-muted-foreground border-t border-border pt-2">
+                                    <ul className="space-y-0.5">
+                                      {item.combo_components.map((comp: any, cidx: number) => (
+                                        <li key={cidx} className="flex gap-1">
+                                          <span className="text-orange-500 font-bold">•</span> 
+                                          <span>
+                                            {comp.quantity > 1 ? `${comp.quantity}x ` : ''}{comp.product_name_snapshot} {comp.variant_snapshot && `(${comp.variant_snapshot})`}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
                               </div>
                               <div className="text-right">
                                 <p className={`font-bold ${item.editState === 'removed' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
@@ -1462,10 +1562,17 @@ export default function POS() {
                       </div>
 
 
-                      {orderType === 'Dine In' && isTaxEnabled && (
+                      {orderType === 'Dine In' && isTaxEnabled && getTax() > 0 && (
                         <div className="flex justify-between text-xs font-black text-foreground border-l-2 border-orange-500 pl-2 p-1 -mx-1">
-                          <span>Service Charges (7%)</span>
+                          <span>Tax ({financeConfig?.tax_rate ? (Number(financeConfig.tax_rate) * 100) : 7}%)</span>
                           <span>Rs {getTax().toLocaleString()}</span>
+                        </div>
+                      )}
+
+                      {orderType === 'Dine In' && getServiceCharge() > 0 && (
+                        <div className="flex justify-between text-xs font-black text-foreground border-l-2 border-primary pl-2 p-1 -mx-1">
+                          <span>Service Charges (7%)</span>
+                          <span>Rs {getServiceCharge().toLocaleString()}</span>
                         </div>
                       )}
 
@@ -1627,7 +1734,7 @@ export default function POS() {
         )}
       </AnimatePresence>
 
-      {/* Size Selection Modal */}
+      {/* Size Modifier Modal */}
       <AnimatePresence>
         {sizeModalOpen && activeProductForSize && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -1639,7 +1746,6 @@ export default function POS() {
               </div>
               <div className="p-6 grid gap-3">
                 {activeProductForSize.variants?.map((size: any, index: number) => {
-                  // Determine shortcut based on name
                   const shortcut = size.name.charAt(0).toUpperCase();
                   const isSelected = index === sizeSelectedIndex;
                   return (
@@ -1650,9 +1756,6 @@ export default function POS() {
                         addToCart({ ...activeProductForSize, variant_id: size.id, name: `${activeProductForSize.name} (${size.name})`, price: size.price, code: size.code || activeProductForSize.code });
                         setSizeModalOpen(false);
                         setActiveProductForSize(null);
-                        setSearchQuery("");
-                        searchInputRef.current?.focus();
-                        scrollToTop();
                       }}
                       className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${isSelected ? 'border-orange-500 bg-orange-500/10 text-orange-500 shadow-md scale-[1.02]' : 'border-border bg-secondary text-foreground hover:border-orange-500 hover:text-orange-500'} font-bold`}
                     >
@@ -1672,6 +1775,18 @@ export default function POS() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Deal Configuration Modal */}
+      <DealConfigurationModal
+        isOpen={dealModalOpen}
+        onClose={() => setDealModalOpen(false)}
+        deal={activeDeal}
+        availableProducts={products.filter(p => !p.isDeal)}
+        onConfirm={(configuredDeal) => {
+          setDealModalOpen(false);
+          addToCart(configuredDeal);
+        }}
+      />
 
       {/* Checkout Modal */}
       <AnimatePresence>
@@ -2036,6 +2151,11 @@ export default function POS() {
                       <div className="text-center font-bold text-[13px] py-1 border-b border-dashed border-gray-500 uppercase">
                         {category}
                       </div>
+                      <div className="flex font-bold text-[11px] border-b border-gray-500 py-1 mb-1 px-1">
+                        <span className="flex-1">Item</span>
+                        <span className="w-8 text-center">Qty</span>
+                        <span className="w-16 text-right">Amount</span>
+                      </div>
                       {groupedItems[category].map((item: any, idx: number) => {
                         let itemTotal = item.price * item.quantity;
                         if (item.selectedModifiers && Array.isArray(item.selectedModifiers)) {
@@ -2045,13 +2165,23 @@ export default function POS() {
 
                         return (
                           <div key={idx} className="border-b border-dashed border-gray-500 p-1 px-2 text-[11px] last:border-b-0">
-                            <div className="flex justify-between font-medium">
-                              <span>{item.quantity > 1 ? `${item.quantity}x ` : ''}{item.name}</span>
-                              <span>Rs {itemTotal.toFixed(2)}</span>
+                            <div className="flex justify-between font-medium items-start">
+                              <span className="flex-1 pr-2 leading-tight">{item.name}</span>
+                              <span className="w-8 text-center shrink-0">{item.quantity}</span>
+                              <span className="w-16 text-right shrink-0">Rs {itemTotal.toFixed(2)}</span>
                             </div>
                             {item.selectedModifiers && item.selectedModifiers.length > 0 && (
-                              <div className="text-[10px] text-gray-500 leading-tight">
+                              <div className="text-[10px] text-gray-500 leading-tight mt-0.5">
                                 {item.selectedModifiers.map((m: any) => `+${m.name}`).join(', ')}
+                              </div>
+                            )}
+                            {item.combo_components && item.combo_components.length > 0 && (
+                              <div className="text-[10px] text-gray-500 leading-tight mt-0.5 ml-2 border-l border-gray-300 pl-1">
+                                {item.combo_components.map((c: any, cidx: number) => (
+                                  <div key={cidx}>
+                                    - {c.quantity > 1 ? `${c.quantity}x ` : ''}{c.product_name_snapshot} {c.variant_snapshot && `(${c.variant_snapshot})`}
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </div>

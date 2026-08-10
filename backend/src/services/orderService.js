@@ -4,6 +4,7 @@ import { orderItemRepository } from '../repositories/orderItemRepository.js';
 import { orderPaymentRepository } from '../repositories/orderPaymentRepository.js';
 import { orderTimelineRepository } from '../repositories/orderTimelineRepository.js';
 import { orderMetadataRepository } from '../repositories/orderMetadataRepository.js';
+import { customerRepository } from '../repositories/customerRepository.js';
 import { orderLifecycleService } from './orderLifecycleService.js';
 import { orderNumberService } from './orderNumberService.js';
 import { orderSnapshotService } from './orderSnapshotService.js';
@@ -51,6 +52,20 @@ class OrderService {
     order.tags = orderMetadataRepository.getTags(order.id);
     order.attachments = orderMetadataRepository.getAttachments(order.id);
     
+    // Auto-populate customer info if a customer is linked
+    if (order.customer_id) {
+      try {
+        const customer = customerRepository.findById(order.customer_id);
+        if (customer) {
+          order.metadata.customer_name = customer.first_name + (customer.last_name ? ' ' + customer.last_name : '');
+          order.metadata.customer_phone = customer.phone || order.metadata.customer_phone;
+          order.metadata.customer_address = customer.address || order.metadata.customer_address;
+        }
+      } catch (e) {
+        console.error('Failed to hydrate customer info:', e);
+      }
+    }
+
     // Cache if active
     orderCacheService.upsertOrder(order);
     return order;
@@ -76,7 +91,7 @@ class OrderService {
         discountTotal += item.discount_amount;
       }
 
-      const grandTotal = subtotal + taxTotal - discountTotal + order.tip_total + order.delivery_fee;
+      const grandTotal = subtotal + taxTotal - discountTotal + order.tip_total + order.delivery_fee + order.service_charge;
       const paidTotal = orderPaymentRepository.getTotalPaidForOrder(orderId);
       const dueTotal = Math.max(0, grandTotal - paidTotal);
 

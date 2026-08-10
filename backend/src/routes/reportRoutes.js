@@ -7,6 +7,7 @@ const router = express.Router();
 
 router.get('/summary', reportController.getSummary);
 router.get('/detailed-sales', reportController.getDetailedSales);
+router.get('/recent-items', reportController.getRecentItems);
 router.get('/trends', reportController.getTrends);
 router.get('/product/:id', reportController.getProductDetails);
 

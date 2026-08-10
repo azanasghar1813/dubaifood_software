@@ -177,6 +177,10 @@ class PrinterDriverService {
         for (const m of item.modifiers || []) {
           console.log(`[PrinterDriver][VIRTUAL]    + ${m.modifier_name}`);
         }
+        for (const c of item.combo_components || []) {
+          const compName = c.variant_name ? `${c.product_name} [${c.variant_name}]` : c.product_name;
+          console.log(`[PrinterDriver][VIRTUAL]    Includes: 1 x ${compName}`);
+        }
         if (item.notes) {
           console.log(`[PrinterDriver][VIRTUAL]    *** ${item.notes} ***`);
         }

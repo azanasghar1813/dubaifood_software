@@ -213,6 +213,25 @@ export default function Categories() {
                 {canManageProducts && (
                   <div className="flex gap-2">
                     <button 
+                      onClick={() => {
+                        setDrawerMode("add");
+                        setSelectedCategory(null);
+                        setFormData({
+                          name: "",
+                          display_order: 0,
+                          lifecycle_state: "ACTIVE",
+                          visibility: "VISIBLE",
+                          parent_id: cat.id,
+                        });
+                        setIsDrawerOpen(true);
+                      }}
+                      className="p-2 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground rounded-lg transition-colors flex items-center gap-1"
+                      title="Add Subcategory"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span className="text-[10px] font-bold uppercase hidden sm:block">Subcategory</span>
+                    </button>
+                    <button 
                       onClick={() => handleOpenEdit(cat)}
                       className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-lg transition-colors"
                     >

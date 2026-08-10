@@ -80,9 +80,15 @@ export default function ActivityLogs() {
   // KPIs
   const stats = useMemo(() => {
     const total = logs.length
-    const critical = logs.filter(l => l.severity === "Critical").length
-    const warning = logs.filter(l => l.severity === "Warning").length
-    const failed = logs.filter(l => l.status === "Failed").length
+    const critical = logs.filter(l => {
+      const details = l.details ? JSON.parse(l.details) : {}
+      return details.severity === "Critical"
+    }).length
+    const warning = logs.filter(l => {
+      const details = l.details ? JSON.parse(l.details) : {}
+      return details.severity === "Warning"
+    }).length
+    const failed = logs.filter(l => l.action.includes("FAILED") || l.action.includes("ERROR")).length
     
     return { total, critical, warning, failed }
   }, [logs])
@@ -90,15 +96,20 @@ export default function ActivityLogs() {
   // Filtered logs
   const filteredLogs = useMemo(() => {
     return logs.filter(log => {
+      const details = log.details ? JSON.parse(log.details) : {}
+      const username = log.username || "System"
+      const module = log.entity_type || "Unknown"
+      const description = details.description || ""
+      const severity = details.severity || "Info"
+
       const q = search.toLowerCase()
-      const matchSearch = log.user.toLowerCase().includes(q) || 
+      const matchSearch = username.toLowerCase().includes(q) || 
                           log.action.toLowerCase().includes(q) || 
-                          log.module.toLowerCase().includes(q) || 
-                          log.description.toLowerCase().includes(q) || 
-                          log.device.toLowerCase().includes(q)
+                          module.toLowerCase().includes(q) || 
+                          description.toLowerCase().includes(q)
       
-      const matchModule = filterModule === "All" || log.module === filterModule
-      const matchSeverity = filterSeverity === "All" || log.severity === filterSeverity
+      const matchModule = filterModule === "All" || module === filterModule
+      const matchSeverity = filterSeverity === "All" || severity === filterSeverity
 
       return matchSearch && matchModule && matchSeverity
     })
@@ -244,27 +255,45 @@ export default function ActivityLogs() {
               const details = log.details ? JSON.parse(log.details) : {};
               const dateObj = new Date(log.created_at);
               const time = dateObj.toLocaleTimeString();
-              // const dateStr = dateObj.toLocaleDateString();
+
+              const operator = log.username || 'System';
+              const role = details.role || 'Unknown';
+              const module = log.entity_type || 'Unknown';
+              const action = log.action;
+              const description = details.description || (log.entity_id ? `Affected entity: ${log.entity_id}` : '-');
+              const device = details.device || 'N/A';
+              const severity = details.severity || 'Info';
 
               return (
               <tr 
                 key={log.id}
                 onClick={() => handleOpenLog(log)}
-                className="hover:bg-secondary/20 transition-colors cursor-pointer group"
+                className="hover:bg-secondary/30 transition-colors group cursor-pointer"
               >
-                <td className="px-6 py-4 font-bold text-muted-foreground text-xs">{time}</td>
-                <td className="px-6 py-4 font-black text-foreground">{log.user_id || 'System'}</td>
-                <td className="px-6 py-4 text-xs font-semibold text-muted-foreground">User</td>
-                <td className="px-6 py-4 text-xs font-bold">{log.entity_type}</td>
-                <td className="px-6 py-4 text-xs font-black text-primary">{log.action}</td>
-                <td className="px-6 py-4 text-xs text-muted-foreground max-w-xs truncate">{JSON.stringify(details)}</td>
-                <td className="px-6 py-4 text-xs text-foreground font-semibold">Web</td>
-                <td className="px-6 py-4">
-                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider border bg-blue-500/10 text-blue-500 border-blue-500/20`}>
-                    Info
+                <td className="px-6 py-4 whitespace-nowrap text-foreground font-medium text-xs">{time}</td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex flex-col">
+                    <span className="font-bold text-foreground">{operator}</span>
+                    <span className="text-[10px] text-muted-foreground uppercase">{log.first_name} {log.last_name}</span>
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-muted-foreground text-xs">{role}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-muted-foreground text-xs">{module}</td>
+                <td className="px-6 py-4 whitespace-nowrap font-black text-primary text-xs">{action}</td>
+                <td className="px-6 py-4 text-muted-foreground line-clamp-1 max-w-xs text-xs" title={description}>{description}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-muted-foreground text-xs">{device}</td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                    severity === "Critical" ? "bg-red-500/10 text-red-500 border border-red-500/20" :
+                    severity === "Warning" ? "bg-amber-500/10 text-amber-500 border border-amber-500/20" :
+                    severity === "Success" ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
+                    severity === "Error" ? "bg-rose-500/10 text-rose-500 border border-rose-500/20" :
+                    "bg-blue-500/10 text-blue-500 border border-blue-500/20"
+                  }`}>
+                    {severity}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-right" onClick={e=>e.stopPropagation()}>
+                <td className="px-6 py-4 whitespace-nowrap text-right" onClick={e=>e.stopPropagation()}>
                   <button 
                     onClick={() => handleOpenLog(log)}
                     className="p-2 bg-secondary text-foreground hover:bg-border border border-border rounded-xl transition-colors"
@@ -327,35 +356,19 @@ export default function ActivityLogs() {
                   <div className="p-4 bg-secondary/40 border border-border rounded-2xl space-y-3 text-xs font-bold">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Operator User:</span>
-                      <span className="text-foreground">{selectedLog.user}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Assigned Role:</span>
-                      <span className="text-foreground">{selectedLog.role}</span>
+                      <span className="text-foreground">{selectedLog.username}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">System Module:</span>
-                      <span className="text-foreground">{selectedLog.module}</span>
+                      <span className="text-foreground">{selectedLog.entity_type}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Action Event:</span>
+                      <span className="text-muted-foreground">Action Taken:</span>
                       <span className="text-primary font-black">{selectedLog.action}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Terminal Station:</span>
-                      <span className="text-foreground">{selectedLog.device}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">LAN IP Address:</span>
-                      <span className="text-foreground font-mono">{selectedLog.ipAddress}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Hostname:</span>
-                      <span className="text-foreground font-mono">{selectedLog.computerName}</span>
-                    </div>
-                    <div className="flex justify-between">
                       <span className="text-muted-foreground">Timestamp:</span>
-                      <span className="text-foreground">{selectedLog.date}, {selectedLog.time}</span>
+                      <span className="text-foreground">{new Date(selectedLog.created_at).toLocaleString()}</span>
                     </div>
                   </div>
 
@@ -365,22 +378,22 @@ export default function ActivityLogs() {
                     <div className="space-y-1">
                       <span className="text-[10px] text-muted-foreground uppercase font-black">Pre-Change value</span>
                       <div className="p-2 bg-secondary rounded-lg font-mono text-[10px] text-red-500 border border-red-500/10">
-                        {selectedLog.oldValue}
+                        {selectedLog.old_value || 'N/A'}
                       </div>
                     </div>
 
                     <div className="space-y-1 mt-2">
                       <span className="text-[10px] text-muted-foreground uppercase font-black">Post-Change value</span>
                       <div className="p-2 bg-secondary rounded-lg font-mono text-[10px] text-emerald-500 border border-emerald-500/10">
-                        {selectedLog.newValue}
+                        {selectedLog.new_value || 'N/A'}
                       </div>
                     </div>
                   </div>
 
                   <div className="p-4 bg-card border border-border rounded-2xl space-y-1 text-xs font-bold">
-                    <span className="text-[10px] text-muted-foreground uppercase font-black">Operator Reason override</span>
+                    <span className="text-[10px] text-muted-foreground uppercase font-black">Action Description</span>
                     <p className="p-3 bg-secondary rounded-xl text-foreground font-semibold italic">
-                      "{selectedLog.reason || 'No custom override reason provided.'}"
+                      {selectedLog.details ? JSON.parse(selectedLog.details).description || (selectedLog.entity_id ? `Affected entity: ${selectedLog.entity_id}` : '-') : '-'}
                     </p>
                   </div>
                 </div>

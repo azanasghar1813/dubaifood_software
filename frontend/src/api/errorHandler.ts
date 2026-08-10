@@ -45,8 +45,12 @@ export const normalizeError = (error: any): ApiError => {
 export const handleApiError = (error: any, customMessage?: string) => {
   const normalized = normalizeError(error)
 
+  const isValidateEndpoint = error?.config?.url?.includes('/auth/validate')
+
   if (normalized.status === 401) {
-    toast.error('Session Expired', 'Please log in again.')
+    if (!isValidateEndpoint) {
+      toast.error('Session Expired', 'Please log in again.')
+    }
     useAuthStore.getState().logout()
     return normalized
   }

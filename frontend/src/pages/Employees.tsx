@@ -86,14 +86,6 @@ export default function Employees() {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [isDrawerOpen, selectedEmp])
 
-  if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center min-h-[calc(100vh-100px)]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    )
-  }
-
   // Derived Values
   const roles = ["All", ...Array.from(new Set(employees.map(e => e.role?.name || e.role)))]
   const stats = useMemo(() => {
@@ -109,6 +101,14 @@ export default function Employees() {
     
     return { total, cashiers, managers, kitchen, waiters, onDuty, offDuty, lateToday }
   }, [employees])
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center min-h-[calc(100vh-100px)]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
+  }
 
   // Reset PIN
   const handleResetPIN = (emp: any) => {

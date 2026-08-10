@@ -114,6 +114,7 @@ export const transactionsSchema = `
     product_name_snapshot TEXT NOT NULL,
     variant_snapshot TEXT,
     price_adjustment REAL NOT NULL DEFAULT 0,
+    quantity INTEGER NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE CASCADE
   );

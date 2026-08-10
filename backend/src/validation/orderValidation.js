@@ -7,7 +7,7 @@ export const createOrderSchema = z.object({
   table_id: z.string().uuid().optional().nullable(),
   branch_id: z.string().optional().default('DEFAULT_BRANCH'),
   notes: z.string().optional().nullable()
-});
+}).passthrough();
 
 export const addItemSchema = z.object({
   product_id: z.string().uuid({ message: 'Product ID must be a valid UUID' }),

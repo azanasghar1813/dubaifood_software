@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { cartService } from '../services/posServices/cartService'
 import { apiClient } from '../api/client'
 import { useOrderStore } from './orderStore'
-import { useSettingsStore } from './settingsStore'
+import { configApi } from '../api/configApi'
 
 export interface OrderItem {
   id: string
@@ -41,6 +41,7 @@ export type CartItem = OrderItem & {
   category?: string;
   kitchen?: string;
   code?: string;
+  combo_components?: any[];
 };
 
 interface POSState {
@@ -51,6 +52,7 @@ interface POSState {
   // New backend-driven state
   activeOrder: ActiveOrder | null
   isLoadingOrder: boolean
+  financeConfig: any | null
   
   // Legacy UI state aliases for compatibility
   cart: CartItem[]
@@ -92,7 +94,7 @@ interface POSState {
   // Setters
   setMenuContext: (context: 'Fast Food' | 'Restaurant' | 'Deals') => void
   setGridDensity: (density: 'small' | 'medium' | 'large') => void
-  setOrderType: (type: 'Dine In' | 'Takeaway' | 'Delivery' | 'Drive Through') => void
+  setOrderType: (type: 'Dine In' | 'Takeaway' | 'Delivery' | 'Drive Through') => Promise<void>
   setCustomer: (customer: any | null) => void
   setTableNumber: (table: string | null) => void
   setGuestCount: (count: number) => void
@@ -108,6 +110,7 @@ export const usePosStore = create<POSState>((set, get) => ({
   
   activeOrder: null,
   isLoadingOrder: false,
+  financeConfig: null,
   
   cart: [],
   
@@ -129,9 +132,23 @@ export const usePosStore = create<POSState>((set, get) => ({
       const res = await cartService.getDraftOrder()
       if ((res as any).success) {
         if (get().editingOrderId) return; // Prevent race condition if an edit started while fetching
+        
+        let config = get().financeConfig
+        if (!config) {
+          try {
+            const confRes = await configApi.getAllConfig()
+            if (confRes.data?.data?.business?.finance) {
+              config = confRes.data.data.business.finance
+              set({ financeConfig: config })
+            }
+          } catch (e) {
+            console.warn('Failed to load finance config', e)
+          }
+        }
+        
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))
+          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] }))
         })
       }
     } catch (e) {
@@ -171,6 +188,7 @@ export const usePosStore = create<POSState>((set, get) => ({
       product_name: i.product_name || i.product_name_snapshot || i.name || 'Item',
       product_id: i.product_id || i.id,
       selectedModifiers: i.selectedModifiers || i.modifiers || [],
+      combo_components: i.combo_components || i.comboComponents || [],
       notes: i.notes || '',
       category: i.category || i.category_name || 'Unknown',
       code: i.code || i.product_code || '',
@@ -216,6 +234,7 @@ export const usePosStore = create<POSState>((set, get) => ({
           variant_id: product.variant_id,
           quantity,
           modifiers: selectedModifiers,
+          combo_components: product.combo_components,
           notes
         })
       } else {
@@ -224,6 +243,7 @@ export const usePosStore = create<POSState>((set, get) => ({
           variant_id: product.variant_id,
           quantity,
           modifiers: selectedModifiers,
+          combo_components: product.combo_components,
           notes
         })
       }
@@ -236,7 +256,8 @@ export const usePosStore = create<POSState>((set, get) => ({
             name: item.variant_name ? `${item.product_name_snapshot || item.product_name || item.name} (${item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Unknown'), 
             price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, 
             cartItemId: item._cart_item_id || item.cartItemId || item.id, 
-            selectedModifiers: item.modifiers || item.selectedModifiers || [] 
+            selectedModifiers: item.modifiers || item.selectedModifiers || [],
+            combo_components: item.combo_components || item.comboComponents || []
           }))
         })
       }
@@ -314,7 +335,7 @@ export const usePosStore = create<POSState>((set, get) => ({
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))
+          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] }))
         })
       }
     } catch (e) {
@@ -331,7 +352,7 @@ export const usePosStore = create<POSState>((set, get) => ({
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))
+          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] }))
         })
       }
     } catch (e) {
@@ -348,7 +369,7 @@ export const usePosStore = create<POSState>((set, get) => ({
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))
+          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] }))
         })
       }
     } catch (e) {
@@ -381,7 +402,7 @@ export const usePosStore = create<POSState>((set, get) => ({
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] }))
+          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] }))
         })
       }
     } catch (e) {
@@ -413,12 +434,12 @@ export const usePosStore = create<POSState>((set, get) => ({
           business_date: order.business_date,
           delivery_charges: state.orderType === 'Delivery' ? state.deliveryCharges : 0,
           service_charge: state.getServiceCharge(),
-          is_tax_enabled: state.orderType === 'Dine In' ? state.isTaxEnabled : false
+          is_tax_enabled: false // Hardcoded to remove tax
         })
 
         if ((checkoutResult as any).success) {
           order = checkoutResult.data
-          set({ activeOrder: order, cart: (order?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.id, selectedModifiers: item.modifiers || [] })) })
+          set({ activeOrder: order, cart: (order?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] })) })
         }
       }
 
@@ -456,16 +477,16 @@ export const usePosStore = create<POSState>((set, get) => ({
 
   getSubtotal: () => get().activeOrder?.totals?.subtotal ?? get().activeOrder?.subtotal ?? 0,
   getTax: () => {
-    if (get().orderType !== 'Dine In') return 0;
-    const tax = get().activeOrder?.totals?.tax_total ?? get().activeOrder?.tax_total ?? 0;
-    return get().isTaxEnabled ? tax : 0;
+    // Hardcoded to completely remove tax as requested
+    return 0;
   },
   getServiceCharge: () => {
     const orderType = get().orderType;
     if (orderType === 'Dine In') {
       const sub = get().getSubtotal();
       const discount = get().activeOrder?.totals?.discount_total ?? get().activeOrder?.discount_total ?? 0;
-      const rate = useSettingsStore.getState().serviceChargeRate || 0;
+      // Hardcoding to 7% as requested
+      const rate = 7;
       return (sub - discount) * (rate / 100);
     }
     return 0;
@@ -499,9 +520,16 @@ export const usePosStore = create<POSState>((set, get) => ({
     set({ gridDensity: density })
   },
   
-  setOrderType: (orderType) => {
+  setOrderType: async (orderType) => {
     set({ orderType })
-    // Would ideally update backend order type here too
+    try {
+      const res = await cartService.setMeta({ order_type: orderType === 'Dine In' ? 'DINE_IN' : orderType === 'Takeaway' ? 'TAKEAWAY' : 'DELIVERY' });
+      if ((res as any).success) {
+        set({ activeOrder: (res as any).data });
+      }
+    } catch (e) {
+      console.error('Failed to sync order type:', e);
+    }
   },
   
   setCustomer: (customer) => set({ customer }),

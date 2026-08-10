@@ -40,23 +40,28 @@ export const activityLogService = {
    */
   getLogs: (options = {}) => {
     const { limit = 100, offset = 0, userId, entityType, action } = options;
-    let query = 'SELECT * FROM activity_logs WHERE 1=1';
+    let query = `
+      SELECT a.*, u.username, u.first_name, u.last_name 
+      FROM activity_logs a 
+      LEFT JOIN users u ON a.user_id = u.id 
+      WHERE 1=1
+    `;
     let params = [];
     
     if (userId) {
-      query += ' AND user_id = ?';
+      query += ' AND a.user_id = ?';
       params.push(userId);
     }
     if (entityType) {
-      query += ' AND entity_type = ?';
+      query += ' AND a.entity_type = ?';
       params.push(entityType);
     }
     if (action) {
-      query += ' AND action = ?';
+      query += ' AND a.action = ?';
       params.push(action);
     }
     
-    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    query += ' ORDER BY a.created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
     
     const stmt = dbEngine.db.prepare(query);

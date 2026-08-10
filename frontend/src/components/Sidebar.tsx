@@ -30,12 +30,10 @@ const menuItems = [
   { path: "/products", name: "Products", icon: UtensilsCrossed },
   { path: "/categories", name: "Categories", icon: Tags },
   { path: "/cashier", name: "Cashiers", icon: Wallet },
-  { path: "/settings/printer", name: "Printer Settings", icon: Printer },
-  { path: "/settings", name: "Business Settings", icon: Building2 },
+  { path: "/settings", name: "Settings", icon: Building2 },
   { path: "/backup", name: "Backup", icon: Database },
   { path: "/sync", name: "Sync", icon: RefreshCw },
-  { path: "/employees", name: "Users", icon: UserSquare2 },
-  { path: "/permissions", name: "Permissions", icon: Shield },
+  { path: "/permissions", name: "Users", icon: Shield },
   { path: "/activity-logs", name: "Activity Logs", icon: History },
 ]
 

@@ -14,10 +14,10 @@ export const employeeService = {
     return apiClient.put(`/users/${id}`, data)
   },
   updateStatus: (id: string, isActive: boolean) => {
-    return apiClient.patch(`/users/${id}/status`, { is_active: isActive ? 1 : 0 })
+    return apiClient.patch(`/users/${id}/status`, { isActive })
   },
   resetPin: (id: string, newPin: string) => {
-    return apiClient.post(`/users/${id}/reset-pin`, { pin_code: newPin })
+    return apiClient.post(`/users/${id}/reset-pin`, { newPin })
   },
   getRoles: () => {
     return apiClient.get('/roles')
