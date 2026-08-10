@@ -1648,7 +1648,12 @@ export default function POS() {
                         <span className="text-[9px] uppercase text-center leading-tight font-black">Charges</span>
                       </button>
                       <button
-                        onClick={() => usePosStore.getState().completeOrder([])}
+                        onClick={async () => {
+                          const success = await usePosStore.getState().completeOrder([])
+                          if (!success) {
+                            alert("Could not send this order to the kitchen. Please try again.")
+                          }
+                        }}
                         disabled={cart.length === 0}
                         className="p-1 bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors border border-transparent hover:border-border"
                       >
@@ -1992,10 +1997,11 @@ export default function POS() {
                   <button
                     id="confirm-payment-btn"
                     disabled={false}
-                    onClick={() => {
+                    onClick={async () => {
                       const amt = amountReceived ? Number(amountReceived) : finalTotal
                       const method: PaymentMethod = selectedPaymentMethod ?? 'Cash'
-                      completeOrder(
+                      
+                      const success = await completeOrder(
                         isPaidPrint ? [{
                           id: `pay-${Date.now()}`,
                           method: method,
@@ -2007,17 +2013,20 @@ export default function POS() {
                           status: 'Completed'
                         }] : []
                       )
+
+                      if (!success) {
+                        alert("Could not complete this order. Your cart has been kept \u2014 please check your connection and try again.")
+                        return
+                      }
+
                       window.print()
-                      setTimeout(() => {
-                        clearCart()
-                        setCheckoutModalOpen(false)
-                        setOrderNotes('')
-                        setSelectedPaymentMethod(null)
-                        setAmountReceived('')
-                        setDiscountAmount('')
-                        setCheckoutFocusZone('methods')
-                        setCheckoutMethodIndex(0)
-                      }, 500)
+                      setCheckoutModalOpen(false)
+                      setOrderNotes('')
+                      setSelectedPaymentMethod(null)
+                      setAmountReceived('')
+                      setDiscountAmount('')
+                      setCheckoutFocusZone('methods')
+                      setCheckoutMethodIndex(0)
                     }}
                     className={`w-full py-3 font-black rounded-xl text-base active:scale-95 transition-all flex items-center justify-center gap-2 relative ${checkoutFocusZone === 'confirm'
                       ? 'bg-orange-400 text-white ring-4 ring-orange-300 shadow-lg shadow-orange-500/40'

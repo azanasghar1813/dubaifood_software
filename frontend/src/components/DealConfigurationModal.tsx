@@ -129,48 +129,38 @@ export function DealConfigurationModal({ isOpen, onClose, deal, onConfirm, avail
   };
 
   const handleNext = () => {
-    setCurrentStep(s => {
-      if (s < components.length - 1) {
-        return s + 1;
+    if (currentStep < components.length - 1) {
+      setCurrentStep(s => s + 1);
+    } else {
+      // Process selections and confirm once
+      const combo_components: any[] = [];
+      for (const comp of components) {
+        const picked = selections[comp.id] || [];
+        
+        // Group identical products
+        const grouped = picked.reduce((acc: any, p: any) => {
+          const key = p.id + '_' + (comp.target_variant_name || '');
+          if (!acc[key]) {
+            acc[key] = {
+              component_id: comp.id,
+              product_id: p.id,
+              product_name_snapshot: p.name,
+              variant_snapshot: comp.target_variant_name || null,
+              price_adjustment: comp.price_adjustment || 0,
+              quantity: 0
+            };
+          }
+          acc[key].quantity += 1;
+          return acc;
+        }, {});
+        
+        combo_components.push(...Object.values(grouped));
       }
       
-      // We only want to call onConfirm ONCE
-      // Use setTimeout to ensure we have the absolute latest state from React
-      setTimeout(() => {
-        setSelections(latestSelections => {
-          const combo_components = [];
-          for (const comp of components) {
-            const picked = latestSelections[comp.id] || [];
-            
-            // Group identical products
-            const grouped = picked.reduce((acc: any, p: any) => {
-              const key = p.id + '_' + (comp.target_variant_name || '');
-              if (!acc[key]) {
-                acc[key] = {
-                  component_id: comp.id,
-                  product_id: p.id,
-                  product_name_snapshot: p.name,
-                  variant_snapshot: comp.target_variant_name || null,
-                  price_adjustment: comp.price_adjustment || 0,
-                  quantity: 0
-                };
-              }
-              acc[key].quantity += 1;
-              return acc;
-            }, {});
-            
-            combo_components.push(...Object.values(grouped));
-          }
-          
-          // Add automatically resolved components
-          combo_components.push(...autoComponents);
-          onConfirm({ ...deal, combo_components });
-          return latestSelections; // don't change
-        });
-      }, 0);
-      
-      return s;
-    });
+      // Add automatically resolved components
+      combo_components.push(...autoComponents);
+      onConfirm({ ...deal, combo_components });
+    }
   };
 
 
@@ -310,7 +300,7 @@ export function DealConfigurationModal({ isOpen, onClose, deal, onConfirm, avail
               {allowedProducts.map((prod, idx) => (
                 <button
                   key={prod.id}
-                  onClick={() => handleSelect(prod, true)}
+                  onClick={() => handleSelect(prod, false)}
                   className={`p-4 rounded-2xl border bg-card transition-all text-left flex items-center justify-between group active:scale-95 ${idx === keyboardIndex ? 'border-orange-500 ring-4 ring-orange-500/20' : 'border-border hover:border-orange-500'}`}
                 >
                   <span className="font-bold">{prod.name}</span>

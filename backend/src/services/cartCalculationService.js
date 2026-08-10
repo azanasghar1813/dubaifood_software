@@ -134,17 +134,19 @@ class CartCalculationService {
           resolvedCombos.push({
             component_id: comp.component_id || null,
             product_id: compProd.id,
-            product_name: compProd.display_name || compProd.name || comp.product_name_snapshot,
-            variant_name: comp.variant_snapshot || comp.variant_name || null,
-            price_adjustment: adj
+            product_name_snapshot: compProd.display_name || compProd.name || comp.product_name_snapshot,
+            variant_snapshot: comp.variant_snapshot || comp.variant_name || null,
+            price_adjustment: adj,
+            quantity: comp.quantity || 1
           });
         } else if (comp.is_dummy || comp.product_id?.startsWith('dummy')) {
           resolvedCombos.push({
             component_id: comp.component_id || null,
             product_id: comp.product_id || 'DUMMY',
-            product_name: comp.product_name_snapshot || comp.product_name || comp.name || 'Generic Item',
-            variant_name: comp.variant_snapshot || comp.variant_name || null,
-            price_adjustment: 0
+            product_name_snapshot: comp.product_name_snapshot || comp.product_name || comp.name || 'Generic Item',
+            variant_snapshot: comp.variant_snapshot || comp.variant_name || null,
+            price_adjustment: 0,
+            quantity: comp.quantity || 1
           });
         }
       }

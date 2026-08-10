@@ -135,7 +135,9 @@ class OrderCreationService {
       const product = dealRepository.findById(item.product_id);
       if (!product) continue;
 
-      const comboSelections = Array.isArray(item.comboComponents) ? item.comboComponents.length : 0;
+      const comboSelections = Array.isArray(item.comboComponents) 
+        ? item.comboComponents.reduce((sum, c) => sum + (Number(c.quantity) || 1), 0) 
+        : 0;
       const components = Array.isArray(product.components) ? product.components : [];
       if (components.length === 0) continue;
 
@@ -376,9 +378,10 @@ class OrderCreationService {
             order_item_id: itemId,
             component_id: comp.component_id || crypto.randomUUID(),
             product_id: comp.product_id,
-            product_name_snapshot: comp.product_name || 'Component',
-            variant_snapshot: comp.variant_name || null,
-            price_adjustment: Number(comp.price_adjustment) || 0
+            product_name_snapshot: comp.product_name_snapshot || 'Component',
+            variant_snapshot: comp.variant_snapshot || null,
+            price_adjustment: Number(comp.price_adjustment) || 0,
+            quantity: Number(comp.quantity) || 1
           });
         }
       }

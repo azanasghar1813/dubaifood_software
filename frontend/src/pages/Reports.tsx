@@ -480,9 +480,9 @@ export default function Reports() {
 
   // Deal Sales Data
   const dealSalesData = useMemo(() => {
-    return productSalesData
-      .filter(p => p.cat === 'Deals' || p.name.toLowerCase().includes('combo') || p.name.toLowerCase().includes('deal'))
-      .map(d => {
+      return productSalesData
+        .filter(p => p.cat === 'Deals' || (p.name || '').toLowerCase().includes('combo') || (p.name || '').toLowerCase().includes('deal'))
+        .map(d => {
         const discountCost = Math.round(d.rev * 0.2) // Mock 20% average discount given on deals vs à la carte
         return { ...d, discountCost, netContribution: d.rev - discountCost }
       })

@@ -808,6 +808,16 @@ export default function Orders() {
                           {item.selectedModifiers && item.selectedModifiers.length > 0 && (
                             <p className="text-xs text-muted-foreground font-bold mt-1">Mods: {item.selectedModifiers.map(m => m.name).join(", ")}</p>
                           )}
+                          {item.combo_components && item.combo_components.length > 0 && (
+                            <div className="text-xs text-muted-foreground font-bold mt-1">
+                              Combo:
+                              <ul className="list-disc pl-4 mt-0.5 space-y-0.5 text-[10px]">
+                                {item.combo_components.map((c: any, i: number) => (
+                                  <li key={i}>{c.quantity || 1}x {c.product_name_snapshot || c.name || "Component"} {c.variant_snapshot ? `(${c.variant_snapshot})` : ''} {c.price_adjustment > 0 ? `(+Rs. ${c.price_adjustment})` : ''}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                           {item.notes && <p className="text-xs text-amber-500 font-bold mt-1">Note: {item.notes}</p>}
                         </div>
                         <div className="text-right">

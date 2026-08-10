@@ -19,9 +19,11 @@ const addonInputSchema = z.object({
 
 const comboComponentInputSchema = z.object({
   component_id: z.string().optional().nullable(),
-  product_id: z.string().uuid(),
-  variant_name: z.string().optional().nullable(),
-  price_adjustment: z.number().optional().default(0)
+  product_id: z.string(),
+  product_name_snapshot: z.string().optional().nullable(),
+  variant_snapshot: z.string().optional().nullable(),
+  price_adjustment: z.number().optional().default(0),
+  quantity: z.number().int().min(1).optional().default(1)
 });
 
 // ────────────────────────────────────────────────────────────────────────────

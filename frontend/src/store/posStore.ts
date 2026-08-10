@@ -80,7 +80,7 @@ interface POSState {
   duplicateItem: (cartItemId: string) => Promise<void>
   holdOrder: (holdName: string) => Promise<void>
   resumeOrder: (orderId: string) => Promise<void>
-  completeOrder: (payments?: any[]) => Promise<void>
+  completeOrder: (payments?: any[]) => Promise<boolean>
   clearCart: () => void
   
   // Legacy accessors
@@ -234,7 +234,7 @@ export const usePosStore = create<POSState>((set, get) => ({
           variant_id: product.variant_id,
           quantity,
           modifiers: selectedModifiers,
-          combo_components: product.combo_components,
+          comboComponents: product.combo_components,
           notes
         })
       } else {
@@ -243,7 +243,7 @@ export const usePosStore = create<POSState>((set, get) => ({
           variant_id: product.variant_id,
           quantity,
           modifiers: selectedModifiers,
-          combo_components: product.combo_components,
+          comboComponents: product.combo_components,
           notes
         })
       }
@@ -412,9 +412,9 @@ export const usePosStore = create<POSState>((set, get) => ({
     }
   },
 
-  completeOrder: async (payments: any[] = []) => {
+  completeOrder: async (payments: any[] = []): Promise<boolean> => {
     const state = get()
-    if (!state.activeOrder) return
+    if (!state.activeOrder) return false
     
     set({ isLoadingOrder: true })
     try {
@@ -437,10 +437,13 @@ export const usePosStore = create<POSState>((set, get) => ({
           is_tax_enabled: false // Hardcoded to remove tax
         })
 
-        if ((checkoutResult as any).success) {
-          order = checkoutResult.data
-          set({ activeOrder: order, cart: (order?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] })) })
+        if (!(checkoutResult as any).success) {
+          console.error('Checkout failed:', checkoutResult)
+          return false
         }
+
+        order = (checkoutResult as any).data
+        set({ activeOrder: order, cart: (order?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] })) })
       }
 
       for (const p of payments) {
@@ -458,8 +461,10 @@ export const usePosStore = create<POSState>((set, get) => ({
       await get().fetchDraftOrder()
       // Immediately sync order history for instant status updates
       useOrderStore.getState().syncOrdersFromBackend()
+      return true
     } catch (e) {
       console.error(e)
+      return false
     } finally {
       set({ isLoadingOrder: false })
     }
@@ -467,10 +472,10 @@ export const usePosStore = create<POSState>((set, get) => ({
 
   clearCart: () => {
     void cartService.clearCart().then(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, deliveryCharges: 0 })
       void get().fetchDraftOrder()
     }).catch(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, deliveryCharges: 0 })
       void get().fetchDraftOrder()
     })
   },

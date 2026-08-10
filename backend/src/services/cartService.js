@@ -75,7 +75,7 @@ class CartService {
       .sort()
       .join('|');
     const combos = [...(item.comboComponents || [])]
-      .map(c => `${c.product_id}:${c.variant_name || ''}`)
+      .map(c => `${c.product_id}:${c.variant_snapshot || ''}`)
       .sort()
       .join('|');
     const notes = (item.notes || '').trim();
@@ -160,7 +160,7 @@ class CartService {
       variant_id: calculated.variant_id,
       modifiers: calculated.modifiers.map(m => ({ modifier_id: m.modifier_id, quantity: m.quantity })),
       addons: calculated.addons.map(a => ({ addon_id: a.addon_id, quantity: a.quantity })),
-      comboComponents: calculated.comboComponents.map(c => ({ product_id: c.product_id, variant_name: c.variant_name })),
+      comboComponents: calculated.comboComponents.map(c => ({ product_id: c.product_id, variant_snapshot: c.variant_snapshot, quantity: c.quantity })),
       notes: calculated.notes
     });
 
@@ -180,7 +180,7 @@ class CartService {
       };
 
       activityLogService.logActivity(cashierUserId, 'CART_ITEM_MERGED', 'CART', sessionId, {
-        product_name: calculated.product_name,
+        product_name_snapshot: calculated.product_name_snapshot,
         old_qty: existing.quantity,
         new_qty: newQty
       });
@@ -192,7 +192,7 @@ class CartService {
       });
 
       activityLogService.logActivity(cashierUserId, 'CART_ITEM_ADDED', 'CART', sessionId, {
-        product_name: calculated.product_name,
+        product_name_snapshot: calculated.product_name_snapshot,
         quantity: calculated.quantity
       });
     }
@@ -226,7 +226,7 @@ class CartService {
       variant_id: item.variant_id,
       modifiers: item.modifiers.map(m => ({ modifier_id: m.modifier_id, group_id: m.group_id, price_adjustment: m.price_adjustment, quantity: m.quantity })),
       addons: item.addons.map(a => ({ addon_id: a.addon_id, unit_price: a.unit_price, quantity: a.quantity })),
-      comboComponents: item.comboComponents.map(c => ({ product_id: c.product_id, variant_name: c.variant_name, price_adjustment: c.price_adjustment })),
+      comboComponents: item.comboComponents.map(c => ({ component_id: c.component_id, product_id: c.product_id, product_name_snapshot: c.product_name_snapshot, variant_snapshot: c.variant_snapshot, price_adjustment: c.price_adjustment, quantity: c.quantity })),
       quantity: newQuantity,
       notes: item.notes
     });
