@@ -34,6 +34,9 @@ export interface DetailedSaleRow {
   tax: number;
   net: number;
   refunds: number;
+  is_component?: number;
+  original_value?: number;
+  parent_deal_name?: string;
 }
 
 export interface TrendRow {

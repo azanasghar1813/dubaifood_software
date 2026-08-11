@@ -18,6 +18,7 @@ import inventoryRoutes from './inventoryRoutes.js';
 import expenseRoutes from './expenseRoutes.js';
 import activityLogRoutes from './activityLogRoutes.js';
 import reportRoutes from './reportRoutes.js';
+import shiftRoutes from './shiftRoutes.js';
 
 const router = Router();
 
@@ -41,5 +42,6 @@ router.use('/inventory', inventoryRoutes);
 router.use('/expenses', expenseRoutes);
 router.use('/activity-logs', activityLogRoutes);
 router.use('/reports', reportRoutes);
+router.use('/shifts', shiftRoutes);
 
 export default router;

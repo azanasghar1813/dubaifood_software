@@ -32,6 +32,8 @@ export default function Reports() {
   const [activeTab, setActiveTab] = useState<string>("Dashboard Summary")
   const [timeRange, setTimeRange] = useState<string>("Today")
   const [searchQuery, setSearchQuery] = useState("")
+
+  const [expandedDeal, setExpandedDeal] = useState<string | null>(null)
   const [filterCashier, setFilterCashier] = useState("All")
   const [filterPayment, setFilterPayment] = useState("All")
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -394,19 +396,18 @@ export default function Reports() {
 
     detailedSales.forEach(row => {
       const cat = ((row.main_category || '') + " " + (row.sub_category || '')).toLowerCase()
-      const pName = (row.product_name || '').toLowerCase()
       
-      if (cat.includes("deal") || cat.includes("combo")) {
-        dealsSales += row.net
-        // If the deal contains a drink, also calculate its revenue towards drinks sale
-        if (pName.includes("drink") || pName.includes("limka") || pName.includes("coke") || pName.includes("pepsi") || pName.includes("sprite") || pName.includes("water") || pName.includes("tea") || pName.includes("coffee") || pName.includes("beverage") || pName.includes("cold")) {
-          drinksSales += row.net
+      // Only count actual items or parent deals for the Sales Split revenue cards.
+      // Components (is_component === 1) have their revenue already included in the parent deal.
+      if (row.is_component !== 1) {
+        if (cat.includes("deal") || cat.includes("combo")) {
+          dealsSales += row.net
         }
+        else if (cat.includes("chip") || cat.includes("potato")) chipsSales += row.net
+        else if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) fastFoodSales += row.net
+        else if (cat.includes("drink") || cat.includes("beverage") || cat.includes("shake") || cat.includes("water") || cat.includes("juice") || cat.includes("tea") || cat.includes("coffee") || cat.includes("cold") || cat.includes("limka")) drinksSales += row.net
+        else restaurantSales += row.net
       }
-      else if (cat.includes("chip") || cat.includes("potato")) chipsSales += row.net
-      else if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) fastFoodSales += row.net
-      else if (cat.includes("drink") || cat.includes("beverage") || cat.includes("shake") || cat.includes("water") || cat.includes("juice") || cat.includes("tea") || cat.includes("coffee") || cat.includes("cold") || cat.includes("limka")) drinksSales += row.net
-      else restaurantSales += row.net
     })
 
     const totalService = reportSummary.serviceCharges || 0
@@ -453,20 +454,22 @@ export default function Reports() {
   const productSalesData = useMemo(() => {
     if (!detailedSales.length) return []
 
-    const itemMap = new Map<string, { name: string, cat: string, sold: number, rev: number }>()
+    const itemMap = new Map<string, { id: string, name: string, cat: string, sold: number, rev: number, is_deal: boolean }>()
 
-    const addItem = (id: string, name: string, cat: string, qty: number, net: number) => {
+    const addItem = (id: string, name: string, cat: string, qty: number, net: number, is_deal: boolean) => {
       const existing = itemMap.get(id)
       if (existing) {
         existing.sold += qty
         existing.rev += net
+        existing.is_deal = existing.is_deal || is_deal
       } else {
-        itemMap.set(id, { name, cat: cat || 'Uncategorized', sold: qty, rev: net })
+        itemMap.set(id, { id, name, cat: cat || 'Uncategorized', sold: qty, rev: net, is_deal })
       }
     }
 
     detailedSales.forEach(row => {
-      addItem(row.product_id, row.product_name, row.main_category, row.qty, row.net)
+      const is_deal = row.is_component === 0 && (row.main_category?.includes('Deal') || (row.product_name || '').toLowerCase().includes('combo') || (row.product_name || '').toLowerCase().includes('deal'));
+      addItem(row.product_id, row.product_name, row.main_category, row.qty, row.net, !!is_deal)
     })
 
     let data = Array.from(itemMap.values())
@@ -509,15 +512,19 @@ export default function Reports() {
         map.set(cName, { cat: cName, sold: p.sold, rev: p.rev })
       }
     })
-    const data = Array.from(map.values()).sort((a, b) => b.rev - a.rev)
+    let data = Array.from(map.values())
+    data = data.filter(c => c.cat !== 'Uncategorized')
+    data.sort((a, b) => b.rev - a.rev)
     const totalRev = data.reduce((s, d) => s + d.rev, 0)
     return data.map(d => ({ ...d, share: totalRev ? Math.round((d.rev / totalRev) * 100) : 0 }))
   }, [productSalesData])
 
+  const visibleProductSales = useMemo(() => productSalesData.filter(p => !p.is_deal), [productSalesData])
+
   // Deal Sales Data
   const dealSalesData = useMemo(() => {
       return productSalesData
-        .filter(p => p.cat === 'Deals' || (p.name || '').toLowerCase().includes('combo') || (p.name || '').toLowerCase().includes('deal'))
+        .filter(p => p.is_deal)
         .map(d => {
         const discountCost = Math.round(d.rev * 0.2) // Mock 20% average discount given on deals vs à la carte
         return { ...d, discountCost, netContribution: d.rev - discountCost }
@@ -660,9 +667,10 @@ export default function Reports() {
               className="h-8 rounded-lg bg-secondary border border-border text-[10px] font-bold px-3 focus:outline-none cursor-pointer"
             >
               <option value="All">All Cashiers</option>
-              {cashiers.map(c => (
-                <option key={c.id} value={c.name}>{c.name}</option>
-              ))}
+              {cashiers.map((c: any) => {
+                const displayName = (c.first_name || c.last_name) ? `${c.first_name || ''} ${c.last_name || ''}`.trim() : c.username || c.name;
+                return <option key={c.id} value={c.id}>{displayName}</option>
+              })}
             </select>
           </div>
 
@@ -1136,17 +1144,17 @@ export default function Reports() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/50">
-                        {productSalesData.length === 0 ? (
+                        {visibleProductSales.length === 0 ? (
                           <tr>
                             <td colSpan={5} className="p-8 text-center text-muted-foreground font-bold">No products match this filter.</td>
                           </tr>
                         ) : (
-                          productSalesData.slice((productCurrentPage - 1) * itemsPerPage, productCurrentPage * itemsPerPage).map((item, idx) => (
+                          visibleProductSales.slice((productCurrentPage - 1) * itemsPerPage, productCurrentPage * itemsPerPage).map((item, idx) => (
                             <tr key={idx} className="hover:bg-secondary/20 transition-colors">
                               <td className="p-4 text-sm font-black text-foreground">{item.name}</td>
                               <td className="p-4 text-xs font-bold text-muted-foreground">{item.cat}</td>
                               <td className="p-4 text-sm font-black text-foreground text-right">{item.sold}</td>
-                              <td className="p-4 text-sm font-black text-primary text-right">{formatCurrency(item.rev)}</td>
+                              <td className="p-4 text-sm font-black text-primary text-right">Rs. {formatCurrency(item.rev)}</td>
                               <td className="p-4 text-right">
                                 <div className="flex items-center justify-end gap-2">
                                   <span className="text-xs font-bold w-8 text-right">{item.share}%</span>
@@ -1163,11 +1171,11 @@ export default function Reports() {
                   </div>
 
                   {/* Pagination Footer */}
-                  {productSalesData.length > 0 && (
+                  {visibleProductSales.length > 0 && (
                     <div className="p-4 border-t border-border flex flex-col md:flex-row justify-between items-center gap-4 bg-secondary/10 rounded-b-[2.5rem]">
                       <div className="flex items-center gap-4">
                         <span className="text-xs font-bold text-muted-foreground">
-                          Showing {(productCurrentPage - 1) * itemsPerPage + 1}–{Math.min(productCurrentPage * itemsPerPage, productSalesData.length)} of {productSalesData.length} products
+                          Showing {(productCurrentPage - 1) * itemsPerPage + 1}–{Math.min(productCurrentPage * itemsPerPage, visibleProductSales.length)} of {visibleProductSales.length} products
                         </span>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-muted-foreground">Per page:</span>
@@ -1194,8 +1202,8 @@ export default function Reports() {
                           Previous
                         </button>
                         <button
-                          disabled={productCurrentPage === Math.ceil(productSalesData.length / itemsPerPage)}
-                          onClick={() => setProductCurrentPage(p => Math.min(Math.ceil(productSalesData.length / itemsPerPage), p + 1))}
+                          disabled={productCurrentPage === Math.ceil(visibleProductSales.length / itemsPerPage)}
+                          onClick={() => setProductCurrentPage(p => Math.min(Math.ceil(visibleProductSales.length / itemsPerPage), p + 1))}
                           className="px-4 py-2 bg-card border border-border rounded-xl text-xs font-bold text-foreground disabled:opacity-40 hover:bg-secondary transition-colors"
                         >
                           Next
@@ -1303,7 +1311,6 @@ export default function Reports() {
                       <th className="p-4 text-xs font-black text-muted-foreground uppercase tracking-wider">Category</th>
                       <th className="p-4 text-xs font-black text-muted-foreground uppercase tracking-wider text-right">Qty Sold</th>
                       <th className="p-4 text-xs font-black text-muted-foreground uppercase tracking-wider text-right">Revenue (Rs)</th>
-                      <th className="p-4 text-xs font-black text-muted-foreground uppercase tracking-wider text-right">Revenue share (%)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
@@ -1312,14 +1319,6 @@ export default function Reports() {
                         <td className="p-4 text-sm font-black text-foreground">{cat.cat}</td>
                         <td className="p-4 text-sm font-black text-foreground text-right">{cat.sold}</td>
                         <td className="p-4 text-sm font-black text-primary text-right">{formatCurrency(cat.rev)}</td>
-                        <td className="p-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <span className="text-xs font-bold w-8 text-right">{cat.share}%</span>
-                            <div className="w-16 h-1.5 bg-secondary rounded-full overflow-hidden">
-                              <div className="h-full bg-primary rounded-full" style={{ width: `${cat.share}%` }}></div>
-                            </div>
-                          </div>
-                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1348,15 +1347,43 @@ export default function Reports() {
                   <tbody className="divide-y divide-border/50">
                     {dealSalesData.length === 0 ? (
                       <tr><td colSpan={5} className="p-8 text-center text-muted-foreground font-bold">No deals sold in this period.</td></tr>
-                    ) : dealSalesData.map((deal, idx) => (
-                      <tr key={idx} className="hover:bg-secondary/20 transition-colors">
-                        <td className="p-4 text-sm font-black text-foreground">{deal.name}</td>
-                        <td className="p-4 text-sm font-black text-foreground text-right">{deal.sold}</td>
-                        <td className="p-4 text-sm font-black text-primary text-right">{formatCurrency(deal.rev)}</td>
-                        <td className="p-4 text-sm font-black text-red-500 text-right">- Rs. {formatCurrency(deal.discountCost)}</td>
-                        <td className="p-4 text-sm font-black text-emerald-500 text-right">Rs. {formatCurrency(deal.netContribution)}</td>
-                      </tr>
-                    ))}
+                    ) : dealSalesData.map((deal, idx) => {
+                      const isExpanded = expandedDeal === deal.name;
+                      const components = detailedSales.filter(r => r.parent_deal_name === deal.name && r.is_component === 1);
+                      return (
+                        <React.Fragment key={idx}>
+                          <tr 
+                            className={`hover:bg-secondary/20 transition-colors ${components.length > 0 ? 'cursor-pointer' : ''}`}
+                            onClick={() => components.length > 0 && setExpandedDeal(isExpanded ? null : deal.name)}
+                          >
+                            <td className="p-4 text-sm font-black text-foreground flex items-center gap-2">
+                              {components.length > 0 ? (
+                                <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                              ) : (
+                                <div className="w-4 h-4" />
+                              )}
+                              {deal.name}
+                            </td>
+                            <td className="p-4 text-sm font-black text-foreground text-right">{deal.sold}</td>
+                            <td className="p-4 text-sm font-black text-primary text-right">{formatCurrency(deal.rev)}</td>
+                            <td className="p-4 text-sm font-black text-red-500 text-right">- Rs. {formatCurrency(deal.discountCost)}</td>
+                            <td className="p-4 text-sm font-black text-emerald-500 text-right">Rs. {formatCurrency(deal.netContribution)}</td>
+                          </tr>
+                          {isExpanded && components.length > 0 && components.map((comp, cidx) => (
+                            <tr key={`comp-${idx}-${cidx}`} className="bg-secondary/5">
+                              <td className="p-4 pl-12 text-xs font-bold text-muted-foreground flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-primary/50"></div>
+                                {comp.product_name}
+                              </td>
+                              <td className="p-4 text-xs font-bold text-muted-foreground text-right">{comp.qty}</td>
+                              <td className="p-4 text-xs font-bold text-muted-foreground text-right">-</td>
+                              <td className="p-4 text-xs font-bold text-muted-foreground text-right">-</td>
+                              <td className="p-4 text-xs font-bold text-muted-foreground text-right">-</td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

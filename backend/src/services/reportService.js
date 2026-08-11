@@ -126,9 +126,9 @@ export const reportService = {
     // We group by main category, sub category, product
     const query = `
       WITH AllSales AS (
-        SELECT order_id, product_id, quantity as qty, base_unit_price, discount_amount, tax_amount, total_amount, NULL as component_name, 0 as is_component FROM order_items
+        SELECT order_id, product_id, quantity as qty, base_unit_price, discount_amount, tax_amount, total_amount, product_name_snapshot as component_name, 0 as is_component, NULL as parent_deal_name FROM order_items
         UNION ALL
-        SELECT oi.order_id, occ.product_id, occ.quantity as qty, occ.price_adjustment as base_unit_price, 0 as discount_amount, 0 as tax_amount, (occ.quantity * occ.price_adjustment) as total_amount, occ.product_name_snapshot as component_name, 1 as is_component
+        SELECT oi.order_id, occ.product_id, occ.quantity as qty, occ.price_adjustment as base_unit_price, 0 as discount_amount, 0 as tax_amount, (occ.quantity * occ.price_adjustment) as total_amount, occ.product_name_snapshot as component_name, 1 as is_component, oi.product_name_snapshot as parent_deal_name
         FROM order_combo_components occ
         JOIN order_items oi ON occ.order_item_id = oi.id
       )
@@ -140,6 +140,8 @@ export const reportService = {
           CASE WHEN a.is_component = 1 AND (a.component_name LIKE '%Chip%' OR a.component_name LIKE '%Fries%') THEN 'Potato Chips' END,
           CASE WHEN c1.name LIKE '%Chips%' OR p.name LIKE '%Chips%' THEN 'Potato Chips' END,
           CASE WHEN a.is_component = 1 THEN 'Deals' END,
+          CASE WHEN a.is_component = 0 AND (a.component_name LIKE '%Deal%' OR a.component_name LIKE '%Combo%') THEN 'Deals' END,
+          CASE WHEN a.is_component = 0 AND (a.component_name LIKE '%Drink%' OR a.component_name LIKE '%Limka%' OR a.component_name LIKE '%Beverage%') THEN 'Drinks' END,
           c2.name, c1.name, 'Uncategorized'
         ) as main_category,
         COALESCE(
@@ -157,7 +159,10 @@ export const reportService = {
         SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.discount_amount ELSE 0 END) as discount,
         SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.tax_amount ELSE 0 END) as tax,
         SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.total_amount ELSE 0 END) as net,
-        SUM(CASE WHEN o.lifecycle_state IN ('CANCELLED', 'REFUNDED') THEN a.total_amount ELSE 0 END) as refunds
+        SUM(CASE WHEN o.lifecycle_state IN ('CANCELLED', 'REFUNDED') THEN a.total_amount ELSE 0 END) as refunds,
+        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN COALESCE(p.price, 0) * a.qty ELSE 0 END) as original_value,
+        MAX(a.is_component) as is_component,
+        MAX(a.parent_deal_name) as parent_deal_name
       FROM AllSales a
       JOIN orders o ON a.order_id = o.id
       LEFT JOIN products p ON a.product_id = p.id

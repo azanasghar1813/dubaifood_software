@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from "react"
+import { shiftApi } from "../api/shiftApi"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
   ArrowRightLeft, DollarSign, Clock, 
   RefreshCw, Printer, 
   CheckCircle2, BarChart, Activity, 
   AlertCircle, Coins, Plus, ShieldAlert, Key, 
-  X, Search
+  X, Search, Keyboard
 } from "lucide-react"
 
 // Constants & Types
@@ -59,63 +60,63 @@ interface ShiftRecord {
 }
 
 export default function CashierManagement() {
-
-
   // --- CORE SHIFT ACTIVE STATE ---
-  const [isShiftActive, setIsShiftActive] = useState(true)
-  const [openingFloat, setOpeningFloat] = useState(10000)
-  const [cashierName] = useState("Ahmed")
-  const [employeeId] = useState("EMP-04")
-  // const [role] = useState("Cashier")
-  const [tillName] = useState("Main Till #1")
-  // const [counterNumber] = useState("Register 01")
-  // const [loginTime] = useState("2026-07-28T08:00:00")
+  const [activeShift, setActiveShift] = useState<any>(null)
+  const [shiftHistory, setShiftHistory] = useState<ShiftRecord[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  const fetchShiftData = async () => {
+    try {
+      setIsLoading(true)
+      const [activeRes, historyRes] = await Promise.all([
+        shiftApi.getActiveShift(),
+        shiftApi.getShiftHistory()
+      ])
+      setActiveShift(activeRes.data)
+      setShiftHistory(historyRes.data)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchShiftData()
+  }, [])
+
+  const isShiftActive = !!activeShift
+  const openingFloat = activeShift?.openingFloat || 0
+  const cashierName = activeShift?.userId || "Cashier"
+  const employeeId = activeShift?.userId || "EMP"
+  const tillName = activeShift?.terminalId || "Main Till #1"
   
+  const cashDrops = activeShift?.cashDrops || []
+  const paidOuts = activeShift?.paidOuts || []
+  const shiftActivities = activeShift?.shiftActivities || []
+  const transactions = activeShift?.transactions || []
+
   // Simulated Time states
   const [currentTime, setCurrentTime] = useState(new Date())
-  const [shiftSeconds, setShiftSeconds] = useState(33840) // ~9.4 hours start
+  const [currentSeconds, setCurrentSeconds] = useState(0)
   
-  // Data lists
-  const [cashDrops, setCashDrops] = useState<CashDrop[]>([
-    { id: "CD-1", time: "11:30 AM", amount: 15000, reason: "Mid-day excess safe drop", destination: "Safe Deposit", printed: true },
-    { id: "CD-2", time: "03:15 PM", amount: 10000, reason: "Manager vault transfer", destination: "Manager Collection", printed: true }
-  ])
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date())
+      if (activeShift?.openedAt) {
+        setCurrentSeconds(Math.floor((new Date().getTime() - new Date(activeShift.openedAt).getTime()) / 1000))
+      }
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [activeShift])
 
-  const [paidOuts, setPaidOuts] = useState<PaidOut[]>([
-    { id: "PO-1", time: "09:45 AM", purpose: "Supplies (Milk & Sugar)", amount: 1200, approvedBy: "Ali Manager" },
-    { id: "PO-2", time: "02:00 PM", purpose: "Cleaning (Floor Detergents)", amount: 800, approvedBy: "Ali Manager" }
-  ])
-
-  const [shiftActivities, setShiftActivities] = useState<ShiftActivity[]>([
-    { id: "ACT-1", time: "08:00 AM", type: "Shift Started", description: "Shift opened with float Rs. 10,000", severity: "success" },
-    { id: "ACT-2", time: "09:45 AM", type: "Paid Out", description: "Paid Rs. 1,200 for tea supply", severity: "info" },
-    { id: "ACT-3", time: "11:30 AM", type: "Cash Drop", description: "Transferred Rs. 15,000 to safe box", severity: "warning" },
-    { id: "ACT-4", time: "01:10 PM", type: "Refund Approved", description: "Order #8590 refunded Rs. 1,500 cash", severity: "error" },
-    { id: "ACT-5", time: "02:00 PM", type: "Paid Out", description: "Paid Rs. 800 for cleaning supplies", severity: "info" },
-    { id: "ACT-6", time: "03:15 PM", type: "Cash Drop", description: "Manager collected Rs. 10,000 cash", severity: "warning" }
-  ])
-
-  const [transactions] = useState<Transaction[]>([
-    { time: "04:55 PM", orderNo: "ORD-9402", customer: "Muhammad Ali", paymentMethod: "Cash", amount: 2450, cashier: "Ahmed", status: "Completed" },
-    { time: "04:42 PM", orderNo: "ORD-9398", customer: "Sara Khan", paymentMethod: "EasyPaisa", amount: 1850, cashier: "Ahmed", status: "Completed" },
-    { time: "04:30 PM", orderNo: "ORD-9390", customer: "Zainab Malik", paymentMethod: "Card", amount: 3900, cashier: "Ahmed", status: "Completed" },
-    { time: "04:15 PM", orderNo: "ORD-9381", customer: "Bilal Lodhi", paymentMethod: "JazzCash", amount: 1200, cashier: "Ahmed", status: "Completed" },
-    { time: "03:50 PM", orderNo: "ORD-9377", customer: "Hamza Shah", paymentMethod: "Cash", amount: 4800, cashier: "Ahmed", status: "Completed" },
-    { time: "03:10 PM", orderNo: "ORD-9365", customer: "Ayesha Bibi", paymentMethod: "Meezan Bank", amount: 6200, cashier: "Ahmed", status: "Completed" },
-    { time: "02:45 PM", orderNo: "ORD-9359", customer: "Usman Ghani", paymentMethod: "Cash", amount: 1500, cashier: "Ahmed", status: "Refunded" }
-  ])
-
-  const [shiftHistory, setShiftHistory] = useState<ShiftRecord[]>([
-    { id: "SH-90", date: "2026-07-27", cashier: "Umar", till: "Main Till #1", openingFloat: 10000, expectedCash: 38450, actualCash: 38450, difference: 0, shiftTime: "8 hrs 15 mins", status: "Balanced" },
-    { id: "SH-89", date: "2026-07-26", cashier: "Ahmed", till: "Main Till #1", openingFloat: 10000, expectedCash: 42100, actualCash: 42050, difference: -50, shiftTime: "9 hrs 0 mins", status: "Discrepancy" },
-    { id: "SH-88", date: "2026-07-25", cashier: "Ahmed", till: "Main Till #1", openingFloat: 10000, expectedCash: 31500, actualCash: 31620, difference: 120, shiftTime: "8 hrs 40 mins", status: "Discrepancy" },
-    { id: "SH-87", date: "2026-07-24", cashier: "Umar", till: "Main Till #1", openingFloat: 10000, expectedCash: 29800, actualCash: 29800, difference: 0, shiftTime: "8 hrs 5 mins", status: "Balanced" }
-  ])
+  const shiftSeconds = currentSeconds
 
   // UI Interactive States
   const [showCashDropModal, setShowCashDropModal] = useState(false)
   const [showPaidOutModal, setShowPaidOutModal] = useState(false)
   const [showClosingPanel, setShowClosingPanel] = useState(false)
+  const [showShortcuts, setShowShortcuts] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
 
@@ -129,8 +130,6 @@ export default function CashierManagement() {
   const [poPurpose, setPoPurpose] = useState("Petty Cash")
   const [poCustomReason, setPoCustomReason] = useState("")
   const [poManagerPin, setPoManagerPin] = useState("")
-
-
 
   // Discrepancy Matrix
   const [discrepancyReason, setDiscrepancyReason] = useState("Discrepancy under investigation")
@@ -147,40 +146,12 @@ export default function CashierManagement() {
 
   // --- CALCULATE SHIFT METRICS ---
   const salesSummary = useMemo(() => {
-    // Expected Sales numbers
-    const cashSales = 45800
-    const onlineSales = 32400
-    const refunds = 1500
-    const discounts = 2200
-    const totalOrders = 42
-    return { cashSales, onlineSales, refunds, discounts, totalOrders }
-  }, [])
+    return activeShift?.metrics || { cashSales: 0, onlineSales: 0, refunds: 0, discounts: 0, totalOrders: 0 }
+  }, [activeShift])
 
-  const totalCashDrops = useMemo(() => {
-    return cashDrops.reduce((acc, drop) => acc + drop.amount, 0)
-  }, [cashDrops])
-
-  const totalPaidOuts = useMemo(() => {
-    return paidOuts.reduce((acc, po) => acc + po.amount, 0)
-  }, [paidOuts])
-
-  const expectedDrawerBalance = useMemo(() => {
-    // opening + cash sales - refunds - cash drops - paidouts
-    return openingFloat + salesSummary.cashSales - salesSummary.refunds - totalCashDrops - totalPaidOuts
-  }, [openingFloat, salesSummary, totalCashDrops, totalPaidOuts])
-
-
-
-  // Live Timer ticks
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date())
-      if (isShiftActive) {
-        setShiftSeconds(prev => prev + 1)
-      }
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [isShiftActive])
+  const totalCashDrops = activeShift?.metrics?.totalCashDrops || 0
+  const totalPaidOuts = activeShift?.metrics?.totalPaidOuts || 0
+  const expectedDrawerBalance = activeShift?.expectedCash || 0
 
   // Shift Duration Formatter
   const formattedShiftDuration = useMemo(() => {
@@ -194,43 +165,42 @@ export default function CashierManagement() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isInput = document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA"
-      
-      // ESC - Cancel modals
       if (e.key === "Escape") {
         setShowCashDropModal(false)
         setShowPaidOutModal(false)
         setShowClosingPanel(false)
+        setShowShortcuts(false)
+      }
+      
+      // Ctrl + / for shortcuts
+      if (e.ctrlKey && e.key === "/") {
+        e.preventDefault()
+        setShowShortcuts(true)
+        return
       }
 
       if (isInput) return
-
-      // F2 - Search focus
       if (e.key === "F2") {
         e.preventDefault()
         document.getElementById("txSearch")?.focus()
       }
-      // F4 - Cash Drop
       if (e.key === "F4") {
         e.preventDefault()
         setShowCashDropModal(true)
       }
-      // F5 - Refresh
       if (e.key === "F5") {
         e.preventDefault()
         handleRefresh()
       }
-      // F6 - Print Shift Report
       if (e.key === "F6") {
         e.preventDefault()
         handlePrintReport()
       }
-      // F8 - Close Shift Panel
       if (e.key === "F8") {
         e.preventDefault()
         setShowClosingPanel(true)
       }
     }
-
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [])
@@ -238,17 +208,26 @@ export default function CashierManagement() {
   // --- ACTION HANDLERS ---
   const handleRefresh = () => {
     setIsRefreshing(true)
-    setTimeout(() => {
-      setIsRefreshing(false)
-      // Play brief sound or show alert
-    }, 800)
+    fetchShiftData().then(() => {
+      setTimeout(() => setIsRefreshing(false), 800)
+    })
   }
 
   const handlePrintReport = () => {
-    alert(`----------------------------------------\n         SHIFT REPORT SUMMARY\n----------------------------------------\nCashier: ${cashierName} [${employeeId}]\nTill: ${tillName}\nExpected Cash: Rs. ${expectedDrawerBalance.toLocaleString()}\nCash Drops: Rs. ${totalCashDrops.toLocaleString()}\nPaid Outs: Rs. ${totalPaidOuts.toLocaleString()}\nTotal Orders: ${salesSummary.totalOrders}\n----------------------------------------\nStatus: UNCLOSED ACCRUALS PREVIEW`)
+    alert(`----------------------------------------
+         SHIFT REPORT SUMMARY
+----------------------------------------
+Cashier: ${cashierName} [${employeeId}]
+Till: ${tillName}
+Expected Cash: Rs. ${expectedDrawerBalance.toLocaleString()}
+Cash Drops: Rs. ${totalCashDrops.toLocaleString()}
+Paid Outs: Rs. ${totalPaidOuts.toLocaleString()}
+Total Orders: ${salesSummary.totalOrders}
+----------------------------------------
+Status: UNCLOSED ACCRUALS PREVIEW`)
   }
 
-  const handleCashDropSubmit = (e: React.FormEvent) => {
+  const handleCashDropSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const amt = parseFloat(dropAmount)
     if (!amt || isNaN(amt) || amt <= 0) {
@@ -259,33 +238,18 @@ export default function CashierManagement() {
       if (!confirm("Warning: Drop amount exceeds expected register cash. Proceed?")) return
     }
 
-    const newDrop: CashDrop = {
-      id: `CD-${cashDrops.length + 1}`,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      amount: amt,
-      reason: dropReason,
-      destination: dropReason === "Safe Deposit" ? "Safe Deposit" : "Manager Collection",
-      printed: dropPrintReceipt
+    try {
+      await shiftApi.addCashDrop(activeShift.id, amt, dropReason, dropReason === "Safe Deposit" ? "Safe Deposit" : "Manager Collection")
+      setDropAmount("")
+      setShowCashDropModal(false)
+      fetchShiftData()
+      alert(`Cash Drop of Rs. ${amt.toLocaleString()} completed successfully.`)
+    } catch (e: any) {
+      alert("Failed to log cash drop")
     }
-
-    setCashDrops([newDrop, ...cashDrops])
-    setShiftActivities([
-      { 
-        id: `ACT-${Date.now()}`, 
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
-        type: "Cash Drop", 
-        description: `Transferred Rs. ${amt.toLocaleString()} (${dropReason})`, 
-        severity: "warning" 
-      },
-      ...shiftActivities
-    ])
-
-    setDropAmount("")
-    setShowCashDropModal(false)
-    alert(`Cash Drop of Rs. ${amt.toLocaleString()} completed successfully.`)
   }
 
-  const handlePaidOutSubmit = (e: React.FormEvent) => {
+  const handlePaidOutSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const amt = parseFloat(poAmount)
     if (!amt || isNaN(amt) || amt <= 0) {
@@ -296,84 +260,55 @@ export default function CashierManagement() {
       alert("Invalid Manager Authorization PIN.")
       return
     }
-
     const purpose = poPurpose === "Custom Reason" ? poCustomReason : poPurpose
-    const newPo: PaidOut = {
-      id: `PO-${paidOuts.length + 1}`,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      purpose,
-      amount: amt,
-      approvedBy: "Ali Manager"
+    try {
+      await shiftApi.addPaidOut(activeShift.id, amt, purpose, "Ali Manager")
+      setPoAmount("")
+      setPoCustomReason("")
+      setPoManagerPin("")
+      setShowPaidOutModal(false)
+      fetchShiftData()
+      alert(`Payout of Rs. ${amt.toLocaleString()} approved and recorded.`)
+    } catch (e: any) {
+      alert("Failed to log paid out")
     }
-
-    setPaidOuts([newPo, ...paidOuts])
-    setShiftActivities([
-      {
-        id: `ACT-${Date.now()}`,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        type: "Paid Out",
-        description: `Paid out Rs. ${amt.toLocaleString()} for ${purpose}`,
-        severity: "info"
-      },
-      ...shiftActivities
-    ])
-
-    setPoAmount("")
-    setPoCustomReason("")
-    setPoManagerPin("")
-    setShowPaidOutModal(false)
-    alert(`Payout of Rs. ${amt.toLocaleString()} approved and recorded.`)
   }
 
-  // Shift Close Submission
-  const executeCloseShift = () => {
+  const executeCloseShift = async () => {
     if (closeManagerPin !== "1234") {
       alert("Invalid Manager Authorization PIN.")
       return
     }
-
     const actual = parseFloat(countedCash) || 0
-    const diff = actual - expectedDrawerBalance
-    
-    // Save to history
-    const record: ShiftRecord = {
-      id: `SH-${shiftHistory.length + 91}`,
-      date: new Date().toISOString().split("T")[0],
-      cashier: cashierName,
-      till: tillName,
-      openingFloat,
-      expectedCash: expectedDrawerBalance,
-      actualCash: actual,
-      difference: diff,
-      shiftTime: formattedShiftDuration,
-      status: diff === 0 ? "Balanced" : "Discrepancy"
+    try {
+      await shiftApi.closeShift(activeShift.id, actual, discrepancyNotes)
+      setShowClosingPanel(false)
+      setCloseStep(1)
+      setCountedCash("")
+      setCloseManagerPin("")
+      fetchShiftData()
+      alert("Shift closed successfully. Current register cleared.")
+    } catch (e: any) {
+      alert("Failed to close shift")
     }
-
-    setShiftHistory([record, ...shiftHistory])
-    setIsShiftActive(false)
-    setShowClosingPanel(false)
-    setCloseStep(1)
-    setCountedCash("")
-    setCloseManagerPin("")
-    alert("Shift closed successfully. Current register cleared.")
   }
 
-  const executeOpenShift = () => {
+  const executeOpenShift = async () => {
     const floatVal = parseFloat(newOpeningFloat) || 0
     if (floatVal <= 0) {
       alert("Please enter a valid starting float.")
       return
     }
-    setOpeningFloat(floatVal)
-    setShiftSeconds(0)
-    setCashDrops([])
-    setPaidOuts([])
-    setShiftActivities([
-      { id: `ACT-${Date.now()}`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), type: "Shift Started", description: `Shift opened with float Rs. ${floatVal.toLocaleString()}`, severity: "success" }
-    ])
-    setIsShiftActive(true)
-    alert(`Register opened successfully with float Rs. ${floatVal.toLocaleString()}.`)
+    try {
+      await shiftApi.startShift(floatVal, "Main Till #1")
+      fetchShiftData()
+      alert(`Register opened successfully with float Rs. ${floatVal.toLocaleString()}.`)
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Failed to start shift")
+    }
   }
+
+
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto text-foreground pb-12">
@@ -1132,6 +1067,54 @@ export default function CashierManagement() {
         )}
       </AnimatePresence>
 
+      {/* Shortcuts Modal */}
+      {showShortcuts && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setShowShortcuts(false)} />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="relative w-full max-w-lg bg-card border border-border shadow-2xl rounded-[2.5rem] p-8"
+          >
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                <Keyboard className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-xl font-black uppercase tracking-wider text-foreground">Keyboard Shortcuts</h2>
+                <p className="text-sm font-bold text-muted-foreground">Boost your workflow</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {[
+                { key: "F2", desc: "Search transactions" },
+                { key: "F4", desc: "Cash drop / Pay in" },
+                { key: "F5", desc: "Refresh data" },
+                { key: "F6", desc: "Print Z-Report" },
+                { key: "F8", desc: "End current shift" },
+                { key: "CTRL + /", desc: "Show this popup" },
+                { key: "ESC", desc: "Close any modal" },
+              ].map((s, i) => (
+                <div key={i} className="flex justify-between items-center p-3 bg-secondary/20 rounded-2xl border border-border">
+                  <span className="font-bold text-sm text-foreground">{s.desc}</span>
+                  <kbd className="px-3 py-1.5 bg-background border border-border rounded-xl text-xs font-black shadow-sm uppercase tracking-wider">{s.key}</kbd>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8">
+              <button
+                onClick={() => setShowShortcuts(false)}
+                className="w-full h-12 bg-primary text-primary-foreground font-black uppercase text-sm rounded-2xl hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+              >
+                Got it
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }
