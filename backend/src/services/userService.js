@@ -9,21 +9,21 @@ const enforceRoleHierarchy = (actorId, targetRoleId = null, targetUserId = null)
   
   const actorRoleName = actor.role_name;
   
-  if (actorRoleName === 'Super Admin') {
-    return; // Super Admin can do anything
+  if (actorRoleName === 'Super Admin' || actorRoleName === 'Owner') {
+    return; // Super Admin and Owner can do anything
   }
   
   if (actorRoleName === 'Admin') {
     if (targetRoleId) {
       const targetRole = roleRepository.findById(targetRoleId);
-      if (targetRole && (targetRole.name === 'Super Admin' || targetRole.name === 'Admin')) {
-        throw new Error('Admins cannot assign Super Admin or Admin roles');
+      if (targetRole && (targetRole.name === 'Super Admin' || targetRole.name === 'Owner' || targetRole.name === 'Admin')) {
+        throw new Error('Admins cannot assign Super Admin, Owner, or Admin roles');
       }
     }
     if (targetUserId) {
       const targetUser = userRepository.findById(targetUserId);
-      if (targetUser && (targetUser.role_name === 'Super Admin' || targetUser.role_name === 'Admin')) {
-        throw new Error('Admins cannot modify Super Admin or other Admin accounts');
+      if (targetUser && (targetUser.role_name === 'Super Admin' || targetUser.role_name === 'Owner' || targetUser.role_name === 'Admin')) {
+        throw new Error('Admins cannot modify Super Admin, Owner, or other Admin accounts');
       }
     }
     return;
@@ -92,8 +92,8 @@ export const userService = {
     if (!user) throw new Error('User not found');
     
     // Prevent disabling Super Admin
-    if (user.role_name === 'Super Admin' && !isActive) {
-      throw new Error('Cannot disable a Super Administrator account');
+    if ((user.role_name === 'Super Admin' || user.role_name === 'Owner') && !isActive) {
+      throw new Error('Cannot disable a Super Administrator or Owner account');
     }
 
     enforceRoleHierarchy(actorId, null, targetUserId);

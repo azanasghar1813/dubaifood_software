@@ -231,3 +231,10 @@ export async function fetchReprintLog(orderId: string): Promise<{ success: boole
 export async function deleteOrder(orderId: string): Promise<{ success: boolean; message?: string }> {
   return apiClient.delete(`/orders/${orderId}`);
 }
+
+/**
+ * Wipe out entire order history. Requires PIN.
+ */
+export async function wipeOutHistory(pin: string): Promise<{ success: boolean; message?: string }> {
+  return apiClient.post('/history/wipe-out', { pin });
+}

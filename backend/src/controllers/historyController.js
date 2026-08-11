@@ -1,4 +1,6 @@
 import { orderHistoryService } from '../services/orderHistoryService.js';
+import { userRepository } from '../repositories/userRepository.js';
+import { securityUtils } from '../utils/security.js';
 
 /**
  * HistoryController
@@ -200,6 +202,31 @@ export const invalidateOrder = (req, res) => {
   try {
     orderHistoryService.invalidateOrder(req.params.orderId);
     res.json({ success: true, message: 'Cache invalidated.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const wipeOutHistory = (req, res) => {
+  try {
+    const { pin } = req.body;
+    if (!pin) return res.status(400).json({ success: false, message: 'PIN is required.' });
+
+    // Validate Owner PIN
+    const userId = req.user.userId;
+    const user = userRepository.findById(userId);
+    
+    if (!user || !['Owner', 'Super Admin', 'Super Administrator', 'super_admin'].includes(user.role_name)) {
+      return res.status(403).json({ success: false, message: 'Only the Owner or Super Admin can wipe out history.' });
+    }
+
+    const isValid = securityUtils.verifyPin(pin, user.pin_code);
+    if (!isValid) {
+      return res.status(401).json({ success: false, message: 'Invalid PIN.' });
+    }
+
+    orderHistoryService.wipeOutHistory();
+    res.json({ success: true, message: 'All order history wiped out successfully.' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -22,6 +22,7 @@ import { availabilityService } from './availabilityService.js';
 import { kitchenQueueService } from './kitchenQueueService.js';
 import { OrderLifecycleState } from '../constants/orderStates.js';
 import crypto from 'crypto';
+import { dateUtils } from '../utils/dateUtils.js';
 
 /**
  * OrderCreationService
@@ -46,16 +47,9 @@ class OrderCreationService {
   _getBusinessDateForNow() {
     const businessDay = configService.getBusinessDay();
     const [startHour, startMinute] = String(businessDay.start_time || '06:00').split(':').map(Number);
-    const now = new Date();
-    const businessStart = new Date(now);
-    businessStart.setHours(startHour, startMinute, 0, 0);
-
-    if (now < businessStart) {
-      businessStart.setDate(businessStart.getDate() - 1);
-    }
-
-    return businessStart.toISOString().slice(0, 10);
+    return dateUtils.getBusinessDate(new Date(), startHour);
   }
+
 
   _assertActiveSession(sessionId) {
     const session = dbEngine.prepare('SELECT * FROM cashier_sessions WHERE id = ?').get(sessionId);
@@ -75,7 +69,7 @@ class OrderCreationService {
     }
 
     const permissions = userRepository.getUserPermissions(user.role_id) || [];
-    const allowedRoles = new Set(['Super Admin', 'Admin', 'Manager', 'Cashier']);
+    const allowedRoles = new Set(['Super Admin', 'Super Administrator', 'super_admin', 'Owner', 'Admin', 'Manager', 'Cashier']);
     const hasOperationalPermission = permissions.some(code => /CHECKOUT|ORDER|CART|POS/i.test(code));
 
     if (!hasOperationalPermission && !allowedRoles.has(user.role_name)) {

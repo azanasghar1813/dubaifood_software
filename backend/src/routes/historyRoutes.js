@@ -11,6 +11,7 @@ import {
   getStats,
   getCacheStats,
   invalidateOrder,
+  wipeOutHistory,
 } from '../controllers/historyController.js';
 
 const router = Router();
@@ -36,5 +37,8 @@ router.get('/orders/:orderId/sync-status',      getSyncStatus);
 
 // ─── Cache Management ─────────────────────────────────────────────────────────
 router.post('/orders/:orderId/invalidate-cache', invalidateOrder);
+
+// ─── Data Management ──────────────────────────────────────────────────────────
+router.post('/wipe-out', wipeOutHistory);
 
 export default router;

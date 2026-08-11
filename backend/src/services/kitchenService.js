@@ -23,14 +23,14 @@ class KitchenService {
     const user = this._getUser(userId);
     if (!user) return false;
     const role = String(user.role_name || '').toUpperCase();
-    return ['KITCHEN', 'MANAGER', 'ADMIN', 'SUPER ADMIN'].includes(role);
+    return ['KITCHEN', 'MANAGER', 'ADMIN', 'SUPER ADMIN', 'OWNER'].includes(role);
   }
 
   _isManagerOrAbove(userId) {
     const user = this._getUser(userId);
     if (!user) return false;
     const role = String(user.role_name || '').toUpperCase();
-    return ['MANAGER', 'ADMIN', 'SUPER ADMIN'].includes(role);
+    return ['MANAGER', 'ADMIN', 'SUPER ADMIN', 'OWNER'].includes(role);
   }
 
   _shouldAutoRelease(order) {

@@ -11,6 +11,17 @@ import { useOrderStore } from "../store/orderStore"
 import { formatCurrency } from "../utils/currency"
 import { motion, AnimatePresence } from "framer-motion"
 import { fetchDetailedSales, type DetailedSaleRow } from "../api/reportApi"
+import { apiClient } from "../api/client"
+
+export const mapCategory = (cat: string | null | undefined) => {
+  const lower = (cat || '').toLowerCase()
+  if (lower.includes("burger") || lower.includes("pizza") || lower.includes("sandwich") || lower.includes("broast") || lower.includes("appetizer") || lower.includes("fast food") || lower.includes("roll") || lower.includes("pasta") || lower.includes("shawarma")) return "Fast Food"
+  if (lower.includes("chicken") || lower.includes("bbq") || lower.includes("karahi") || lower.includes("restaurant")) return "Restaurant"
+  if (lower.includes("deal") || lower.includes("combo")) return "Deals"
+  if (lower.includes("drink") || lower.includes("beverage") || lower.includes("shake") || lower.includes("water") || lower.includes("juice") || lower.includes("tea") || lower.includes("coffee") || lower.includes("cold") || lower.includes("limka")) return "Drinks"
+  if (lower.includes("chip") || lower.includes("potato")) return "Potato Chips"
+  return "Other"
+}
 
 const COLORS = ['#f97316', '#3b82f6', '#10b981', '#8b5cf6', '#a855f7', '#ec4899', '#f43f5e']
 
@@ -25,6 +36,7 @@ export default function Reports() {
   const [filterPayment, setFilterPayment] = useState("All")
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [cashiers, setCashiers] = useState<{id: string, name: string}[]>([])
 
   // Detailed Sales State
   const [detailedSales, setDetailedSales] = useState<DetailedSaleRow[]>([])
@@ -130,22 +142,29 @@ export default function Reports() {
         setLoadingDetailedSales(false)
       })
     })
+
+    // Fetch cashiers list
+    apiClient.get('/users').then(res => {
+      setCashiers(res.data || [])
+    }).catch(console.error)
   }, [timeRange, filterCashier, filterPayment])
 
   const groupedSales = useMemo(() => {
     const tree: Record<string, any> = {};
     detailedSales.forEach(row => {
-      const { main_category, sub_category, product_name, product_id, qty, gross, discount, tax, refunds, net } = row;
-      if (!tree[main_category]) tree[main_category] = { name: main_category, type: 'main', children: {}, qty: 0, gross: 0, discount: 0, tax: 0, refunds: 0, net: 0 };
-      if (!tree[main_category].children[sub_category]) tree[main_category].children[sub_category] = { name: sub_category, type: 'sub', children: [], qty: 0, gross: 0, discount: 0, tax: 0, refunds: 0, net: 0 };
+      let mCat = row.main_category || 'Uncategorized';
+      let sCat = row.sub_category || 'Uncategorized';
       
-      const main = tree[main_category];
-      const sub = main.children[sub_category];
+      if (!tree[mCat]) tree[mCat] = { name: mCat, type: 'main', children: {}, qty: 0, gross: 0, discount: 0, tax: 0, refunds: 0, net: 0 };
+      if (!tree[mCat].children[sCat]) tree[mCat].children[sCat] = { name: sCat, type: 'sub', children: [], qty: 0, gross: 0, discount: 0, tax: 0, refunds: 0, net: 0 };
       
-      main.qty += qty; main.gross += gross; main.discount += discount; main.tax += tax; main.refunds += refunds; main.net += net;
-      sub.qty += qty; sub.gross += gross; sub.discount += discount; sub.tax += tax; sub.refunds += refunds; sub.net += net;
+      let main = tree[mCat];
+      let sub = main.children[sCat];
       
-      sub.children.push({ name: product_name, id: product_id, type: 'product', qty, gross, discount, tax, refunds, net });
+      main.qty += row.qty; main.gross += row.gross; main.discount += row.discount; main.tax += row.tax; main.refunds += row.refunds; main.net += row.net;
+      sub.qty += row.qty; sub.gross += row.gross; sub.discount += row.discount; sub.tax += row.tax; sub.refunds += row.refunds; sub.net += row.net;
+      
+      sub.children.push({ name: row.product_name, id: row.product_id, type: 'product', qty: row.qty, gross: row.gross, discount: row.discount, tax: row.tax, refunds: row.refunds, net: row.net });
     });
     return Object.values(tree);
   }, [detailedSales]);
@@ -247,25 +266,38 @@ export default function Reports() {
               ['Cash Sales', `Rs. ${formatCurrency(reportStats.cashSales || 0)}`],
               ['Card/Digital Sales', `Rs. ${formatCurrency(reportStats.cardSales || 0)}`],
               ['Restaurant Sales', `Rs. ${formatCurrency(reportStats.restaurantSales || 0)}`],
-              ['Fast Food Sales', `Rs. ${formatCurrency(reportStats.fastFoodSales || 0)}`]
+              ['Fast Food Sales', `Rs. ${formatCurrency(reportStats.fastFoodSales || 0)}`],
+              ['Deals Sales', `Rs. ${formatCurrency(reportStats.dealsSales || 0)}`],
+              ['Drinks Sales', `Rs. ${formatCurrency(reportStats.drinksSales || 0)}`],
+              ['Potato Chips Sales', `Rs. ${formatCurrency(reportStats.chipsSales || 0)}`]
             ],
-            theme: 'grid'
+            theme: 'grid',
           })
 
           doc.text('Order Details', 14, (doc as any).lastAutoTable.finalY + 10)
 
           autoTable(doc, {
             startY: (doc as any).lastAutoTable.finalY + 14,
-            head: [['Order #', 'Date', 'Type', 'Total', 'Payment', 'Status']],
+            head: [["Order #", "Date", "Cashier", "Order Type", "Customer", "Subtotal", "Discount", "Tax", "Total", "Pay Method", "Status", "Items"]],
             body: orders.map(o => [
               o.orderNumber,
               new Date(o.timestamp).toLocaleString(),
+              o.cashierName || 'Staff',
               o.orderType,
-              `Rs. ${formatCurrency(o.total)}`,
+              o.customerName || 'Guest',
+              `Rs. ${formatCurrency(o.subtotal || 0)}`,
+              `Rs. ${formatCurrency(o.discount || 0)}`,
+              `Rs. ${formatCurrency(o.tax || 0)}`,
+              `Rs. ${formatCurrency(o.total || 0)}`,
               o.payments?.[0]?.method || 'Cash',
-              o.status
+              o.status,
+              (o.items || []).map(i => `${i.quantity}x ${i.name}`).join('\n')
             ]),
-            theme: 'striped'
+            theme: 'grid',
+            styles: { fontSize: 7 },
+            columnStyles: {
+              11: { cellWidth: 50 }
+            }
           })
         } else if (activeTab === 'Detailed Sales') {
           autoTable(doc, {
@@ -338,19 +370,11 @@ export default function Reports() {
   }
 
   // Dynamic calculations based on live orders store
-  const hasData = timeRange === "Today"
-
-  const todayBusinessDate = useMemo(() => new Date().toISOString().slice(0, 10), [])
-
-  const todayOrders = useMemo(() => {
-    if (!hasData) return []
-    return orders.filter(o =>
-      o.status !== 'Cancelled' &&
-      o.status !== 'Refunded' &&
-      (o.businessDate === todayBusinessDate ||
-        (!o.businessDate && o.timestamp.slice(0, 10) === todayBusinessDate))
-    )
-  }, [orders, hasData, todayBusinessDate])
+  const timeLabel = timeRange === 'Today' ? "Today's" : 
+                    timeRange === 'Yesterday' ? "Yesterday's" : 
+                    timeRange === 'Monthly' ? "Monthly" : 
+                    timeRange === 'All Time' ? "All Time" : 
+                    "Period's"
 
   const reportStats = useMemo(() => {
     if (!reportSummary) {
@@ -365,21 +389,34 @@ export default function Reports() {
     let restaurantSales = 0
     let fastFoodSales = 0
     let dealsSales = 0
+    let drinksSales = 0
+    let chipsSales = 0
 
     detailedSales.forEach(row => {
-      const cat = (row.main_category + " " + row.sub_category).toLowerCase()
-      if (cat.includes("deal") || cat.includes("combo")) dealsSales += row.net
+      const cat = ((row.main_category || '') + " " + (row.sub_category || '')).toLowerCase()
+      const pName = (row.product_name || '').toLowerCase()
+      
+      if (cat.includes("deal") || cat.includes("combo")) {
+        dealsSales += row.net
+        // If the deal contains a drink, also calculate its revenue towards drinks sale
+        if (pName.includes("drink") || pName.includes("limka") || pName.includes("coke") || pName.includes("pepsi") || pName.includes("sprite") || pName.includes("water") || pName.includes("tea") || pName.includes("coffee") || pName.includes("beverage") || pName.includes("cold")) {
+          drinksSales += row.net
+        }
+      }
+      else if (cat.includes("chip") || cat.includes("potato")) chipsSales += row.net
       else if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) fastFoodSales += row.net
+      else if (cat.includes("drink") || cat.includes("beverage") || cat.includes("shake") || cat.includes("water") || cat.includes("juice") || cat.includes("tea") || cat.includes("coffee") || cat.includes("cold") || cat.includes("limka")) drinksSales += row.net
       else restaurantSales += row.net
     })
 
     const totalService = reportSummary.serviceCharges || 0
     const totalDelivery = reportSummary.deliveryCharges || 0
-    // The backend getSummary already properly calculates grossSales (SUM of grand_total) 
-    // and netSales (SUM of subtotal + tax_total - discount_total).
     const grossSales = reportSummary.grossSales || 0;
     
-    // Net Sales = Sales revenue. It natively excludes Service & Delivery charges because backend calculates it without them.
+    // User requested to remove service charges from Fast Food Sale and Net Sale
+    // fastFoodSales += totalService; // Removed this line
+
+    // Net Sales usually = Subtotal + Tax - Discount. The user requested Net sale to NOT include Service Charges.
     const netSales = reportSummary.netSales || 0;
     
     // Estimate cash/digital split since backend doesn't provide it yet in summary
@@ -405,9 +442,11 @@ export default function Reports() {
       restaurantSales, 
       fastFoodSales, 
       dealsSales, 
-      totalCatSales: restaurantSales + fastFoodSales + dealsSales
+      drinksSales,
+      chipsSales,
+      totalCatSales: restaurantSales + fastFoodSales + dealsSales + drinksSales + chipsSales
     }
-  }, [reportSummary, detailedSales, todayOrders, hasData])
+  }, [reportSummary, detailedSales])
 
 
   // Product Sales Real Data
@@ -416,32 +455,23 @@ export default function Reports() {
 
     const itemMap = new Map<string, { name: string, cat: string, sold: number, rev: number }>()
 
-    detailedSales.forEach(row => {
-      const existing = itemMap.get(row.product_id)
+    const addItem = (id: string, name: string, cat: string, qty: number, net: number) => {
+      const existing = itemMap.get(id)
       if (existing) {
-        existing.sold += row.qty
-        existing.rev += row.net
+        existing.sold += qty
+        existing.rev += net
       } else {
-        itemMap.set(row.product_id, {
-          name: row.product_name,
-          cat: row.main_category,
-          sold: row.qty,
-          rev: row.net
-        })
+        itemMap.set(id, { name, cat: cat || 'Uncategorized', sold: qty, rev: net })
       }
+    }
+
+    detailedSales.forEach(row => {
+      addItem(row.product_id, row.product_name, row.main_category, row.qty, row.net)
     })
 
     let data = Array.from(itemMap.values())
 
-    // Category mapping for standard pills if needed
-    const mapCategory = (cat: string) => {
-      const lower = cat.toLowerCase()
-      if (lower.includes("burger") || lower.includes("pizza") || lower.includes("sandwich") || lower.includes("broast") || lower.includes("appetizer") || lower.includes("fast food")) return "Fast Food"
-      if (lower.includes("chicken") || lower.includes("bbq") || lower.includes("karahi") || lower.includes("restaurant")) return "Restaurant"
-      if (lower.includes("deal") || lower.includes("combo")) return "Deals"
-      if (lower.includes("drink") || lower.includes("beverage") || lower.includes("shake")) return "Drinks"
-      return "Other"
-    }
+    // Category mapping function is moved to top of file
 
     if (productCategoryFilter !== "All") {
       data = data.filter(d => mapCategory(d.cat) === productCategoryFilter || d.cat === productCategoryFilter)
@@ -449,7 +479,7 @@ export default function Reports() {
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
-      data = data.filter(d => d.name.toLowerCase().includes(q) || d.cat.toLowerCase().includes(q))
+      data = data.filter(d => (d.name || '').toLowerCase().includes(q) || (d.cat || '').toLowerCase().includes(q))
     }
 
     data.sort((a, b) => productSortBy === "qty" ? b.sold - a.sold : b.rev - a.rev)
@@ -464,7 +494,13 @@ export default function Reports() {
   const categorySalesData = useMemo(() => {
     const map = new Map<string, { cat: string, sold: number, rev: number }>()
     productSalesData.forEach(p => {
-      const cName = p.cat
+      const mainCat = mapCategory(p.cat)
+      // p.cat is the database category name (e.g., 'Cold Drinks', 'Burgers')
+      // If the main mapped category is different from the db category, show it as Main -> Sub
+      // Otherwise just show the Main category.
+      const safePCat = p.cat || ''
+      const cName = (mainCat.toLowerCase() !== safePCat.toLowerCase()) ? `${mainCat} - ${safePCat}` : mainCat
+      
       const existing = map.get(cName)
       if (existing) {
         existing.sold += p.sold
@@ -624,8 +660,9 @@ export default function Reports() {
               className="h-8 rounded-lg bg-secondary border border-border text-[10px] font-bold px-3 focus:outline-none cursor-pointer"
             >
               <option value="All">All Cashiers</option>
-              <option value="Ahmed">Ahmed</option>
-              <option value="Umar">Umar</option>
+              {cashiers.map(c => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
             </select>
           </div>
 
@@ -755,66 +792,59 @@ export default function Reports() {
 
           {/* Active Tab View: Dashboard Summary */}
           {activeTab === "Dashboard Summary" && (
-            !hasData ? (
-              <div className="p-12 text-center text-muted-foreground bg-card border border-border rounded-[2.5rem] shadow-sm flex flex-col items-center justify-center min-h-[400px]">
-                <Calendar className="w-12 h-12 mb-4 opacity-20" />
-                <h4 className="text-xl font-black text-foreground uppercase tracking-wide">No sales in this period</h4>
-                <p className="text-sm font-bold text-muted-foreground mt-2 max-w-sm mx-auto">
-                  There is no data available for {timeRange}.
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Dynamic summary totals cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {/* Gross Sales */}
-                  <div className="p-5 bg-card border border-border rounded-[2rem] shadow-sm flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">Today's Gross Sales</span>
-                      <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.grossSales)}</h3>
-                    </div>
-                    <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-emerald-500 bg-emerald-500/10 border-emerald-500/25">Total Sale</span>
+            <>
+              {/* Dynamic summary totals cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Gross Sales */}
+                <div className="p-5 bg-card border border-border rounded-[2rem] shadow-sm flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">{timeLabel} Gross Sales</span>
+                    <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.grossSales)}</h3>
                   </div>
-
-                  {/* Net Sales */}
-                  <div className="p-5 bg-card border border-border rounded-[2rem] shadow-sm flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">Today's Net Sales</span>
-                      <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.netSales)}</h3>
-                    </div>
-                    <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-blue-500 bg-blue-500/10 border-blue-500/25">Excludes service & delivery charges</span>
-                  </div>
-
-                  {/* Service Charges */}
-                  <div className="p-5 bg-card border border-border rounded-[2rem] shadow-sm flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">Today's Service Charges</span>
-                      <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.totalService)}</h3>
-                    </div>
-                    <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-amber-500 bg-amber-500/10 border-amber-500/25">Dine-in services</span>
-                  </div>
-
-                  {/* Delivery Charges */}
-                  <div className="p-5 bg-card border border-border rounded-[2rem] shadow-sm flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">Today's Delivery Charges</span>
-                      <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.totalDelivery)}</h3>
-                    </div>
-                    <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-indigo-500 bg-indigo-500/10 border-indigo-500/25">Delivery fees</span>
-                  </div>
+                  <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-emerald-500 bg-emerald-500/10 border-emerald-500/25">Total Sale</span>
                 </div>
+
+                {/* Net Sales */}
+                <div className="p-5 bg-card border border-border rounded-[2rem] shadow-sm flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">{timeLabel} Net Sales</span>
+                    <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.netSales)}</h3>
+                  </div>
+                  <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-blue-500 bg-blue-500/10 border-blue-500/25">Excludes service & delivery charges</span>
+                </div>
+
+                {/* Service Charges */}
+                <div className="p-5 bg-card border border-border rounded-[2rem] shadow-sm flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">{timeLabel} Service Charges</span>
+                    <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.totalService)}</h3>
+                  </div>
+                  <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-amber-500 bg-amber-500/10 border-amber-500/25">Dine-in services</span>
+                </div>
+
+                {/* Delivery Charges */}
+                <div className="p-5 bg-card border border-border rounded-[2rem] shadow-sm flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">{timeLabel} Delivery Charges</span>
+                    <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.totalDelivery)}</h3>
+                  </div>
+                  <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-indigo-500 bg-indigo-500/10 border-indigo-500/25">Delivery fees</span>
+                </div>
+              </div>
 
                 {/* Item Velocity Leaderboard */}
                 <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm">
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Item Velocity Leaderboard</h3>
-                    <div className="flex items-center gap-2 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                      </span>
-                      <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Live</span>
-                    </div>
+                    {timeRange === 'Today' && (
+                      <div className="flex items-center gap-2 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Live</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-col gap-4">
@@ -910,6 +940,24 @@ export default function Reports() {
                           {(reportStats.totalCatSales || 0) > 0 ? Math.round(((reportStats.dealsSales || 0) / (reportStats.totalCatSales || 1)) * 100) : 0}%
                         </span>
                       </div>
+                      <div className="p-3 bg-teal-500/10 border border-teal-500/25 rounded-2xl flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] text-teal-500 font-bold uppercase">Drinks Sale</span>
+                          <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.drinksSales || 0)}</p>
+                        </div>
+                        <span className="text-sm font-bold text-teal-500 bg-teal-500/20 px-3 py-1.5 rounded-lg">
+                          {(reportStats.totalCatSales || 0) > 0 ? Math.round(((reportStats.drinksSales || 0) / (reportStats.totalCatSales || 1)) * 100) : 0}%
+                        </span>
+                      </div>
+                      <div className="p-3 bg-yellow-500/10 border border-yellow-500/25 rounded-2xl flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] text-yellow-500 font-bold uppercase">Potato Chips</span>
+                          <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.chipsSales || 0)}</p>
+                        </div>
+                        <span className="text-sm font-bold text-yellow-500 bg-yellow-500/20 px-3 py-1.5 rounded-lg">
+                          {(reportStats.totalCatSales || 0) > 0 ? Math.round(((reportStats.chipsSales || 0) / (reportStats.totalCatSales || 1)) * 100) : 0}%
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -948,13 +996,15 @@ export default function Reports() {
                 <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm mt-6">
                   <div className="flex items-center gap-3 mb-4">
                     <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Recently Sold Items</h3>
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20">
-                      <div className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                    {timeRange === 'Today' && (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20">
+                        <div className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                        </div>
+                        <span className="text-[10px] font-black text-red-600 uppercase tracking-widest leading-none">Live</span>
                       </div>
-                      <span className="text-[10px] font-black text-red-600 uppercase tracking-widest leading-none">Live</span>
-                    </div>
+                    )}
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse min-w-[600px]">
@@ -1000,24 +1050,17 @@ export default function Reports() {
                   </div>
                 </div>
               </>
-            )
           )}
 
           {/* Active Tab View: Sales & Tax Report */}
           {activeTab === "Sales Report" && (
-            !hasData ? (
-              <div className="p-12 text-center text-muted-foreground bg-card border border-border rounded-[2.5rem] shadow-sm flex flex-col items-center justify-center min-h-[400px]">
-                <Calendar className="w-12 h-12 mb-4 opacity-20" />
-                <h4 className="text-xl font-black text-foreground uppercase tracking-wide">No sales in this period</h4>
-              </div>
-            ) : (
               <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm space-y-6">
                 <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Sales & Tax breakdown</h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div className="flex justify-between p-3 bg-secondary/40 border border-border rounded-xl font-bold text-xs">
-                      <span className="text-muted-foreground">Gross Sales Today:</span>
+                      <span className="text-muted-foreground">{timeLabel} Gross Sales:</span>
                       <span className="text-foreground">Rs. {formatCurrency(reportStats.grossSales)}</span>
                     </div>
                     <div className="flex justify-between p-3 bg-secondary/40 border border-border rounded-xl font-bold text-xs">
@@ -1046,17 +1089,10 @@ export default function Reports() {
                   </div>
                 </div>
               </div>
-            )
           )}
 
           {/* Active Tab View: Product Sales */}
           {activeTab === "Product Sales" && (
-            !hasData ? (
-              <div className="p-12 text-center text-muted-foreground bg-card border border-border rounded-[2.5rem] shadow-sm flex flex-col items-center justify-center min-h-[400px]">
-                <Calendar className="w-12 h-12 mb-4 opacity-20" />
-                <h4 className="text-xl font-black text-foreground uppercase tracking-wide">No sales in this period</h4>
-              </div>
-            ) : (
               <>
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-card border border-border p-4 rounded-3xl shadow-sm mb-6">
                   <div className="flex flex-wrap gap-2">
@@ -1169,7 +1205,6 @@ export default function Reports() {
                   )}
                 </div>
               </>
-            )
           )}
 
           {/* 1. Orders Report */}

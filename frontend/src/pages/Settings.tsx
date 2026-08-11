@@ -4,7 +4,9 @@ import {
   Printer as PrinterIcon, Building2, Save, Trash2, Plus, Server, Edit2, X, RefreshCw
 } from "lucide-react"
 import { configApi } from "../api/configApi"
-import type { BusinessProfile, FinanceConfig, Printer } from "../api/configApi"
+import { wipeOutHistory } from "../api/historyApi"
+import type { BusinessProfile, FinanceConfig, Printer, OrderConfig } from "../api/configApi"
+
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("Business Profile")
@@ -27,6 +29,10 @@ export default function Settings() {
     delivery_charge_rate: "0",
     tax_inclusive: "true",
     round_off: "true"
+  })
+
+  const [orderConfig, setOrderConfig] = useState<OrderConfig>({
+    order_number_reset_daily: "true"
   })
 
   // Printers Data
@@ -56,6 +62,7 @@ export default function Settings() {
       
       if (data.business.profile) setProfileData(data.business.profile)
       if (data.business.finance) setFinanceData(data.business.finance)
+      if (data.business.order) setOrderConfig(data.business.order)
       if (data.printers) setPrinters(data.printers)
     } catch (e) {
       console.error("Failed to load config", e)
@@ -72,6 +79,8 @@ export default function Settings() {
         await configApi.updateBusinessProfile(profileData)
       } else if (activeTab === "Finance & Charges") {
         await configApi.updateFinanceConfig(financeData)
+      } else if (activeTab === "Data Management") {
+        await configApi.updateOrderConfig(orderConfig)
       }
       setIsSaved(true)
       setTimeout(() => setIsSaved(false), 2000)
@@ -142,7 +151,8 @@ export default function Settings() {
   const tabsList = [
     { name: "Business Profile", icon: Building2 },
     { name: "Finance & Charges", icon: Server },
-    { name: "Printers", icon: PrinterIcon }
+    { name: "Printers", icon: PrinterIcon },
+    { name: "Data Management", icon: Trash2 }
   ]
 
   if (isLoading) {
@@ -284,6 +294,79 @@ export default function Settings() {
                         onChange={(e) => setFinanceData({...financeData, delivery_charge_rate: e.target.value})}
                         className="w-full h-11 px-4 bg-secondary border border-border rounded-xl text-sm font-bold focus:outline-none focus:border-primary transition-colors"
                       />
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* DATA MANAGEMENT */}
+                {activeTab === "Data Management" && (
+                  <motion.div
+                    key="data-management"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="space-y-8"
+                  >
+                    <div className="bg-secondary/30 p-6 rounded-2xl border border-border space-y-4">
+                      <div>
+                        <h3 className="text-base font-black">Order Number Management</h3>
+                        <p className="text-sm text-muted-foreground mt-1">Configure how order numbers are generated and reset.</p>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 p-4 bg-background rounded-xl border border-border">
+                        <input 
+                          type="checkbox" 
+                          id="resetDaily"
+                          checked={String(orderConfig.order_number_reset_daily).toLowerCase() === 'true' || String(orderConfig.order_number_reset_daily) === '1'}
+                          onChange={(e) => setOrderConfig({...orderConfig, order_number_reset_daily: e.target.checked ? "true" : "false"})}
+                          className="w-5 h-5 rounded border-border text-primary focus:ring-primary bg-background cursor-pointer"
+                        />
+                        <div>
+                          <label htmlFor="resetDaily" className="text-sm font-bold cursor-pointer">Reset Order Number Daily</label>
+                          <p className="text-xs text-muted-foreground">If enabled, order numbers will restart from 1 at the beginning of each business day (6 AM).</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-red-500/10 p-6 rounded-2xl border border-red-500/20 space-y-4">
+                      <div>
+                        <h3 className="text-base font-black text-red-500 flex items-center gap-2"><Trash2 className="w-5 h-5"/> Wipe Out History</h3>
+                        <p className="text-sm text-red-500/80 mt-1">Permanently delete all order history and related data. This action is irreversible.</p>
+                      </div>
+
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <input 
+                          type="password"
+                          id="wipePin"
+                          placeholder="Enter Owner PIN to authorize"
+                          className="w-full sm:w-64 h-11 px-4 bg-background border border-red-500/20 rounded-xl text-sm font-bold focus:outline-none focus:border-red-500 transition-colors placeholder:text-red-500/40"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const pinInput = document.getElementById('wipePin') as HTMLInputElement
+                            const pin = pinInput.value
+                            if (!pin) {
+                              alert("Please enter the Owner PIN.")
+                              return
+                            }
+                            if (!confirm("Are you ABSOLUTELY SURE you want to wipe out all order history? This cannot be undone.")) return
+                            try {
+                              setIsSaving(true)
+                              const res = await wipeOutHistory(pin)
+                              alert(res.message || "History wiped out successfully.")
+                              pinInput.value = ""
+                            } catch (e: any) {
+                              alert(e.response?.data?.message || "Failed to wipe history.")
+                            } finally {
+                              setIsSaving(false)
+                            }
+                          }}
+                          className="w-full sm:w-auto h-11 px-6 bg-red-500 text-white font-black rounded-xl hover:bg-red-600 transition-all shadow-md shadow-red-500/20"
+                        >
+                          Wipe Out History
+                        </button>
+                      </div>
                     </div>
                   </motion.div>
                 )}

@@ -1,4 +1,5 @@
 import { dbEngine } from '../database/sqlite.js';
+import { dateUtils } from '../utils/dateUtils.js';
 
 /**
  * HistoryFilterService
@@ -169,30 +170,46 @@ class HistoryFilterService {
   }
 
   _resolveDatePreset(preset, filters) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = dateUtils.getBusinessDate();
 
     switch (preset.toUpperCase()) {
       case 'TODAY':
         return { sql: 'o.business_date = ?', params: [today] };
 
       case 'YESTERDAY': {
-        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        const yesterday = dateUtils.getYesterdayBusinessDate();
         return { sql: 'o.business_date = ?', params: [yesterday] };
       }
 
       case 'LAST_7_DAYS': {
-        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+        const d = new Date();
+        d.setDate(d.getDate() - 7);
+        const weekAgo = dateUtils.getBusinessDate(d);
         return { sql: 'o.business_date >= ?', params: [weekAgo] };
       }
 
       case 'LAST_30_DAYS': {
-        const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+        const d = new Date();
+        d.setDate(d.getDate() - 30);
+        const monthAgo = dateUtils.getBusinessDate(d);
         return { sql: 'o.business_date >= ?', params: [monthAgo] };
       }
 
-      case 'THIS_MONTH': {
-        const monthStart = today.slice(0, 7) + '-01';
+      case 'THIS_MONTH':
+      case 'MONTHLY': {
+        const monthStart = dateUtils.getBusinessMonthStart();
         return { sql: 'o.business_date >= ?', params: [monthStart] };
+      }
+
+      case 'ALL_TIME': {
+        return { sql: 'o.business_date >= ?', params: ['1970-01-01'] };
+      }
+      
+      case 'CUSTOM_DATE': {
+        if (filters.date_from && filters.date_to) {
+          return { sql: 'o.business_date BETWEEN ? AND ?', params: [filters.date_from, filters.date_to] };
+        }
+        return null;
       }
 
       case 'CURRENT_SHIFT':

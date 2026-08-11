@@ -18,7 +18,13 @@ class OrderNumberService {
     const orderConfig = configService.getOrderConfig() || {};
     const prefix = orderConfig.order_number_prefix || 'POS';
     const padLength = orderConfig.order_number_pad_length || 6;
-    const resetDaily = orderConfig.order_number_reset_daily !== false; // Default true
+    
+    let resetDaily = true;
+    if (orderConfig.order_number_reset_daily !== undefined) {
+      const val = String(orderConfig.order_number_reset_daily).toLowerCase();
+      resetDaily = val === 'true' || val === '1';
+    }
+    
     const template = orderConfig.order_number_template || '{PREFIX}-{YYYYMMDD}-{SEQ}';
 
     const dateKey = resetDaily ? businessDate : 'GLOBAL';

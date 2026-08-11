@@ -37,28 +37,15 @@ export const authService = {
       throw new Error('Invalid username or PIN');
     }
 
-    // 1. Check if Account is Locked
-    if (user.locked_until && new Date(user.locked_until) > new Date()) {
-      activityLogService.logActivity(user.id, 'LOGIN_LOCKED_ATTEMPT', 'AUTH');
-      throw new Error('Account is temporarily locked due to multiple failed attempts. Please try again later.');
-    }
-
-    // 2. Verify PIN
+    // 1. Verify PIN
     const isValid = securityUtils.verifyPin(pin, user.pin_code);
 
     if (!isValid) {
-      const { lockedUntil } = userRepository.incrementFailedAttempts(user.id, user.failed_login_attempts);
-      
-      if (lockedUntil) {
-        activityLogService.logActivity(user.id, 'ACCOUNT_LOCKED', 'AUTH', user.id, { lockedUntil });
-        throw new Error('Account locked due to multiple failed attempts.');
-      } else {
-        activityLogService.logActivity(user.id, 'LOGIN_FAILED', 'AUTH', user.id, { reason: 'Invalid PIN' });
-        throw new Error('Invalid username or PIN');
-      }
+      activityLogService.logActivity(user.id, 'LOGIN_FAILED', 'AUTH', user.id, { reason: 'Invalid PIN' });
+      throw new Error('Invalid username or PIN');
     }
 
-    // 3. Login Successful - Transaction to reset attempts and create session
+    // 2. Login Successful - Transaction to create session
     let token = null;
     let userDetails = null;
     let cashierSessionId = null;

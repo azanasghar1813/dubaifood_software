@@ -190,14 +190,21 @@ export default function Dashboard() {
 
 
 
-  // Filter orders based on query
+  // Filter orders based on query and ensure they are today's orders
   const filteredOrders = useMemo(() => {
-    return orders.filter(o => {
+    const today = new Date().setHours(0, 0, 0, 0)
+    const result = orders.filter(o => {
+      const isToday = new Date(o.timestamp).setHours(0, 0, 0, 0) === today
+      if (!isToday) return false
+      
       const q = searchQuery.toLowerCase()
       return o.orderNumber.includes(q) ||
         (o.customerName || '').toLowerCase().includes(q) ||
         (o.cashierName || '').toLowerCase().includes(q)
     })
+    
+    // Sort descending by timestamp so newest appear first
+    return result.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
   }, [orders, searchQuery])
 
 
@@ -305,8 +312,8 @@ export default function Dashboard() {
           <div className="p-6 bg-card border border-border rounded-[2.5rem] shadow-sm flex-1">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border pb-4 mb-4 gap-2">
               <div>
-                <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Today's Active Orders</h3>
-                <p className="text-xs text-muted-foreground font-bold mt-0.5">Showing live tickets. Orders with red outline are overdue (&gt;25 mins).</p>
+                <h3 className="text-lg font-black uppercase tracking-wider text-foreground">Today's Recent Orders</h3>
+                <p className="text-xs text-muted-foreground font-bold mt-0.5">Showing up to 30 recent orders. Orders with red outline are overdue (&gt;25 mins).</p>
               </div>
               <div className="relative w-full sm:w-64">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"><Search className="w-4 h-4" /></span>
@@ -321,7 +328,7 @@ export default function Dashboard() {
             </div>
 
             <div className="space-y-3">
-              {filteredOrders.slice(0, 5).map(order => {
+              {filteredOrders.slice(0, 30).map(order => {
                 const elapsedMin = Math.round((Date.now() - new Date(order.timestamp).getTime()) / 60000)
                 const isOverdue = elapsedMin > 25 && order.kitchenStatus !== 'Served' && order.kitchenStatus !== 'Cancelled'
 

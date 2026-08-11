@@ -182,6 +182,46 @@ class OrderHistoryService {
   // Cache Management (for admin use)
   // ──────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Wipes out all order history completely.
+   * Irreversible action.
+   */
+  wipeOutHistory() {
+    import('../database/sqlite.js').then(({ dbEngine }) => {
+      dbEngine.transaction(() => {
+        dbEngine.prepare('DELETE FROM orders').run();
+        dbEngine.prepare('DELETE FROM order_number_sequences').run();
+        dbEngine.prepare('DELETE FROM payment_receipts').run();
+        dbEngine.prepare('DELETE FROM order_audit_trail').run();
+        dbEngine.prepare('DELETE FROM reprint_log').run();
+        dbEngine.prepare("DELETE FROM activity_logs WHERE entity_type = 'ORDER'").run();
+      });
+      historyCacheService.clearAll();
+      console.log('[OrderHistoryService] All order history wiped out successfully.');
+    });
+  }
+
+  /**
+   * Cleans up data older than specified months.
+   * Runs automatically at startup to maintain 3-month retention.
+   */
+  cleanupOldData(months = 3) {
+    import('../database/sqlite.js').then(({ dbEngine }) => {
+      const cutoffDate = new Date();
+      cutoffDate.setMonth(cutoffDate.getMonth() - months);
+      const cutoffString = cutoffDate.toISOString().slice(0, 10);
+
+      dbEngine.transaction(() => {
+        const deletedOrders = dbEngine.prepare('DELETE FROM orders WHERE business_date < ?').run(cutoffString);
+        if (deletedOrders.changes > 0) {
+          dbEngine.prepare('DELETE FROM order_number_sequences WHERE business_date < ?').run(cutoffString);
+          console.log(`[OrderHistoryService] Cleaned up ${deletedOrders.changes} orders older than 3 months (${cutoffString}).`);
+        }
+      });
+      historyCacheService.clearAll();
+    });
+  }
+
   getCacheStats() {
     return historyCacheService.getStats();
   }

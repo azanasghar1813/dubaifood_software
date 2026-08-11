@@ -1,33 +1,44 @@
 import { dbEngine } from '../database/sqlite.js';
+import { dateUtils } from '../utils/dateUtils.js';
 
 const buildDateFilter = (filters) => {
   let { startDate, endDate, dateFilter } = filters;
   
   if (dateFilter) {
-    const today = new Date();
-    // Helper to format YYYY-MM-DD
-    const fmt = d => d.toISOString().split('T')[0];
+    const todayStr = dateUtils.getBusinessDate();
     
     if (dateFilter === 'Today') {
-      startDate = fmt(today);
-      endDate = fmt(today);
+      startDate = todayStr;
+      endDate = todayStr;
     } else if (dateFilter === 'Yesterday') {
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      startDate = fmt(yesterday);
-      endDate = fmt(yesterday);
+      const yesterdayStr = dateUtils.getYesterdayBusinessDate();
+      startDate = yesterdayStr;
+      endDate = yesterdayStr;
     } else if (dateFilter === 'This Week') {
-      const firstDay = new Date(today.setDate(today.getDate() - today.getDay()));
-      startDate = fmt(firstDay);
-      endDate = fmt(new Date());
-    } else if (dateFilter === 'This Month') {
-      startDate = fmt(new Date(today.getFullYear(), today.getMonth(), 1));
-      endDate = fmt(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+      const d = new Date();
+      d.setDate(d.getDate() - d.getDay());
+      startDate = dateUtils.getBusinessDate(d);
+      endDate = todayStr;
+    } else if (dateFilter === 'This Month' || dateFilter === 'Monthly') {
+      startDate = dateUtils.getBusinessMonthStart();
+      
+      const d = new Date();
+      if (d.getHours() < 6) d.setDate(d.getDate() - 1);
+      const year = d.getFullYear();
+      const month = d.getMonth();
+      const lastDayOfMonth = new Date(year, month + 1, 0);
+      endDate = dateUtils.getBusinessDate(lastDayOfMonth);
+    } else if (dateFilter === 'Custom Date' && filters.startDate && filters.endDate) {
+      startDate = filters.startDate;
+      endDate = filters.endDate;
+    } else if (dateFilter === 'All Time') {
+      startDate = '1970-01-01';
+      endDate = '2099-12-31';
     }
   }
 
   // If no dates provided, default to today
-  if (!startDate) startDate = new Date().toISOString().split('T')[0];
+  if (!startDate) startDate = dateUtils.getBusinessDate();
   if (!endDate) endDate = startDate;
 
   return { startDate, endDate };
@@ -115,42 +126,31 @@ export const reportService = {
     // We group by main category, sub category, product
     const query = `
       WITH AllSales AS (
-        -- Regular Items
-        SELECT 
-          oi.order_id,
-          oi.product_id,
-          oi.quantity as qty,
-          oi.base_unit_price,
-          oi.discount_amount,
-          oi.tax_amount,
-          oi.total_amount
-        FROM order_items oi
-        
+        SELECT order_id, product_id, quantity as qty, base_unit_price, discount_amount, tax_amount, total_amount, NULL as component_name, 0 as is_component FROM order_items
         UNION ALL
-        
-        -- Deal Components
-        SELECT 
-          oi.order_id,
-          occ.product_id,
-          occ.quantity as qty,
-          occ.price_adjustment as base_unit_price,
-          0 as discount_amount,
-          0 as tax_amount,
-          (occ.quantity * occ.price_adjustment) as total_amount
+        SELECT oi.order_id, occ.product_id, occ.quantity as qty, occ.price_adjustment as base_unit_price, 0 as discount_amount, 0 as tax_amount, (occ.quantity * occ.price_adjustment) as total_amount, occ.product_name_snapshot as component_name, 1 as is_component
         FROM order_combo_components occ
         JOIN order_items oi ON occ.order_item_id = oi.id
       )
       SELECT 
         COALESCE(
           CASE WHEN d.id IS NOT NULL THEN 'Deals' END,
+          CASE WHEN a.is_component = 1 AND (a.component_name LIKE '%Drink%' OR a.component_name LIKE '%Limka%' OR a.component_name LIKE '%Beverage%' OR a.component_name LIKE '%Coke%' OR a.component_name LIKE '%Sprite%' OR a.component_name LIKE '%Water%' OR a.component_name LIKE '%Tea%' OR a.component_name LIKE '%Coffee%') THEN 'Drinks' END,
+          CASE WHEN c1.name LIKE '%Drink%' OR c2.name LIKE '%Drink%' OR c1.name LIKE '%Beverage%' OR c1.name LIKE '%Juice%' OR c1.name LIKE '%Shake%' OR c1.name LIKE '%Cold%' OR c1.name LIKE '%Limka%' THEN 'Drinks' END,
+          CASE WHEN a.is_component = 1 AND (a.component_name LIKE '%Chip%' OR a.component_name LIKE '%Fries%') THEN 'Potato Chips' END,
+          CASE WHEN c1.name LIKE '%Chips%' OR p.name LIKE '%Chips%' THEN 'Potato Chips' END,
+          CASE WHEN a.is_component = 1 THEN 'Deals' END,
           c2.name, c1.name, 'Uncategorized'
         ) as main_category,
         COALESCE(
           CASE WHEN d.id IS NOT NULL THEN d.name END,
+          CASE WHEN a.is_component = 1 AND (a.component_name LIKE '%Drink%' OR a.component_name LIKE '%Limka%' OR a.component_name LIKE '%Beverage%' OR a.component_name LIKE '%Water%') THEN 'Deal Drinks' END,
+          CASE WHEN a.is_component = 1 AND (a.component_name LIKE '%Chip%' OR a.component_name LIKE '%Fries%') THEN 'Deal Chips' END,
+          CASE WHEN a.is_component = 1 THEN 'Deal Components' END,
           c1.name, 'Uncategorized'
         ) as sub_category,
-        COALESCE(p.name, d.name) as product_name,
-        COALESCE(p.id, d.id) as product_id,
+        COALESCE(a.component_name, p.name, d.name) as product_name,
+        a.product_id,
         SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.qty ELSE 0 END) as qty,
         COUNT(DISTINCT CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN o.id END) as orders,
         SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.qty * a.base_unit_price ELSE 0 END) as gross,
@@ -165,7 +165,7 @@ export const reportService = {
       LEFT JOIN categories c1 ON p.category_id = c1.id
       LEFT JOIN categories c2 ON c1.parent_id = c2.id
       WHERE ${where}
-      GROUP BY main_category, sub_category, product_name, product_id
+      GROUP BY main_category, sub_category, product_name, a.product_id
       HAVING qty > 0 OR refunds > 0
       ORDER BY main_category, sub_category, net DESC
     `;

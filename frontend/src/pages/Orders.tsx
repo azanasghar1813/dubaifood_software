@@ -57,7 +57,9 @@ export default function Orders() {
   const [searchQuery, setSearchQuery] = useState("")
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
 
-  const [filterDate, setFilterDate] = useState<string>("Today") // Today, Yesterday, Last 7 Days, Last 30 Days, All
+  const [filterDate, setFilterDate] = useState<string>("Today") // Today, Yesterday, Monthly, All Time, Custom Date
+  const [customDateFrom, setCustomDateFrom] = useState<string>("")
+  const [customDateTo, setCustomDateTo] = useState<string>("")
   const [filterType, setFilterType] = useState<string>("All")
   const [filterOrderState, setFilterOrderState] = useState<string>("All")
   const [filterPayment, setFilterPayment] = useState<string>("All")
@@ -141,11 +143,34 @@ export default function Orders() {
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, filterDate, filterType, filterPayment, filterPaymentMethod, filterOrderState, filterCashier, sortBy])
+  }, [searchQuery, filterDate, customDateFrom, customDateTo, filterType, filterPayment, filterPaymentMethod, filterOrderState, filterCashier, sortBy])
+
+  // Refetch orders when backend-driven filters (Date) change
+  useEffect(() => {
+    let preset = filterDate.toUpperCase().replace(/ /g, '_');
+    if (preset === 'ALL_TIME') preset = 'ALL_TIME';
+    if (preset === 'MONTHLY') preset = 'THIS_MONTH';
+
+    const filters: any = {};
+    if (preset === 'CUSTOM_DATE') {
+      if (customDateFrom && customDateTo) {
+        filters.date_preset = 'CUSTOM_DATE';
+        filters.date_from = customDateFrom;
+        filters.date_to = customDateTo;
+      } else {
+        // Wait for both dates
+        return;
+      }
+    } else {
+      filters.date_preset = preset;
+    }
+
+    syncOrdersFromBackend(filters);
+  }, [filterDate, customDateFrom, customDateTo])
 
   // Initial Data Fetch
   useEffect(() => {
-    syncOrdersFromBackend()
+    // Initial fetch handled by the dependency on filterDate ("Today")
   }, [])
 
   // Shortcut Listener
@@ -207,12 +232,17 @@ export default function Orders() {
     const doc = new jsPDF('landscape')
     doc.text("Enterprise Order History", 14, 15)
 
-    const headers = [["Order #", "Date", "Customer", "Table", "Total", "Pay Method", "Pay Status", "Order Status", "Items"]]
+    const headers = [["Order #", "Date", "Cashier", "Order Type", "Customer", "Table", "Subtotal", "Discount", "Tax", "Total", "Pay Method", "Pay Status", "Status", "Items"]]
     const data = filteredAndSortedOrders.map(o => [
       o.orderNumber,
       new Date(o.timestamp).toLocaleString(),
+      o.cashierName || 'Staff',
+      o.orderType,
       o.customerName || 'Guest',
       o.tableNumber || '-',
+      o.subtotal.toString(),
+      o.discount.toString(),
+      o.tax.toString(),
       o.total.toString(),
       o.payments?.[0]?.method || 'Cash',
       o.paymentStatus,
@@ -226,20 +256,28 @@ export default function Orders() {
       body: data,
       startY: 20,
       theme: 'grid',
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [249, 115, 22] } // Orange-500
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [249, 115, 22] }, // Orange-500
+      columnStyles: {
+        13: { cellWidth: 50 } // Give items column more space
+      }
     })
 
     doc.save(`Order_History_${new Date().toISOString().split('T')[0]}.pdf`)
   }
 
   const exportToCSV = () => {
-    const headers = ["Order Number", "Date", "Customer", "Table", "Total", "Pay Method", "Pay Status", "Order Status", "Items"]
+    const headers = ["Order Number", "Date", "Cashier", "Order Type", "Customer", "Table", "Subtotal", "Discount", "Tax", "Total", "Pay Method", "Pay Status", "Status", "Items"]
     const rows = filteredAndSortedOrders.map(o => [
       o.orderNumber,
       `"${new Date(o.timestamp).toLocaleString()}"`,
+      `"${o.cashierName || 'Staff'}"`,
+      `"${o.orderType}"`,
       `"${o.customerName || 'Guest'}"`,
       `"${o.tableNumber || '-'}"`,
+      o.subtotal,
+      o.discount,
+      o.tax,
       o.total,
       `"${o.payments?.[0]?.method || 'Cash'}"`,
       `"${o.paymentStatus}"`,
@@ -379,12 +417,6 @@ export default function Orders() {
 
   // Filter Logic
   const filteredAndSortedOrders = useMemo(() => {
-    const now = new Date()
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const yesterdayStart = new Date(todayStart.getTime() - 86400000)
-    const last7Start = new Date(todayStart.getTime() - 7 * 86400000)
-    const last30Start = new Date(todayStart.getTime() - 30 * 86400000)
-
     let result = orders.filter(order => {
       // Global Search Match
       const q = searchQuery.toLowerCase()
@@ -397,14 +429,6 @@ export default function Orders() {
         (order.tableNumber || '').toLowerCase().includes(q) ||
         order.items.some(i => i.name.toLowerCase().includes(q) || (i.code || '').includes(q))
 
-      // Date Filter
-      const orderDate = new Date(order.timestamp).getTime()
-      let dateMatch = true
-      if (filterDate === "Today") dateMatch = orderDate >= todayStart.getTime()
-      else if (filterDate === "Yesterday") dateMatch = orderDate >= yesterdayStart.getTime() && orderDate < todayStart.getTime()
-      else if (filterDate === "Last 7 Days") dateMatch = orderDate >= last7Start.getTime()
-      else if (filterDate === "Last 30 Days") dateMatch = orderDate >= last30Start.getTime()
-
       // Exact Filters
       const matchType = filterType === "All" || order.orderType === filterType
       const matchOrderState = filterOrderState === "All" || order.status === filterOrderState
@@ -412,7 +436,7 @@ export default function Orders() {
       const matchPaymentMethod = filterPaymentMethod === "All" || (order.payments && order.payments.length > 0 && order.payments[0].method === filterPaymentMethod)
       const matchCashierDrop = filterCashier === "All" || order.cashierName === filterCashier
 
-      return searchMatches && dateMatch && matchType && matchOrderState && matchPayment && matchPaymentMethod && matchCashierDrop
+      return searchMatches && matchType && matchOrderState && matchPayment && matchPaymentMethod && matchCashierDrop
     })
 
     // Sort order
@@ -492,15 +516,23 @@ export default function Orders() {
           {showAdvancedFilters && (
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 pt-4 border-t border-border/50">
-                <div>
+                <div className={filterDate === 'Custom Date' ? 'col-span-2' : ''}>
                   <label className="text-[10px] uppercase font-black text-muted-foreground">Date Range</label>
-                  <select value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-full h-10 rounded-lg bg-secondary border border-border text-xs font-bold px-2 mt-1 focus:outline-none">
-                    <option value="All">All Time</option>
-                    <option value="Today">Today</option>
-                    <option value="Yesterday">Yesterday</option>
-                    <option value="Last 7 Days">Last 7 Days</option>
-                    <option value="Last 30 Days">Last 30 Days</option>
-                  </select>
+                  <div className="flex gap-2">
+                    <select value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-full h-10 rounded-lg bg-secondary border border-border text-xs font-bold px-2 mt-1 focus:outline-none">
+                      <option value="Today">Today</option>
+                      <option value="Yesterday">Yesterday</option>
+                      <option value="Monthly">Monthly</option>
+                      <option value="All Time">All Time</option>
+                      <option value="Custom Date">Custom Date</option>
+                    </select>
+                    {filterDate === 'Custom Date' && (
+                      <div className="flex gap-2 mt-1">
+                        <input type="date" value={customDateFrom} onChange={(e) => setCustomDateFrom(e.target.value)} className="w-full h-10 rounded-lg bg-secondary border border-border text-xs font-bold px-2 focus:outline-none" />
+                        <input type="date" value={customDateTo} onChange={(e) => setCustomDateTo(e.target.value)} className="w-full h-10 rounded-lg bg-secondary border border-border text-xs font-bold px-2 focus:outline-none" />
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="text-[10px] uppercase font-black text-muted-foreground">Order Status</label>
@@ -552,6 +584,8 @@ export default function Orders() {
                 <div className="flex items-end">
                   <button onClick={() => {
                     setFilterDate("Today")
+                    setCustomDateFrom("")
+                    setCustomDateTo("")
                     setFilterType("All")
                     setFilterOrderState("All")
                     setFilterPayment("All")

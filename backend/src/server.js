@@ -99,6 +99,10 @@ const startServer = async () => {
     // 4. Initialize Menu Engine Cache
     menuCacheService.initialize();
 
+    // 4.5. Run Data Cleanup
+    const { orderHistoryService } = await import('./services/orderHistoryService.js');
+    orderHistoryService.cleanupOldData(3);
+
     // 5. Start the Print Engine background processor (independent of HTTP server)
     printEngineService.start();
 

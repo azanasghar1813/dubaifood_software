@@ -93,7 +93,7 @@ interface OrderState {
   getOrders: () => Order[]
   lockOrder: (id: string, cashier: string) => void
   unlockOrder: (id: string, override?: boolean) => void
-  syncOrdersFromBackend: () => Promise<void>
+  syncOrdersFromBackend: (filters?: any) => Promise<void>
 }
 
 const mapLifecycleState = (state: string): OrderStatus => {
@@ -273,10 +273,10 @@ export const useOrderStore = create<OrderState>((set, get) => ({
     )
   })),
 
-  syncOrdersFromBackend: async () => {
+  syncOrdersFromBackend: async (filters = {}) => {
     set({ isSyncingFromBackend: true })
     try {
-      const listResult = await fetchOrders({}, { page: 1, limit: 500, sort_by: 'NEWEST' })
+      const listResult = await fetchOrders(filters, { page: 1, limit: 1000, sort_by: 'NEWEST' })
       const rows = listResult.data || []
       const detailedOrders = []
       const chunkSize = 10

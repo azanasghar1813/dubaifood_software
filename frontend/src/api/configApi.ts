@@ -21,6 +21,10 @@ export interface FinanceConfig {
   round_off?: string
 }
 
+export interface OrderConfig {
+  order_number_reset_daily?: string
+}
+
 export interface Printer {
   id: string
   name: string
@@ -62,5 +66,10 @@ export const configApi = {
 
   deletePrinter: async (id: string) => {
     return apiClient.delete(`/config/printers/${id}`)
+  },
+
+  // Update order config
+  updateOrderConfig: async (data: OrderConfig) => {
+    return apiClient.put('/config/business/order', data)
   }
 }

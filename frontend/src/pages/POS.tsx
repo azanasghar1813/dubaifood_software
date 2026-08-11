@@ -124,6 +124,7 @@ export default function POS() {
   const [amountReceived, setAmountReceived] = useState<string>("")
   const [discountAmount, setDiscountAmount] = useState<string>("")
   const [isPaidPrint, setIsPaidPrint] = useState(false)
+  const [lastReceipt, setLastReceipt] = useState<any>(null)
 
   // Checkout modal keyboard navigation
   // focusZone: 'methods' | 'discount' | 'amount' | 'quickcash' | 'discountpct' | 'confirm'
@@ -2001,6 +2002,20 @@ export default function POS() {
                       const amt = amountReceived ? Number(amountReceived) : finalTotal
                       const method: PaymentMethod = selectedPaymentMethod ?? 'Cash'
                       
+                      // Snapshot the cart for the receipt before completeOrder clears it
+                      setLastReceipt({
+                        cart: [...cart],
+                        orderCounter,
+                        orderType,
+                        tableNumber,
+                        customer: usePosStore.getState().customer,
+                        user,
+                        isPaidPrint,
+                        currentTime: new Date(),
+                        deliveryCharges,
+                        discountVal
+                      })
+
                       const success = await completeOrder(
                         isPaidPrint ? [{
                           id: `pay-${Date.now()}`,
@@ -2015,11 +2030,16 @@ export default function POS() {
                       )
 
                       if (!success) {
+                        setLastReceipt(null)
                         alert("Could not complete this order. Your cart has been kept \u2014 please check your connection and try again.")
                         return
                       }
 
-                      window.print()
+                      setTimeout(() => {
+                        window.print()
+                        setLastReceipt(null)
+                      }, 100)
+
                       setCheckoutModalOpen(false)
                       setOrderNotes('')
                       setSelectedPaymentMethod(null)
@@ -2086,30 +2106,31 @@ export default function POS() {
 
           {/* Order Details */}
           <div className="text-[11px] flex flex-col gap-1 font-medium text-black mb-3">
-            <div className="flex"><span className="font-bold w-28">Order ID:</span> #{orderCounter}</div>
-            {orderType === 'Dine In' ? (
-              <div className="flex"><span className="font-bold w-28">Table No:</span> {tableNumber || 'N/A'}</div>
+            <div className="flex"><span className="font-bold w-28">Order ID:</span> #{lastReceipt?.orderCounter || orderCounter}</div>
+            {(lastReceipt?.orderType || orderType) === 'Dine In' ? (
+              <div className="flex"><span className="font-bold w-28">Table No:</span> {lastReceipt?.tableNumber || tableNumber || 'N/A'}</div>
             ) : (
-              <div className="flex"><span className="font-bold w-28">Customer:</span> {usePosStore.getState().customer?.name || 'Dummy'}</div>
+              <div className="flex"><span className="font-bold w-28">Customer:</span> {lastReceipt?.customer?.name || usePosStore.getState().customer?.name || 'Dummy'}</div>
             )}
-            {orderType !== 'Dine In' && usePosStore.getState().customer?.phone && (
-              <div className="flex"><span className="font-bold w-28">Customer Contact:</span> {usePosStore.getState().customer?.phone}</div>
+            {(lastReceipt?.orderType || orderType) !== 'Dine In' && (lastReceipt?.customer?.phone || usePosStore.getState().customer?.phone) && (
+              <div className="flex"><span className="font-bold w-28">Customer Contact:</span> {lastReceipt?.customer?.phone || usePosStore.getState().customer?.phone}</div>
             )}
-            {orderType === 'Delivery' && usePosStore.getState().customer?.address && (
-              <div className="flex"><span className="font-bold w-28">Delivery To:</span> {usePosStore.getState().customer?.address}</div>
+            {(lastReceipt?.orderType || orderType) === 'Delivery' && (lastReceipt?.customer?.address || usePosStore.getState().customer?.address) && (
+              <div className="flex"><span className="font-bold w-28">Delivery To:</span> {lastReceipt?.customer?.address || usePosStore.getState().customer?.address}</div>
             )}
-            {orderType !== 'Dine In' && usePosStore.getState().customer?.notes && (
-              <div className="flex"><span className="font-bold w-28">Notes:</span> <span className="flex-1 whitespace-pre-wrap">{usePosStore.getState().customer?.notes}</span></div>
+            {(lastReceipt?.orderType || orderType) !== 'Dine In' && (lastReceipt?.customer?.notes || usePosStore.getState().customer?.notes) && (
+              <div className="flex"><span className="font-bold w-28">Notes:</span> <span className="flex-1 whitespace-pre-wrap">{lastReceipt?.customer?.notes || usePosStore.getState().customer?.notes}</span></div>
             )}
-            <div className="flex"><span className="font-bold w-28">Order Type:</span> {orderType}</div>
-            <div className="flex"><span className="font-bold w-28">Cashier:</span> {user?.name || "Cashier"}</div>
-            <div className="flex"><span className="font-bold w-28">Status:</span> {isPaidPrint ? 'Paid' : 'Unpaid'}</div>
+            <div className="flex"><span className="font-bold w-28">Order Type:</span> {lastReceipt?.orderType || orderType}</div>
+            <div className="flex"><span className="font-bold w-28">Cashier:</span> {lastReceipt?.user?.name || user?.name || "Cashier"}</div>
+            <div className="flex"><span className="font-bold w-28">Status:</span> {lastReceipt ? (lastReceipt.isPaidPrint ? 'Paid' : 'Unpaid') : (isPaidPrint ? 'Paid' : 'Unpaid')}</div>
             <div className="flex">
               <span className="font-bold w-28">Time:</span>
-              {currentTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              {(lastReceipt?.currentTime || currentTime).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, {(lastReceipt?.currentTime || currentTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </div>
             {(() => {
-              const groupedItems = cart.reduce((acc: any, item) => {
+              const printCart = lastReceipt?.cart || cart;
+              const groupedItems = printCart.reduce((acc: any, item: any) => {
                 let category = item.category || 'Restaurant';
                 const catLower = category.toLowerCase();
                 const nameLower = (item.name || '').toLowerCase();
@@ -2204,16 +2225,37 @@ export default function POS() {
           </div>
 
           {/* Totals */}
-          <div className="flex flex-col items-end text-[11px] mb-2 pr-1">
-            <div className="mb-1 text-right">Subtotal: Rs {getSubtotal().toFixed(2)}</div>
-            {orderType === 'Dine In' && getTax() > 0 && (
-              <div className="mb-1 text-right">Service Charges: Rs {getTax().toFixed(2)}</div>
+          <div className="flex flex-col items-end text-[11px] mb-2 pr-1 font-bold">
+            <div className="mb-1 text-right">Subtotal: Rs {(() => {
+              const sub = (lastReceipt?.cart || cart).reduce((sum: number, i: any) => sum + (i.price + (i.selectedModifiers || []).reduce((mSum: number, m: any) => mSum + m.price, 0)) * i.quantity, 0);
+              return sub.toFixed(2);
+            })()}</div>
+            {(lastReceipt?.orderType || orderType) === 'Dine In' && (() => {
+              const sub = (lastReceipt?.cart || cart).reduce((sum: number, i: any) => sum + (i.price + (i.selectedModifiers || []).reduce((mSum: number, m: any) => mSum + m.price, 0)) * i.quantity, 0);
+              const sc = sub * 0.07;
+              return sc > 0 ? (
+                <div className="mb-1 text-right">Service Charges: Rs {sc.toFixed(2)}</div>
+              ) : null;
+            })()}
+            {(lastReceipt?.orderType || orderType) === 'Delivery' && (lastReceipt?.deliveryCharges || deliveryCharges || 0) > 0 && (
+              <div className="mb-1 text-right">Delivery Charges: Rs {(lastReceipt?.deliveryCharges || deliveryCharges || 0).toFixed(2)}</div>
             )}
-            {orderType === 'Delivery' && deliveryCharges > 0 && (
-              <div className="mb-1 text-right">Delivery Charges: Rs {deliveryCharges.toFixed(2)}</div>
+            {(lastReceipt?.discountVal || (discountAmount ? Number(discountAmount) : 0)) > 0 && (
+              <div className="mb-1 text-right text-emerald-600">Discount: -Rs {(lastReceipt?.discountVal || (discountAmount ? Number(discountAmount) : 0)).toFixed(2)}</div>
             )}
             <div className="font-black text-[13px] mt-1 underline decoration-2 underline-offset-2">
-              Total Amount: Rs {getNetTotal().toFixed(2)}
+              Total Amount: Rs {(() => {
+                const sub = (lastReceipt?.cart || cart).reduce((sum: number, i: any) => sum + (i.price + (i.selectedModifiers || []).reduce((mSum: number, m: any) => mSum + m.price, 0)) * i.quantity, 0);
+                let total = sub;
+                if ((lastReceipt?.orderType || orderType) === 'Dine In') {
+                  total += sub * 0.07;
+                }
+                if ((lastReceipt?.orderType || orderType) === 'Delivery') {
+                  total += (lastReceipt?.deliveryCharges || deliveryCharges || 0);
+                }
+                const dVal = lastReceipt?.discountVal || (discountAmount ? Number(discountAmount) : 0);
+                return Math.max(0, total - dVal).toFixed(2);
+              })()}
             </div>
           </div>
 
