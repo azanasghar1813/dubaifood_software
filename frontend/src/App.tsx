@@ -14,9 +14,10 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // F1 or Ctrl + / -> Global Shortcuts Map
-      if (e.key === 'F1' || (e.ctrlKey && e.key === '/')) {
+      // F1 / F3 / F10 / Ctrl+\ -> Global Shortcuts Map
+      if (e.key === 'F1' || e.key === 'F3' || e.key === 'F10' || (e.ctrlKey && e.key === '\\')) {
         e.preventDefault()
+        e.stopImmediatePropagation()
         setShortcutsOpen(prev => !prev)
       }
       // F12 -> KDS
@@ -52,8 +53,8 @@ function App() {
       }
     }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
   }, [])
 
   return (

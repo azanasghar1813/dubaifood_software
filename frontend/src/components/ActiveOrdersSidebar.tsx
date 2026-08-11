@@ -1,11 +1,11 @@
-import React, { useState, useMemo, useEffect } from "react"
+import React, { useState, useMemo, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
   X, Search, Clock, Hash, User,
   Receipt, Edit,
   AlertCircle, ChevronRight,
   CheckCircle2, PlusCircle, CreditCard,
-  Utensils
+  Utensils, Printer
 } from "lucide-react"
 import { useOrderStore, mapHistoryDetailToOrder } from "../store/orderStore"
 import type { Order, OrderStatus, KitchenStatus, PaymentStatus } from "../store/orderStore"
@@ -13,6 +13,7 @@ import { usePosStore } from "../store/posStore"
 import { useAuthStore } from "../store/authStore"
 import { fetchOrderDetail } from "../api/historyApi"
 import { apiClient } from "../api/client"
+import ReceiptPreview from "../pages/ReceiptPreview"
 
 interface ActiveOrdersSidebarProps {
   isOpen: boolean
@@ -51,6 +52,16 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
   const [filter, setFilter] = useState<string>("All")
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [selectedActionIndex, setSelectedActionIndex] = useState(0)
+  const [printOrder, setPrintOrder] = useState<Order | null>(null)
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([])
+  // Use a ref to keep latest activeOrders/selectedIndex in the keydown handler
+  const activeOrdersRef = useRef<Order[]>([])
+  const selectedIndexRef = useRef(0)
+  const selectedActionIndexRef = useRef(0)
+
+  // Keep selectedIndex/selectedActionIndex refs in sync (activeOrders ref synced after useMemo below)
+  useEffect(() => { selectedIndexRef.current = selectedIndex }, [selectedIndex])
+  useEffect(() => { selectedActionIndexRef.current = selectedActionIndex }, [selectedActionIndex])
 
   useEffect(() => {
     if (isOpen) {
@@ -83,6 +94,14 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     }
     return result
   }, [orders, searchQuery, filter])
+  // Keep activeOrdersRef in sync
+  useEffect(() => { activeOrdersRef.current = activeOrders }, [activeOrders])
+
+  useEffect(() => {
+    if (itemRefs.current[selectedIndex]) {
+      itemRefs.current[selectedIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [selectedIndex])
 
   useEffect(() => {
     setSelectedIndex(0)
@@ -92,41 +111,69 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
+      const orders = activeOrdersRef.current
+      const curIdx = selectedIndexRef.current
+      const curAction = selectedActionIndexRef.current
+
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setSelectedIndex(s => Math.min(s + 1, activeOrders.length - 1))
+        e.stopPropagation()
+        setSelectedIndex(s => Math.min(s + 1, orders.length - 1))
         setSelectedActionIndex(0)
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
+        e.stopPropagation()
         setSelectedIndex(s => Math.max(s - 1, 0))
         setSelectedActionIndex(0)
       } else if (e.key === 'ArrowRight') {
         e.preventDefault()
-        const order = activeOrders[selectedIndex]
-        if (order && order.paymentStatus === 'Unpaid') {
-          setSelectedActionIndex(1)
+        e.stopPropagation()
+        const order = orders[curIdx]
+        if (!order) return
+        // Cycle: 0(Edit) -> 1(MarkComplete if Unpaid, else 2) -> 2(Print) -> 0
+        if (curAction === 0) {
+          if (order.paymentStatus === 'Unpaid') setSelectedActionIndex(1)
+          else setSelectedActionIndex(2)
+        } else if (curAction === 1) {
+          setSelectedActionIndex(2)
+        } else {
+          setSelectedActionIndex(0)
         }
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault()
-        setSelectedActionIndex(0)
+        e.stopPropagation()
+        const order = orders[curIdx]
+        if (!order) return
+        if (curAction === 2) {
+          if (order.paymentStatus === 'Unpaid') setSelectedActionIndex(1)
+          else setSelectedActionIndex(0)
+        } else if (curAction === 1) {
+          setSelectedActionIndex(0)
+        } else {
+          setSelectedActionIndex(2)
+        }
       } else if (e.key === 'Enter') {
         e.preventDefault()
-        const order = activeOrders[selectedIndex]
-        if (order) {
-          if (selectedActionIndex === 1 && order.paymentStatus === 'Unpaid') {
-            handleMarkComplete(null, order)
-          } else {
-            handleEdit(order)
-          }
+        e.stopPropagation()
+        const order = orders[curIdx]
+        if (!order) return
+        if (curAction === 1 && order.paymentStatus === 'Unpaid') {
+          handleMarkComplete(null, order)
+        } else if (curAction === 2) {
+          handlePrint(null, order)
+        } else {
+          handleEdit(order)
         }
       } else if (e.ctrlKey && e.key.toLowerCase() === 'e') {
         e.preventDefault()
+        e.stopPropagation()
         onClose()
       }
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, activeOrders, selectedIndex, selectedActionIndex])
+    // Use capture phase so we get events before other handlers but DON'T prevent shortcuts from App
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
+  }, [isOpen])
 
   const handleEdit = async (order: Order) => {
     try {
@@ -151,6 +198,11 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     } catch (e) {
       console.error(e)
     }
+  }
+
+  const handlePrint = async (e: React.MouseEvent | null, order: Order) => {
+    if (e) e.stopPropagation()
+    setPrintOrder(order)
   }
 
   return (
@@ -257,6 +309,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                 activeOrders.map((order, index) => (
                   <motion.div
                     key={order.id}
+                    ref={el => { itemRefs.current[index] = el }}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     onClick={() => handleEdit(order)}
@@ -326,6 +379,18 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                           Mark Complete
                         </button>
                       )}
+
+                      <button 
+                        onClick={(e) => handlePrint(e, order)}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          selectedIndex === index && selectedActionIndex === 2
+                            ? 'bg-blue-500 text-white ring-2 ring-blue-500/50 shadow-lg shadow-blue-500/20'
+                            : 'bg-secondary hover:bg-secondary/80 text-foreground'
+                        }`}
+                      >
+                        <Printer className="w-4 h-4" />
+                        Print
+                      </button>
                     </div>
                   </motion.div>
                 ))
@@ -334,6 +399,8 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
           </motion.div>
         </>
       )}
+      
+      {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
     </AnimatePresence>
   )
 }

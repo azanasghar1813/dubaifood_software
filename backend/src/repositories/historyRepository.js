@@ -42,7 +42,7 @@ class HistoryRepository {
         o.cashier_user_id,
         o.shift_id,
         o.customer_id,
-        o.table_id,
+        IFNULL(dt.table_number, o.table_id) as table_id,
         o.order_type,
         o.lifecycle_state,
         o.kitchen_state,
@@ -80,6 +80,7 @@ class HistoryRepository {
         o.delivery_fee AS delivery_charges,
         (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM activity_logs al WHERE al.entity_id = o.id AND al.action IN ('ITEM_REMOVED', 'ITEM_ADDED', 'QUANTITY_CHANGED')) AS is_edited
       FROM orders o
+      LEFT JOIN dining_tables dt ON dt.id = o.table_id
       ${whereSql}
       ORDER BY ${orderBySql}
       LIMIT ? OFFSET ?
@@ -107,9 +108,11 @@ class HistoryRepository {
   findFullDetail(orderId) {
     const order = dbEngine.prepare(`
       SELECT o.*,
+        IFNULL(dt.table_number, o.table_id) as table_id,
         o.service_charge AS service_charge,
         o.delivery_fee AS delivery_charges
       FROM orders o 
+      LEFT JOIN dining_tables dt ON dt.id = o.table_id
       WHERE o.id = ?
     `).get(orderId);
     if (!order) return null;

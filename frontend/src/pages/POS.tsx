@@ -1083,7 +1083,7 @@ export default function POS() {
       setSizeSelectedIndex(0)
       return
     }
-    
+
     addToCart(product)
     setSearchQuery("") // Auto clear search
     searchInputRef.current?.focus()
@@ -1510,7 +1510,7 @@ export default function POS() {
                                     <ul className="space-y-0.5">
                                       {item.combo_components.map((comp: any, cidx: number) => (
                                         <li key={cidx} className="flex gap-1">
-                                          <span className="text-orange-500 font-bold">•</span> 
+                                          <span className="text-orange-500 font-bold">•</span>
                                           <span>
                                             {comp.quantity > 1 ? `${comp.quantity}x ` : ''}{comp.product_name_snapshot} {comp.variant_snapshot && `(${comp.variant_snapshot})`}
                                           </span>
@@ -2001,7 +2001,7 @@ export default function POS() {
                     onClick={async () => {
                       const amt = amountReceived ? Number(amountReceived) : finalTotal
                       const method: PaymentMethod = selectedPaymentMethod ?? 'Cash'
-                      
+
                       // Snapshot the cart for the receipt before completeOrder clears it
                       setLastReceipt({
                         cart: [...cart],
@@ -2110,7 +2110,7 @@ export default function POS() {
             {(lastReceipt?.orderType || orderType) === 'Dine In' ? (
               <div className="flex"><span className="font-bold w-28">Table No:</span> {lastReceipt?.tableNumber || tableNumber || 'N/A'}</div>
             ) : (
-              <div className="flex"><span className="font-bold w-28">Customer:</span> {lastReceipt?.customer?.name || usePosStore.getState().customer?.name || 'Dummy'}</div>
+              <div className="flex"><span className="font-bold w-28">Customer:</span> {lastReceipt?.customer?.name || usePosStore.getState().customer?.name || 'Guest'}</div>
             )}
             {(lastReceipt?.orderType || orderType) !== 'Dine In' && (lastReceipt?.customer?.phone || usePosStore.getState().customer?.phone) && (
               <div className="flex"><span className="font-bold w-28">Customer Contact:</span> {lastReceipt?.customer?.phone || usePosStore.getState().customer?.phone}</div>

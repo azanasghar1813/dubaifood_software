@@ -15,7 +15,7 @@ const SHORTCUT_GROUPS: ShortcutCategory[] = [
   {
     category: "Global Application",
     shortcuts: [
-      { key: "F1 or Ctrl + /", desc: "Show Keyboard Shortcuts Help", detail: "Opens this detailed menu from anywhere in the app." },
+      { key: "F10 or Ctrl + \\", desc: "Show Keyboard Shortcuts Help", detail: "Opens this detailed menu from anywhere in the app. Also works with F1 or F3." },
       { key: "F12", desc: "Toggle Kitchen Display System (KDS)", detail: "Quickly switch to the kitchen view to manage orders." },
       { key: "Ctrl + P", desc: "Print Last Receipt", detail: "Instantly sends the most recent order to the receipt printer." },
       { key: "Ctrl + Shift + P", desc: "Printer Settings", detail: "Open the global printer management and status panel." },
@@ -64,63 +64,63 @@ const SHORTCUT_GROUPS: ShortcutCategory[] = [
 ];
 
 export function KeyboardShortcutsModal({ isOpen, onClose }: Props) {
-  if (!isOpen) return null
-
   return (
     <AnimatePresence>
-      <motion.div 
-        initial={{ opacity: 0 }} 
-        animate={{ opacity: 1 }} 
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-        onClick={onClose}
-      >
+      {isOpen && (
         <motion.div 
-          initial={{ scale: 0.95, opacity: 0, y: 20 }} 
-          animate={{ scale: 1, opacity: 1, y: 0 }} 
-          exit={{ scale: 0.95, opacity: 0, y: 20 }}
-          className="bg-card w-full max-w-4xl max-h-[85vh] rounded-2xl shadow-2xl overflow-hidden border border-border flex flex-col"
-          onClick={(e) => e.stopPropagation()}
+          initial={{ opacity: 0 }} 
+          animate={{ opacity: 1 }} 
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={onClose}
         >
-          <div className="p-6 border-b border-border bg-secondary/30 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/20 text-primary rounded-lg">
-                <Command className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-xl font-black text-foreground">Global Keyboard Shortcuts</h2>
-                <p className="text-xs text-muted-foreground font-bold">Universal Keyboard Mode Active</p>
-              </div>
-            </div>
-            <button onClick={onClose} className="p-2 hover:bg-secondary rounded-xl transition-colors">
-              <X className="w-5 h-5 text-muted-foreground" />
-            </button>
-          </div>
-          
-          <div className="p-6 overflow-y-auto space-y-8">
-            {SHORTCUT_GROUPS.map((group, gIdx) => (
-              <div key={gIdx} className="space-y-3">
-                <h3 className="text-sm font-black uppercase tracking-widest text-primary/80 border-b border-border/50 pb-2">{group.category}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {group.shortcuts.map((s, idx) => (
-                    <div key={idx} className="flex flex-col p-3 rounded-xl bg-secondary/50 border border-border/50 hover:bg-secondary transition-colors">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-bold text-foreground">{s.desc}</span>
-                        <span className="px-2 py-1 bg-background border border-border rounded-md text-xs font-black shadow-sm">{s.key}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{s.detail}</p>
-                    </div>
-                  ))}
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0, y: 20 }} 
+            animate={{ scale: 1, opacity: 1, y: 0 }} 
+            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+            className="bg-card w-full max-w-4xl max-h-[85vh] rounded-2xl shadow-2xl overflow-hidden border border-border flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-border bg-secondary/30 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary/20 text-primary rounded-lg">
+                  <Command className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-foreground">Global Keyboard Shortcuts</h2>
+                  <p className="text-xs text-muted-foreground font-bold">Universal Keyboard Mode Active</p>
                 </div>
               </div>
-            ))}
-          </div>
+              <button onClick={onClose} className="p-2 hover:bg-secondary rounded-xl transition-colors">
+                <X className="w-5 h-5 text-muted-foreground" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto space-y-8">
+              {SHORTCUT_GROUPS.map((group, gIdx) => (
+                <div key={gIdx} className="space-y-3">
+                  <h3 className="text-sm font-black uppercase tracking-widest text-primary/80 border-b border-border/50 pb-2">{group.category}</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {group.shortcuts.map((s, idx) => (
+                      <div key={idx} className="flex flex-col p-3 rounded-xl bg-secondary/50 border border-border/50 hover:bg-secondary transition-colors">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-bold text-foreground">{s.desc}</span>
+                          <span className="px-2 py-1 bg-background border border-border rounded-md text-xs font-black shadow-sm">{s.key}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{s.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
 
-          <div className="p-4 bg-primary/10 border-t border-primary/20 text-center shrink-0">
-            <p className="text-xs font-bold text-primary">Pro Tip: Use the keyboard to navigate the entire application without a mouse.</p>
-          </div>
+            <div className="p-4 bg-primary/10 border-t border-primary/20 text-center shrink-0">
+              <p className="text-xs font-bold text-primary">Pro Tip: Use the keyboard to navigate the entire application without a mouse.</p>
+            </div>
+          </motion.div>
         </motion.div>
-      </motion.div>
+      )}
     </AnimatePresence>
   )
 }
