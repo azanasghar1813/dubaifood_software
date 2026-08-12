@@ -12,9 +12,11 @@ import { printEngineService } from './services/printEngineService.js';
  * These are programmer errors that are completely unhandled.
  */
 process.on('uncaughtException', (err) => {
-  console.error('[UNCAUGHT EXCEPTION] Shutting down...', err.name, err.message);
+  console.error('[UNCAUGHT EXCEPTION]', err.name, err.message);
   console.error(err.stack);
-  process.exit(1);
+  if (!process.versions.electron) {
+    process.exit(1);
+  }
 });
 
 // Print Startup Summary
@@ -117,22 +119,25 @@ const startServer = async () => {
      * These are unhandled rejections from async functions.
      */
     process.on('unhandledRejection', (err) => {
-      console.error('[UNHANDLED REJECTION] Shutting down...', err.name, err.message);
-      printEngineService.stop();
-      dbEngine.close();
-      server.close(() => {
-        process.exit(1);
-      });
+      console.error('[UNHANDLED REJECTION]', err.name, err.message);
+      if (!process.versions.electron) {
+        printEngineService.stop();
+        dbEngine.close();
+        server.close(() => {
+          process.exit(1);
+        });
+      }
     });
 
-    // Handle graceful shutdown signals (e.g., Ctrl+C or Electron quit)
     const gracefulShutdown = (signal) => {
       console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
       printEngineService.stop();
       dbEngine.close();
       server.close(() => {
         console.log('HTTP server closed.');
-        process.exit(0);
+        if (!process.versions.electron) {
+          process.exit(0);
+        }
       });
     };
 
@@ -143,7 +148,9 @@ const startServer = async () => {
     console.error('❌ FATAL STARTUP ERROR:', error);
     // Ensure DB is closed if it somehow crashed after connecting
     dbEngine.close();
-    process.exit(1);
+    if (!process.versions.electron) {
+      process.exit(1);
+    }
   }
 };
 

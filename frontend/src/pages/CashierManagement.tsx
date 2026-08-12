@@ -494,7 +494,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40">
-              {transactions.filter(t => !searchTerm || t.orderNo.toLowerCase().includes(searchTerm.toLowerCase()) || t.customer.toLowerCase().includes(searchTerm.toLowerCase())).map((tx, idx) => (
+              {transactions.filter((t: any) => !searchTerm || t.orderNo.toLowerCase().includes(searchTerm.toLowerCase()) || t.customer.toLowerCase().includes(searchTerm.toLowerCase())).map((tx: any, idx: number) => (
                 <tr key={idx} className="hover:bg-secondary/20 transition-colors">
                   <td className="py-2.5 text-muted-foreground">{tx.time}</td>
                   <td className="py-2.5 text-foreground">{tx.orderNo}</td>
@@ -869,7 +869,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                     </div>
 
                     <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
-                      {cashDrops.map(drop => (
+                      {cashDrops.map((drop: any) => (
                         <div key={drop.id} className="p-3 bg-secondary/40 border border-border rounded-2xl flex justify-between items-center text-xs font-bold">
                           <div>
                             <span className="text-foreground block font-black">Rs. {drop.amount.toLocaleString()}</span>

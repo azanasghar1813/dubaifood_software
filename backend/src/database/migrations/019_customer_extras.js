@@ -3,11 +3,17 @@ export default {
   name: 'customer_extras',
 
   up: (db) => {
-    db.exec(`
-      -- Add is_vip and notes to customers
-      ALTER TABLE customers ADD COLUMN is_vip INTEGER DEFAULT 0;
-      ALTER TABLE customers ADD COLUMN notes TEXT;
-    `);
+    try {
+      db.exec(`ALTER TABLE customers ADD COLUMN is_vip INTEGER DEFAULT 0;`);
+    } catch (e) {
+      if (!e.message.includes('duplicate column name')) throw e;
+    }
+    
+    try {
+      db.exec(`ALTER TABLE customers ADD COLUMN notes TEXT;`);
+    } catch (e) {
+      if (!e.message.includes('duplicate column name')) throw e;
+    }
   },
 
   down: (db) => {

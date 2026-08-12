@@ -1,5 +1,5 @@
 export default {
-  version: '013',
+  version: '022',
   name: 'deals_engine',
 
   up: (db) => {
@@ -34,10 +34,14 @@ export default {
     `);
 
     // Migrate existing components (if any exist)
-    db.exec(`
-      INSERT INTO deal_components_new (id, deal_id, product_id, quantity, price_adjustment)
-      SELECT id, deal_id, product_id, quantity, price_adjustment FROM deal_components;
-    `);
+    try {
+      db.exec(`
+        INSERT INTO deal_components_new (id, deal_id, product_id, quantity, price_adjustment)
+        SELECT id, deal_id, product_id, quantity, price_adjustment FROM deal_components;
+      `);
+    } catch (e) {
+      console.warn('Failed to migrate old deal_components, skipping (possible foreign key violation):', e.message);
+    }
 
     // Drop old and rename
     try {

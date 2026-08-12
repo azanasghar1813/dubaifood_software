@@ -7,6 +7,11 @@ import config from './config/index.js';
 import { notFoundHandler } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import apiRoutes from './routes/index.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -45,8 +50,23 @@ app.use(config.server.apiPrefix, apiRoutes);
 
 // --- ERROR HANDLING ---
 
-// 404 Route Not Found
-app.use(notFoundHandler);
+// 404 Route Not Found for API
+app.use(config.server.apiPrefix, notFoundHandler);
+
+// In production, serve the React frontend
+if (config.app.isProd) {
+  // Go up from backend/src/app.js to frontend/dist
+  const frontendPath = path.join(__dirname, '../../frontend/dist');
+  app.use(express.static(frontendPath));
+  
+  // Catch-all route to serve index.html for React Router
+  app.use((req, res) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
+  });
+} else {
+  // If not prod, keep the global 404 handler for non-API routes too
+  app.use(notFoundHandler);
+}
 
 // Global Error Handler
 app.use(errorHandler);

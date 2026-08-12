@@ -1,5 +1,5 @@
 export default {
-  version: '013',
+  version: '021',
   name: 'combo_quantity',
 
   up: (db) => {
