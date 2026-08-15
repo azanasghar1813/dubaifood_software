@@ -317,7 +317,8 @@ export const usePosStore = create<POSState>((set, get) => ({
             name: item.variant_name ? `${item.product_name_snapshot || item.product_name || item.name} (${item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Unknown'), 
             price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, 
             cartItemId: item._cart_item_id || item.cartItemId || item.id, 
-            selectedModifiers: item.modifiers || item.selectedModifiers || [] 
+            selectedModifiers: item.modifiers || item.selectedModifiers || [],
+            combo_components: item.combo_components || item.comboComponents || []
           }))
         })
       }
@@ -369,7 +370,14 @@ export const usePosStore = create<POSState>((set, get) => ({
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] }))
+          cart: (res.data?.items || []).map((item: any) => ({ 
+            ...item, 
+            name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), 
+            price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, 
+            cartItemId: item._cart_item_id || item.cartItemId || item.id, 
+            selectedModifiers: item.modifiers || item.selectedModifiers || [], 
+            combo_components: item.combo_components || item.comboComponents || [] 
+          }))
         })
       }
     } catch (e) {
@@ -428,7 +436,7 @@ export const usePosStore = create<POSState>((set, get) => ({
           customer_phone: state.customer?.phone || null,
           customer_address: state.customer?.address || null,
           is_vip: !!state.customer?.is_vip || !!state.customer?.isVip,
-          table_id: order.table_id || null,
+          table_id: state.tableNumber || order.table_id || null,
           notes: order.notes || null,
           branch_id: order.branch_id || 'DEFAULT_BRANCH',
           business_date: order.business_date,
@@ -528,19 +536,78 @@ export const usePosStore = create<POSState>((set, get) => ({
   setOrderType: async (orderType) => {
     set({ orderType })
     try {
-      const res = await cartService.setMeta({ order_type: orderType === 'Dine In' ? 'DINE_IN' : orderType === 'Takeaway' ? 'TAKEAWAY' : 'DELIVERY' });
-      if ((res as any).success) {
-        set({ activeOrder: (res as any).data });
+      const typeStr = orderType === 'Dine In' ? 'DINE_IN' : orderType === 'Takeaway' ? 'TAKEAWAY' : 'DELIVERY';
+      const state = get();
+      if (state.editingOrderId && state.activeOrder && state.activeOrder.order_number) {
+        // If editing a placed order, we must call the meta update endpoint (which we will create)
+        const res = await apiClient.put(`/orders/${state.editingOrderId}/meta`, { order_type: typeStr });
+        if ((res as any).success) {
+          set({ activeOrder: (res as any).data });
+        }
+      } else {
+        const res = await cartService.setMeta({ order_type: typeStr });
+        if ((res as any).success) {
+          set({ activeOrder: (res as any).data });
+        }
       }
     } catch (e) {
       console.error('Failed to sync order type:', e);
     }
   },
   
-  setCustomer: (customer) => set({ customer }),
-  setTableNumber: (table) => set({ tableNumber: table }),
+  setCustomer: async (customer) => {
+    set({ customer })
+    try {
+      const state = get();
+      if (state.editingOrderId && state.activeOrder && state.activeOrder.order_number) {
+        const res = await apiClient.put(`/orders/${state.editingOrderId}/meta`, { customer_id: customer?.id || null });
+        if ((res as any).success) {
+          set({ activeOrder: (res as any).data });
+        }
+      } else {
+        const res = await cartService.setMeta({ customer_id: customer?.id || null });
+        if ((res as any).success) {
+          set({ activeOrder: (res as any).data });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to sync customer:', e);
+    }
+  },
+  setTableNumber: async (table) => {
+    set({ tableNumber: table })
+    try {
+      const state = get();
+      if (state.editingOrderId && state.activeOrder && state.activeOrder.order_number) {
+        const res = await apiClient.put(`/orders/${state.editingOrderId}/meta`, { table_id: table });
+        if ((res as any).success) {
+          set({ activeOrder: (res as any).data });
+        }
+      } else {
+        const res = await cartService.setMeta({ table_id: table });
+        if ((res as any).success) {
+          set({ activeOrder: (res as any).data });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to sync table number:', e);
+    }
+  },
   setGuestCount: (count) => set({ guestCount: count }),
-  setDeliveryCharges: (deliveryCharges) => set({ deliveryCharges }),
+  setDeliveryCharges: async (deliveryCharges) => {
+    set({ deliveryCharges })
+    try {
+      const state = get();
+      if (state.editingOrderId && state.activeOrder && state.activeOrder.order_number) {
+        const res = await apiClient.put(`/orders/${state.editingOrderId}/meta`, { delivery_charges: deliveryCharges });
+        if ((res as any).success) {
+          set({ activeOrder: (res as any).data });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to sync delivery charges:', e);
+    }
+  },
   toggleTax: () => set((state) => ({ isTaxEnabled: !state.isTaxEnabled })),
   clearEditMode: () => set({ editingOrderId: null }),
   switchOrder: (orderId) => console.log('switchOrder stub called', orderId)

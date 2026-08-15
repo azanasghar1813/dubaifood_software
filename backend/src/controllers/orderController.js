@@ -52,6 +52,17 @@ export const orderController = {
     }
   },
 
+  updateOrderMeta: (req, res) => {
+    const ctx = resolveSessionContext(req, res, { requireShift: false });
+    if (!ctx) return;
+    try {
+      const updatedOrder = orderService.updateOrderMeta(req.params.orderId, req.body, ctx.userId);
+      sendSuccess(res, updatedOrder, 'Order metadata updated');
+    } catch (error) {
+      sendError(res, 400, error.message);
+    }
+  },
+
   addItemToDraft: (req, res) => {
     const ctx = resolveSessionContext(req, res);
     if (!ctx) return;

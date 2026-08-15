@@ -24,6 +24,7 @@ router.post('/', validate(createOrderSchema), orderController.createOrder);
 // Order by ID operations
 router.get('/held', orderController.getHeldOrders);
 router.get('/:orderId', orderController.getOrderDetails);
+router.put('/:orderId/meta', orderController.updateOrderMeta);
 router.post('/:orderId/items', validate(addItemSchema), orderController.addItemToOrder);
 router.put('/:orderId/items/:itemId', validate(updateQuantitySchema), orderController.updateItemQuantity);
 router.delete('/:orderId/items/:itemId', orderController.removeItemFromOrder);

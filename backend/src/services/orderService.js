@@ -407,6 +407,42 @@ class OrderService {
   }
 
   /**
+   * Updates order metadata directly (like table_id or order_type) for an active order
+   */
+  updateOrderMeta(orderId, meta, userId) {
+    return dbEngine.transaction(() => {
+      const order = orderRepository.findById(orderId);
+      if (!order) throw new Error('Order not found.');
+
+      const updates = {};
+      
+      if (meta.order_type !== undefined) {
+        updates.order_type = meta.order_type;
+      }
+      if (meta.table_id !== undefined) {
+        updates.table_id = meta.table_id;
+      }
+      if (meta.customer_id !== undefined) {
+        updates.customer_id = meta.customer_id;
+      }
+      if (meta.delivery_charges !== undefined) {
+        updates.delivery_fee = meta.delivery_charges;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        orderRepository.update(orderId, updates);
+        
+        // Log activity
+        activityLogService.logActivity(userId, 'ORDER_UPDATED', 'ORDER', orderId, meta);
+        syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', meta);
+      }
+
+      // Recalculate totals in case delivery charges or order type changed
+      return this.recalculateOrderTotals(orderId);
+    });
+  }
+
+  /**
    * Deletes an order permanently from the database.
    */
   deleteOrder(orderId, userId) {

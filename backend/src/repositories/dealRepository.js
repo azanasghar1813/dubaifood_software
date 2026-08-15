@@ -85,9 +85,9 @@ class DealRepository {
   _insertComponents(dealId, components) {
     const insertComponent = dbEngine.prepare(`
       INSERT INTO deal_components (
-        id, deal_id, name, component_type, product_id, quantity, target_category_id, target_variant_name, allowed_product_ids
+        id, deal_id, name, component_type, product_id, quantity, target_category_id, target_variant_name, allowed_product_ids, price_adjustment
       ) VALUES (
-        @id, @deal_id, @name, @component_type, @product_id, @quantity, @target_category_id, @target_variant_name, @allowed_product_ids
+        @id, @deal_id, @name, @component_type, @product_id, @quantity, @target_category_id, @target_variant_name, @allowed_product_ids, @price_adjustment
       )
     `);
 
@@ -101,7 +101,8 @@ class DealRepository {
         quantity: comp.quantity || 1,
         target_category_id: comp.target_category_id || null,
         target_variant_name: comp.target_variant_name || null,
-        allowed_product_ids: comp.allowed_product_ids || null
+        allowed_product_ids: comp.allowed_product_ids || null,
+        price_adjustment: comp.price_adjustment || 0
       });
     });
   }

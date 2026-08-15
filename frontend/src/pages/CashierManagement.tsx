@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react"
 import { shiftApi } from "../api/shiftApi"
 import { motion, AnimatePresence } from "framer-motion"
-import { 
-  ArrowRightLeft, DollarSign, Clock, 
-  RefreshCw, Printer, 
-  CheckCircle2, BarChart, Activity, 
-  AlertCircle, Coins, Plus, ShieldAlert, Key, 
+import {
+  ArrowRightLeft, DollarSign, Clock,
+  RefreshCw, Printer,
+  CheckCircle2, BarChart, Activity,
+  AlertCircle, Coins, Plus, ShieldAlert, Key,
   X, Search, Keyboard
 } from "lucide-react"
 
@@ -90,7 +90,7 @@ export default function CashierManagement() {
   const cashierName = activeShift?.userId || "Cashier"
   const employeeId = activeShift?.userId || "EMP"
   const tillName = activeShift?.terminalId || "Main Till #1"
-  
+
   const cashDrops = activeShift?.cashDrops || []
   const paidOuts = activeShift?.paidOuts || []
   const shiftActivities = activeShift?.shiftActivities || []
@@ -99,7 +99,7 @@ export default function CashierManagement() {
   // Simulated Time states
   const [currentTime, setCurrentTime] = useState(new Date())
   const [currentSeconds, setCurrentSeconds] = useState(0)
-  
+
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date())
@@ -171,7 +171,7 @@ export default function CashierManagement() {
         setShowClosingPanel(false)
         setShowShortcuts(false)
       }
-      
+
       // Ctrl + / for shortcuts
       if (e.ctrlKey && e.key === "/") {
         e.preventDefault()
@@ -312,7 +312,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto text-foreground pb-12">
-      
+
       {/* ====================================================
           HEADER & METADATA BAR
           ==================================================== */}
@@ -327,11 +327,10 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
           <div>
             <h1 className="text-xl md:text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
               Cashier & Shift Management
-              <span className={`text-[10px] border px-2 py-0.5 rounded-full font-black uppercase tracking-wider ${
-                isShiftActive 
-                  ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+              <span className={`text-[10px] border px-2 py-0.5 rounded-full font-black uppercase tracking-wider ${isShiftActive
+                  ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                   : 'bg-red-500/10 text-red-500 border-red-500/20'
-              }`}>
+                }`}>
                 {isShiftActive ? "Shift Open" : "Register Closed"}
               </span>
             </h1>
@@ -352,7 +351,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
 
         {/* Quick Actions */}
         <div className="flex items-center gap-2 flex-wrap shrink-0">
-          <button 
+          <button
             onClick={handleRefresh}
             className={`p-2.5 bg-secondary hover:bg-border rounded-xl text-muted-foreground hover:text-foreground border border-border relative transition-colors ${isRefreshing ? 'animate-spin' : ''}`}
             title="Refresh shift counters"
@@ -362,28 +361,28 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
 
           {isShiftActive ? (
             <>
-              <button 
+              <button
                 onClick={() => setShowCashDropModal(true)}
                 className="flex items-center gap-1.5 px-3 py-2 bg-secondary border border-border rounded-xl text-xs font-black text-foreground hover:bg-secondary/80 transition-colors"
               >
                 <ArrowRightLeft className="w-4 h-4 text-orange-500" /> Cash Drop [F4]
               </button>
 
-              <button 
+              <button
                 onClick={() => setShowPaidOutModal(true)}
                 className="flex items-center gap-1.5 px-3 py-2 bg-secondary border border-border rounded-xl text-xs font-black text-foreground hover:bg-secondary/80 transition-colors"
               >
                 <DollarSign className="w-4 h-4 text-sky-500" /> Paid Out
               </button>
 
-              <button 
+              <button
                 onClick={handlePrintReport}
                 className="flex items-center gap-1.5 px-3 py-2 bg-secondary border border-border rounded-xl text-xs font-black text-foreground hover:bg-secondary/80 transition-colors"
               >
                 <Printer className="w-4 h-4" /> Print Preview [F6]
               </button>
 
-              <button 
+              <button
                 onClick={() => setShowClosingPanel(true)}
                 className="flex items-center gap-1.5 px-4 py-2 bg-red-500 text-white rounded-xl text-xs font-black hover:bg-red-600 shadow-md shadow-red-500/10 transition-all active:scale-95"
               >
@@ -395,14 +394,14 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
               <span className="text-xs text-muted-foreground font-black mr-2">New Shift Opening Float:</span>
               <div className="relative w-32">
                 <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-black">Rs</span>
-                <input 
-                  type="number" 
-                  value={newOpeningFloat} 
-                  onChange={(e) => setNewOpeningFloat(e.target.value)} 
+                <input
+                  type="number"
+                  value={newOpeningFloat}
+                  onChange={(e) => setNewOpeningFloat(e.target.value)}
                   className="w-full h-8 pl-7 pr-2 rounded-lg bg-secondary border border-border text-xs font-black outline-none"
                 />
               </div>
-              <button 
+              <button
                 onClick={executeOpenShift}
                 className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-xl text-xs font-black hover:bg-primary/95 shadow-md shadow-primary/10 transition-all active:scale-95"
               >
@@ -417,7 +416,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
           TOP SUMMARY CARDS (KPI BLOCK)
           ==================================================== */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
+
         {/* KPI 1: Today's Accrual Sales */}
         <div className="p-6 bg-card border border-border rounded-3xl shadow-sm flex items-start gap-4">
           <div className="w-12 h-12 bg-secondary rounded-xl flex items-center justify-center border border-border shrink-0 text-emerald-500">
@@ -469,9 +468,9 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
           </div>
           <div className="relative w-48 shrink-0">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"><Search className="w-3.5 h-3.5" /></span>
-            <input 
+            <input
               id="txSearch"
-              type="text" 
+              type="text"
               placeholder="Search transaction [F2]..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -494,7 +493,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40">
-              {transactions.filter((t: any) => !searchTerm || t.orderNo.toLowerCase().includes(searchTerm.toLowerCase()) || t.customer.toLowerCase().includes(searchTerm.toLowerCase())).map((tx: any, idx: number) => (
+              {transactions.filter(t => !searchTerm || t.orderNo.toLowerCase().includes(searchTerm.toLowerCase()) || t.customer.toLowerCase().includes(searchTerm.toLowerCase())).map((tx, idx) => (
                 <tr key={idx} className="hover:bg-secondary/20 transition-colors">
                   <td className="py-2.5 text-muted-foreground">{tx.time}</td>
                   <td className="py-2.5 text-foreground">{tx.orderNo}</td>
@@ -505,11 +504,10 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                   <td className="py-2.5 text-foreground">Rs. {tx.amount.toLocaleString()}</td>
                   <td className="py-2.5 text-muted-foreground">{tx.cashier}</td>
                   <td className="py-2.5 text-right">
-                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${
-                      tx.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
-                      tx.status === 'Refunded' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
-                      'bg-amber-500/10 text-amber-500 border-amber-500/20'
-                    }`}>
+                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${tx.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                        tx.status === 'Refunded' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+                          'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                      }`}>
                       {tx.status}
                     </span>
                   </td>
@@ -529,13 +527,13 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
       <AnimatePresence>
         {showCashDropModal && (
           <div className="fixed inset-0 z-[250] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               className="bg-card border border-border rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl relative overflow-hidden"
             >
-              <button 
+              <button
                 onClick={() => setShowCashDropModal(false)}
                 className="absolute top-4 right-4 p-1.5 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground"
               >
@@ -552,7 +550,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                   <label className="text-[10px] uppercase font-black text-muted-foreground">Amount (Rs)</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">Rs</span>
-                    <input 
+                    <input
                       type="number"
                       placeholder="0.00"
                       value={dropAmount}
@@ -563,9 +561,9 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                   </div>
                   <div className="grid grid-cols-5 gap-1.5 pt-1.5">
                     {[500, 1000, 2000, 5000, 10000].map(val => (
-                      <button 
-                        type="button" 
-                        key={val} 
+                      <button
+                        type="button"
+                        key={val}
                         onClick={() => setDropAmount(val.toString())}
                         className="py-1 bg-secondary hover:bg-border rounded text-[10px] font-black border border-border/50 text-foreground"
                       >
@@ -577,7 +575,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
 
                 <div className="space-y-1">
                   <label className="text-[10px] uppercase font-black text-muted-foreground">Drop Destination / Purpose</label>
-                  <select 
+                  <select
                     value={dropReason}
                     onChange={(e) => setDropReason(e.target.value)}
                     className="w-full h-10 px-2 rounded-xl bg-secondary border border-border text-xs font-bold outline-none"
@@ -590,8 +588,8 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
 
                 <div className="flex items-center justify-between p-3 bg-secondary/40 border border-border rounded-xl">
                   <span className="text-muted-foreground">Print Thermal receipt immediately</span>
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={dropPrintReceipt}
                     onChange={(e) => setDropPrintReceipt(e.target.checked)}
                     className="w-4 h-4 rounded cursor-pointer"
@@ -599,14 +597,14 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 pt-2">
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => setShowCashDropModal(false)}
                     className="h-10 bg-secondary border border-border hover:bg-border rounded-xl font-black text-xs uppercase"
                   >
                     Cancel [Esc]
                   </button>
-                  <button 
+                  <button
                     type="submit"
                     className="h-10 bg-primary text-white rounded-xl font-black text-xs uppercase hover:bg-primary/95 shadow-md shadow-primary/10"
                   >
@@ -625,13 +623,13 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
       <AnimatePresence>
         {showPaidOutModal && (
           <div className="fixed inset-0 z-[250] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               className="bg-card border border-border rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl relative overflow-hidden"
             >
-              <button 
+              <button
                 onClick={() => setShowPaidOutModal(false)}
                 className="absolute top-4 right-4 p-1.5 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground"
               >
@@ -648,7 +646,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                   <label className="text-[10px] uppercase font-black text-muted-foreground">Amount (Rs)</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">Rs</span>
-                    <input 
+                    <input
                       type="number"
                       placeholder="0.00"
                       value={poAmount}
@@ -661,7 +659,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
 
                 <div className="space-y-1">
                   <label className="text-[10px] uppercase font-black text-muted-foreground">Withdrawal Purpose</label>
-                  <select 
+                  <select
                     value={poPurpose}
                     onChange={(e) => setPoPurpose(e.target.value)}
                     className="w-full h-10 px-2 rounded-xl bg-secondary border border-border text-xs font-bold outline-none"
@@ -677,7 +675,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                 {poPurpose === "Custom Reason" && (
                   <div className="space-y-1">
                     <label className="text-[10px] uppercase font-black text-muted-foreground">Specify Custom Purpose</label>
-                    <input 
+                    <input
                       type="text"
                       placeholder="Enter specific purpose..."
                       value={poCustomReason}
@@ -692,7 +690,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                   <label className="text-[10px] uppercase font-black text-muted-foreground">Manager Auth PIN (Demo: 1234)</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"><Key className="w-3.5 h-3.5" /></span>
-                    <input 
+                    <input
                       type="password"
                       placeholder="••••"
                       maxLength={4}
@@ -705,14 +703,14 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 pt-2">
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => setShowPaidOutModal(false)}
                     className="h-10 bg-secondary border border-border hover:bg-border rounded-xl font-black text-xs uppercase"
                   >
                     Cancel [Esc]
                   </button>
-                  <button 
+                  <button
                     type="submit"
                     className="h-10 bg-primary text-white rounded-xl font-black text-xs uppercase hover:bg-primary/95 shadow-md shadow-primary/10"
                   >
@@ -731,7 +729,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
       <AnimatePresence>
         {showClosingPanel && (
           <div className="fixed inset-0 z-[250] bg-black/60 backdrop-blur-sm flex justify-end">
-            <motion.div 
+            <motion.div
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
@@ -743,7 +741,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                   <h3 className="text-base font-black uppercase tracking-wider text-foreground flex items-center gap-2">
                     <ShieldAlert className="w-5 h-5 text-red-500" /> Shift Closing Protocol
                   </h3>
-                  <button 
+                  <button
                     onClick={() => {
                       setShowClosingPanel(false)
                       setCloseStep(1)
@@ -781,7 +779,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                       <label className="text-muted-foreground uppercase text-[10px] block">Actual Counted Cash (Rs)</label>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">Rs</span>
-                        <input 
+                        <input
                           type="number"
                           placeholder="0.00"
                           value={countedCash}
@@ -796,7 +794,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                       <span className="text-foreground font-black">Rs. {expectedDrawerBalance.toLocaleString()}</span>
                     </div>
 
-                    <button 
+                    <button
                       onClick={() => {
                         const amt = parseFloat(countedCash)
                         if (isNaN(amt) || amt < 0) {
@@ -842,13 +840,13 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <button 
+                      <button
                         onClick={() => setCloseStep(1)}
                         className="h-10 bg-secondary border border-border hover:bg-border rounded-xl font-black text-xs uppercase"
                       >
                         Back
                       </button>
-                      <button 
+                      <button
                         onClick={() => setCloseStep(3)}
                         className="h-10 bg-primary text-white font-black text-xs uppercase rounded-xl hover:bg-primary/95 shadow-md shadow-primary/10"
                       >
@@ -885,13 +883,13 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <button 
+                      <button
                         onClick={() => setCloseStep(2)}
                         className="h-10 bg-secondary border border-border hover:bg-border rounded-xl font-black text-xs uppercase"
                       >
                         Back
                       </button>
-                      <button 
+                      <button
                         onClick={() => setCloseStep(4)}
                         className="h-10 bg-primary text-white font-black text-xs uppercase rounded-xl hover:bg-primary/95 shadow-md shadow-primary/10"
                       >
@@ -923,13 +921,12 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
 
                       <div className="flex justify-between py-1 font-black">
                         <span className="text-muted-foreground">Calculated Difference:</span>
-                        <span className={`text-sm ${
-                          (parseFloat(countedCash || "0") - expectedDrawerBalance) === 0 ? "text-emerald-500" :
-                          (parseFloat(countedCash || "0") - expectedDrawerBalance) > 0 ? "text-emerald-500" : "text-red-500"
-                        }`}>
+                        <span className={`text-sm ${(parseFloat(countedCash || "0") - expectedDrawerBalance) === 0 ? "text-emerald-500" :
+                            (parseFloat(countedCash || "0") - expectedDrawerBalance) > 0 ? "text-emerald-500" : "text-red-500"
+                          }`}>
                           {(parseFloat(countedCash || "0") - expectedDrawerBalance) === 0 ? "Rs. 0 (Balanced)" :
-                           (parseFloat(countedCash || "0") - expectedDrawerBalance) > 0 ? `+Rs. ${(parseFloat(countedCash || "0") - expectedDrawerBalance).toLocaleString()} (OVERAGE)` :
-                           `-Rs. ${Math.abs(parseFloat(countedCash || "0") - expectedDrawerBalance).toLocaleString()} (SHORTAGE)`
+                            (parseFloat(countedCash || "0") - expectedDrawerBalance) > 0 ? `+Rs. ${(parseFloat(countedCash || "0") - expectedDrawerBalance).toLocaleString()} (OVERAGE)` :
+                              `-Rs. ${Math.abs(parseFloat(countedCash || "0") - expectedDrawerBalance).toLocaleString()} (SHORTAGE)`
                           }
                         </span>
                       </div>
@@ -940,10 +937,10 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                         <h4 className="text-[10px] uppercase font-black text-red-500 flex items-center gap-1.5">
                           <AlertCircle className="w-3.5 h-3.5" /> Discrepancy Action Required
                         </h4>
-                        
+
                         <div className="space-y-1">
                           <label className="text-[10px] uppercase font-black text-muted-foreground">Reason for Discrepancy</label>
-                          <select 
+                          <select
                             value={discrepancyReason}
                             onChange={(e) => setDiscrepancyReason(e.target.value)}
                             className="w-full h-8 px-2 rounded-lg bg-card border border-border text-xs font-bold outline-none"
@@ -956,10 +953,10 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                             <option>Suspected theft</option>
                           </select>
                         </div>
-                        
+
                         <div className="space-y-1">
                           <label className="text-[10px] uppercase font-black text-muted-foreground">Manager Notes</label>
-                          <textarea 
+                          <textarea
                             value={discrepancyNotes}
                             onChange={(e) => setDiscrepancyNotes(e.target.value)}
                             placeholder="Add explanatory notes..."
@@ -970,13 +967,13 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                     )}
 
                     <div className="grid grid-cols-2 gap-2">
-                      <button 
+                      <button
                         onClick={() => setCloseStep(3)}
                         className="h-10 bg-secondary border border-border hover:bg-border rounded-xl font-black text-xs uppercase"
                       >
                         Back
                       </button>
-                      <button 
+                      <button
                         onClick={() => setCloseStep(5)}
                         className="h-10 bg-primary text-white font-black text-xs uppercase rounded-xl hover:bg-primary/95 shadow-md shadow-primary/10"
                       >
@@ -1000,7 +997,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                       <label className="text-muted-foreground uppercase text-[10px] block">Manager Override PIN</label>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"><Key className="w-3.5 h-3.5" /></span>
-                        <input 
+                        <input
                           type="password"
                           placeholder="••••"
                           maxLength={4}
@@ -1013,8 +1010,8 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
 
                     <div className="flex items-center justify-between p-3 bg-secondary/40 border border-border rounded-xl text-xs font-bold">
                       <span className="text-muted-foreground">Print shift report dynamically</span>
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         checked={closePrintReport}
                         onChange={(e) => setClosePrintReport(e.target.checked)}
                         className="w-4 h-4 rounded cursor-pointer"
@@ -1022,13 +1019,13 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <button 
+                      <button
                         onClick={() => setCloseStep(4)}
                         className="h-10 bg-secondary border border-border hover:bg-border rounded-xl font-black text-xs uppercase"
                       >
                         Back
                       </button>
-                      <button 
+                      <button
                         onClick={executeCloseShift}
                         className="h-10 bg-red-500 text-white font-black text-xs uppercase rounded-xl hover:bg-red-600 shadow-md shadow-red-500/10"
                       >

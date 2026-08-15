@@ -19,11 +19,12 @@ const addonInputSchema = z.object({
 
 const comboComponentInputSchema = z.object({
   component_id: z.string().optional().nullable(),
-  product_id: z.string(),
+  product_id: z.string().min(1),
   product_name_snapshot: z.string().optional().nullable(),
   variant_snapshot: z.string().optional().nullable(),
   price_adjustment: z.number().optional().default(0),
-  quantity: z.number().int().min(1).optional().default(1)
+  quantity: z.number().int().min(1).optional().default(1),
+  is_dummy: z.boolean().optional()
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -52,13 +53,13 @@ export const setCartNotesSchema = z.object({
 export const setCartMetaSchema = z.object({
   order_type: z.enum(['DINE_IN', 'TAKEAWAY', 'DELIVERY', 'DRIVE_THRU', 'ONLINE']).optional(),
   customer_id: z.string().uuid().optional().nullable(),
-  table_id: z.string().uuid().optional().nullable()
+  table_id: z.string().optional().nullable()
 });
 
 export const checkoutCartSchema = z.object({
   order_type: z.enum(['DINE_IN', 'TAKEAWAY', 'DELIVERY', 'DRIVE_THRU', 'ONLINE']).optional(),
   customer_id: z.string().uuid().optional().nullable(),
-  table_id: z.string().uuid().optional().nullable(),
+  table_id: z.string().optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),
   branch_id: z.string().optional(),
   business_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD').optional(),

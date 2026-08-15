@@ -63,7 +63,8 @@ export function DealConfigurationModal({ isOpen, onClose, deal, onConfirm, avail
           product_name_snapshot: p.name || p.product_name_snapshot,
           variant_snapshot: comp.target_variant_name || p.variant_snapshot || null,
           price_adjustment: comp.price_adjustment || 0,
-          quantity: comp.quantity || 1
+          quantity: comp.quantity || 1,
+          is_dummy: !!p.is_dummy
         });
       }
     }
@@ -147,7 +148,8 @@ export function DealConfigurationModal({ isOpen, onClose, deal, onConfirm, avail
               product_name_snapshot: p.name,
               variant_snapshot: comp.target_variant_name || null,
               price_adjustment: comp.price_adjustment || 0,
-              quantity: 0
+              quantity: 0,
+              is_dummy: !!p.is_dummy
             };
           }
           acc[key].quantity += 1;
