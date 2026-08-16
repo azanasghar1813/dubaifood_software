@@ -201,8 +201,22 @@ class OrderCreationService {
     const { orderId, orderNumber } = dbEngine.transaction(() => {
       const businessDate = requestedBusinessDate;
       const orderType = options.order_type || cart.order_type || 'DINE_IN';
-      const customerId = options.customer_id !== undefined ? options.customer_id : (cart.customer_id || null);
-      const tableId = options.table_id !== undefined ? options.table_id : (cart.table_id || null);
+      
+      const resolveId = (val, cartVal) => {
+        const v = val !== undefined ? val : cartVal;
+        return v === '' ? null : (v || null);
+      };
+      const customerId = resolveId(options.customer_id, cart.customer_id);
+      const tableId = resolveId(options.table_id, cart.table_id);
+      
+      if (tableId) {
+        try {
+          dbEngine.db.prepare('INSERT OR IGNORE INTO dining_tables (id, table_number, status) VALUES (?, ?, ?)').run(tableId, tableId, 'OCCUPIED');
+        } catch (e) {
+          console.warn("Failed to auto-create dining table:", e);
+        }
+      }
+      
       const orderNotes = options.notes !== undefined ? options.notes : (cart.notes || null);
       const kitchenNotes = cart.kitchen_notes || null;
 

@@ -1,15 +1,20 @@
 import { cartService } from '../services/cartService.js';
 import { orderCreationService } from '../services/orderCreationService.js';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
+import { cashierSessionRepository } from '../repositories/cashierSessionRepository.js';
 
 const resolveCartContext = (req, res) => {
-  const sessionId = req.headers['x-cashier-session-id'];
+  let sessionId = req.headers['x-cashier-session-id'];
   const userId = req.headers['x-user-id'] || req.user?.userId;
   const branchId = req.headers['x-branch-id'] || 'DEFAULT_BRANCH';
 
   if (!sessionId) {
-    sendError(res, 400, 'x-cashier-session-id header is required.');
-    return null;
+    if (req.user?.permissions?.includes('*')) {
+      sessionId = cashierSessionRepository.getOrCreateOpenSession(userId, 'ADMIN_BYPASS_TERMINAL');
+    } else {
+      sendError(res, 400, 'Shift not opened. x-cashier-session-id header is required.');
+      return null;
+    }
   }
   if (!userId) {
     sendError(res, 400, 'Authenticated user identity is required.');

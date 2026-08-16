@@ -152,7 +152,7 @@ export default function Orders() {
     if (preset === 'MONTHLY') preset = 'THIS_MONTH';
 
     const filters: any = {};
-    if (preset === 'CUSTOM_DATE') {
+    if (preset === 'CUSTOM_DATE' || preset === 'CUSTOM_RANGE') {
       if (customDateFrom && customDateTo) {
         filters.date_preset = 'CUSTOM_DATE';
         filters.date_from = customDateFrom;
@@ -232,7 +232,7 @@ export default function Orders() {
     const doc = new jsPDF('landscape')
     doc.text("Enterprise Order History", 14, 15)
 
-    const headers = [["Order #", "Date", "Cashier", "Order Type", "Customer", "Table", "Subtotal", "Discount", "Tax", "Total", "Pay Method", "Pay Status", "Status", "Items"]]
+    const headers = [["Order #", "Date", "Cashier", "Order Type", "Customer", "Table", "Subtotal", "Discount", "Service Charge", "Total", "Pay Method", "Pay Status", "Status", "Items"]]
     const data = filteredAndSortedOrders.map(o => [
       o.orderNumber,
       new Date(o.timestamp).toLocaleString(),
@@ -242,7 +242,7 @@ export default function Orders() {
       o.tableNumber || '-',
       o.subtotal.toString(),
       o.discount.toString(),
-      o.tax.toString(),
+      (o.serviceCharge || 0).toString(),
       o.total.toString(),
       o.payments?.[0]?.method || 'Cash',
       o.paymentStatus,
@@ -267,7 +267,7 @@ export default function Orders() {
   }
 
   const exportToCSV = () => {
-    const headers = ["Order Number", "Date", "Cashier", "Order Type", "Customer", "Table", "Subtotal", "Discount", "Tax", "Total", "Pay Method", "Pay Status", "Status", "Items"]
+    const headers = ["Order Number", "Date", "Cashier", "Order Type", "Customer", "Table", "Subtotal", "Discount", "Service Charge", "Total", "Pay Method", "Pay Status", "Status", "Items"]
     const rows = filteredAndSortedOrders.map(o => [
       o.orderNumber,
       `"${new Date(o.timestamp).toLocaleString()}"`,
@@ -277,7 +277,7 @@ export default function Orders() {
       `"${o.tableNumber || '-'}"`,
       o.subtotal,
       o.discount,
-      o.tax,
+      (o.serviceCharge || 0),
       o.total,
       `"${o.payments?.[0]?.method || 'Cash'}"`,
       `"${o.paymentStatus}"`,
@@ -309,6 +309,28 @@ export default function Orders() {
     updateOrder(order.id, { receiptReprints: (order.receiptReprints || 0) + 1 })
     addTimelineEvent(order.id, { event: "Receipt Printed", remarks: "Printed thermal receipt", cashier: user?.name || "Ahmed" })
 
+    // Try backend thermal print first (goes through print queue → engine → real driver)
+    try {
+      const { usePrinterStore } = await import("../store/printerStore")
+      const printerState = usePrinterStore.getState()
+
+      // Check if any real (non-VIRTUAL) printer is configured and active
+      const hasThermalPrinter = printerState.printers.some(
+        (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
+      )
+
+      if (hasThermalPrinter) {
+        const result = await printerState.printReceipt(order.id, user?.id || user?.name || 'cashier')
+        if (result?.job_id) {
+          console.log(`[Orders] Thermal print job queued: ${result.job_id}`)
+          return // Success — don't open browser popup
+        }
+      }
+    } catch (e) {
+      console.warn('[Orders] Backend print failed, falling back to browser preview:', e)
+    }
+
+    // Fallback: open browser ReceiptPreview popup (window.print)
     try {
       const res = await fetchOrderDetail(order.id)
       if (res.success && res.data) {
@@ -419,10 +441,11 @@ export default function Orders() {
   const filteredAndSortedOrders = useMemo(() => {
     let result = orders.filter(order => {
       // Global Search Match
-      const q = searchQuery.toLowerCase()
-      const searchMatches = !searchQuery ||
+      const q = searchQuery.toLowerCase().trim()
+      const searchMatches = !q ||
         order.id.toLowerCase().includes(q) ||
-        order.orderNumber.includes(q) ||
+        order.orderNumber.toLowerCase().includes(q) ||
+        parseInt(order.orderNumber, 10).toString().includes(q) ||
         (order.customerName || '').toLowerCase().includes(q) ||
         (order.customerPhone || '').includes(q) ||
         (order.cashierName || '').toLowerCase().includes(q) ||
@@ -442,7 +465,7 @@ export default function Orders() {
     // Sort order
     result.sort((a, b) => {
       if (sortBy === "Newest") return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      if (sortBy === "Oldest") return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      if (sortBy === "Oldest") return new Date(a.timestamp).getTime() - new Date(a.timestamp).getTime()
       if (sortBy === "Highest Amount") return b.total - a.total
       if (sortBy === "Lowest Amount") return a.total - b.total
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -490,117 +513,82 @@ export default function Orders() {
       </div>
 
       {/* SEARCH & FILTERS PANEL */}
-      <div className="bg-card border border-border rounded-3xl p-5 shadow-sm space-y-5">
-        <div className="flex gap-3 items-center flex-wrap md:flex-nowrap">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
+      <div className="bg-card border border-border rounded-3xl p-4 shadow-sm flex flex-col gap-3">
+        <div className="flex flex-col lg:flex-row gap-4 justify-between">
+          
+          <div className="relative w-full lg:w-80 shrink-0">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <input
               ref={searchInputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by Order #, Customer, Phone, Table, Cashier, or Items..."
-              className="w-full h-12 pl-12 pr-4 rounded-xl bg-secondary/50 border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none text-sm font-bold transition-all"
+              placeholder="Search by Order #, Customer, Phone, Items..."
+              className="w-full h-10 pl-10 pr-4 rounded-xl bg-secondary/50 border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none text-[11px] font-bold transition-all"
             />
           </div>
-          <button
-            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-            className={`h-12 px-6 rounded-xl border text-xs font-black uppercase transition-all flex items-center gap-2 ${showAdvancedFilters ? 'bg-primary/10 border-primary text-primary' : 'bg-secondary text-muted-foreground hover:border-muted-foreground'
-              }`}
-          >
-            <Filter className="w-4 h-4" /> Advanced Filters
-          </button>
-        </div>
 
-        <AnimatePresence>
-          {showAdvancedFilters && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 pt-4 border-t border-border/50">
-                <div className={filterDate === 'Custom Date' ? 'col-span-2' : ''}>
-                  <label className="text-[10px] uppercase font-black text-muted-foreground">Date Range</label>
-                  <div className="flex gap-2">
-                    <select value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-full h-10 rounded-lg bg-secondary border border-border text-xs font-bold px-2 mt-1 focus:outline-none">
-                      <option value="Today">Today</option>
-                      <option value="Yesterday">Yesterday</option>
-                      <option value="Monthly">Monthly</option>
-                      <option value="All Time">All Time</option>
-                      <option value="Custom Date">Custom Date</option>
-                    </select>
-                    {filterDate === 'Custom Date' && (
-                      <div className="flex gap-2 mt-1">
-                        <input type="date" value={customDateFrom} onChange={(e) => setCustomDateFrom(e.target.value)} className="w-full h-10 rounded-lg bg-secondary border border-border text-xs font-bold px-2 focus:outline-none" />
-                        <input type="date" value={customDateTo} onChange={(e) => setCustomDateTo(e.target.value)} className="w-full h-10 rounded-lg bg-secondary border border-border text-xs font-bold px-2 focus:outline-none" />
-                      </div>
-                    )}
-                  </div>
+          <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-2 lg:pb-0 hide-scrollbar-mobile">
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="h-10 rounded-xl bg-secondary border border-border text-[11px] font-bold px-3 focus:outline-none shrink-0 cursor-pointer hover:bg-secondary/80">
+              <option value="Newest">Sort: Newest First</option>
+              <option value="Oldest">Sort: Oldest First</option>
+              <option value="Highest Amount">Sort: Highest Amount</option>
+            </select>
+            <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="h-10 rounded-xl bg-secondary border border-border text-[11px] font-bold px-3 focus:outline-none shrink-0 cursor-pointer hover:bg-secondary/80">
+              <option value="All">Type: All</option>
+              <option value="Dine In">Type: Dine In</option>
+              <option value="Takeaway">Type: Takeaway</option>
+              <option value="Delivery">Type: Delivery</option>
+            </select>
+            <select value={filterPaymentMethod} onChange={(e) => setFilterPaymentMethod(e.target.value)} className="h-10 rounded-xl bg-secondary border border-border text-[11px] font-bold px-3 focus:outline-none shrink-0 cursor-pointer hover:bg-secondary/80">
+              <option value="All">Pay Method: All</option>
+              <option value="Cash">Method: Cash</option>
+              <option value="Debit Card">Method: Card</option>
+              <option value="JazzCash">Method: JazzCash</option>
+              <option value="EasyPaisa">Method: EasyPaisa</option>
+              <option value="Bank Transfer">Method: Bank Transfer</option>
+            </select>
+            <select value={filterOrderState} onChange={(e) => setFilterOrderState(e.target.value)} className="h-10 rounded-xl bg-secondary border border-border text-[11px] font-bold px-3 focus:outline-none shrink-0 cursor-pointer hover:bg-secondary/80">
+              <option value="All">Status: All</option>
+              <option value="Draft">Status: Draft</option>
+              <option value="Confirmed">Status: Confirmed</option>
+              <option value="Completed">Status: Completed</option>
+              <option value="Cancelled">Status: Cancelled</option>
+            </select>
+            
+            <div className="h-6 w-px bg-border mx-1 shrink-0"></div>
+
+            <div className="flex items-center gap-1 shrink-0 bg-primary/5 p-1 rounded-xl border border-primary/20">
+              <Calendar className="w-4 h-4 text-primary ml-2" />
+              <select value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="h-8 rounded-lg bg-transparent text-primary text-[11px] font-black px-2 focus:outline-none cursor-pointer">
+                <option value="Today">Date: Today</option>
+                <option value="Yesterday">Date: Yesterday</option>
+                <option value="Monthly">Date: Monthly</option>
+                <option value="All Time">Date: All Time</option>
+                <option value="Custom Date">Date: Custom Date</option>
+                <option value="Custom Range">Date: Custom Range</option>
+              </select>
+              {filterDate === 'Custom Date' && (
+                <div className="flex gap-1 ml-1 items-center">
+                  <input type="date" value={customDateFrom} onChange={(e) => { setCustomDateFrom(e.target.value); setCustomDateTo(e.target.value); }} className="h-8 rounded-md bg-white border border-primary/30 text-[10px] font-bold px-1 focus:outline-none w-[100px]" />
                 </div>
-                <div>
-                  <label className="text-[10px] uppercase font-black text-muted-foreground">Order Status</label>
-                  <select value={filterOrderState} onChange={(e) => setFilterOrderState(e.target.value)} className="w-full h-10 rounded-lg bg-secondary border border-border text-xs font-bold px-2 mt-1 focus:outline-none">
-                    <option value="All">All Statuses</option>
-                    <option value="Draft">Draft</option>
-                    <option value="Confirmed">Confirmed / Pending</option>
-                    <option value="Completed">Completed</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </select>
+              )}
+              {filterDate === 'Custom Range' && (
+                <div className="flex gap-1 ml-1 items-center">
+                  <input type="date" value={customDateFrom} onChange={(e) => setCustomDateFrom(e.target.value)} className="h-8 rounded-md bg-white border border-primary/30 text-[10px] font-bold px-1 focus:outline-none w-[100px]" />
+                  <span className="text-[10px] text-primary font-black">-</span>
+                  <input type="date" value={customDateTo} onChange={(e) => setCustomDateTo(e.target.value)} className="h-8 rounded-md bg-white border border-primary/30 text-[10px] font-bold px-1 focus:outline-none w-[100px]" />
                 </div>
-                <div>
-                  <label className="text-[10px] uppercase font-black text-muted-foreground">Payment Status</label>
-                  <select value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)} className="w-full h-10 rounded-lg bg-secondary border border-border text-xs font-bold px-2 mt-1 focus:outline-none">
-                    <option value="All">All Statuses</option>
-                    <option value="Unpaid">Unpaid</option>
-                    <option value="Paid">Paid</option>
-                    <option value="Refunded">Refunded</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase font-black text-muted-foreground">Order Type</label>
-                  <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full h-10 rounded-lg bg-secondary border border-border text-xs font-bold px-2 mt-1 focus:outline-none">
-                    <option value="All">All Types</option>
-                    <option value="Dine In">Dine In</option>
-                    <option value="Takeaway">Takeaway</option>
-                    <option value="Delivery">Delivery</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase font-black text-muted-foreground">Payment Method</label>
-                  <select value={filterPaymentMethod} onChange={(e) => setFilterPaymentMethod(e.target.value)} className="w-full h-10 rounded-lg bg-secondary border border-border text-xs font-bold px-2 mt-1 focus:outline-none">
-                    <option value="All">All Methods</option>
-                    <option value="Cash">Cash</option>
-                    <option value="Debit Card">Card</option>
-                    <option value="JazzCash">JazzCash</option>
-                    <option value="EasyPaisa">EasyPaisa</option>
-                    <option value="Bank Transfer">Bank Transfer</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase font-black text-muted-foreground">Sort By</label>
-                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="w-full h-10 rounded-lg bg-secondary border border-border text-xs font-bold px-2 mt-1 focus:outline-none">
-                    <option value="Newest">Newest First</option>
-                    <option value="Oldest">Oldest First</option>
-                    <option value="Highest Amount">Highest Amount</option>
-                  </select>
-                </div>
-                <div className="flex items-end">
-                  <button onClick={() => {
-                    setFilterDate("Today")
-                    setCustomDateFrom("")
-                    setCustomDateTo("")
-                    setFilterType("All")
-                    setFilterOrderState("All")
-                    setFilterPayment("All")
-                    setFilterPaymentMethod("All")
-                    setFilterCashier("All")
-                    setSortBy("Newest")
-                    setSearchQuery("")
-                  }} className="w-full h-10 rounded-lg bg-secondary border border-border text-xs font-black uppercase hover:bg-border transition-colors">
-                    Reset
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              )}
+            </div>
+
+            <button onClick={() => {
+              setFilterDate("Today"); setCustomDateFrom(""); setCustomDateTo(""); setFilterType("All"); setFilterOrderState("All"); setFilterPayment("All"); setFilterPaymentMethod("All"); setFilterCashier("All"); setSortBy("Newest"); setSearchQuery("");
+            }} className="h-10 px-3 rounded-xl bg-secondary border border-border text-[10px] font-black uppercase text-muted-foreground hover:bg-border transition-colors shrink-0" title="Reset Filters">
+              <RotateCcw className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* ORDERS TABLE */}
@@ -875,9 +863,6 @@ export default function Orders() {
                         )}
                         {selectedOrder.deliveryCharge !== undefined && selectedOrder.deliveryCharge > 0 && (
                           <div className="flex justify-between text-muted-foreground"><span>Delivery Charges</span><span>Rs. {selectedOrder.deliveryCharge.toLocaleString()}</span></div>
-                        )}
-                        {selectedOrder.tax > 0 && (
-                          <div className="flex justify-between text-muted-foreground"><span>Tax</span><span>Rs. {selectedOrder.tax.toLocaleString()}</span></div>
                         )}
                         <div className="flex justify-between text-muted-foreground"><span>Discount</span><span>- Rs. {selectedOrder.discount.toLocaleString()}</span></div>
                         <div className="pt-3 border-t border-border flex justify-between text-lg font-black text-foreground">

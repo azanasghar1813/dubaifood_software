@@ -6,7 +6,19 @@ import { useAuthStore } from "../store/authStore"
 
 export default function UsersPermissions() {
   const { user: currentUser } = useAuthStore()
-  
+
+  // Ensure "Users" screen is accessible to Admin/Super Admin only
+  if (currentUser?.role !== 'Admin' && currentUser?.role !== 'Super Admin') {
+    return (
+      <div className="h-full flex items-center justify-center min-h-[calc(100vh-100px)]">
+        <div className="text-center space-y-4">
+          <Shield className="w-12 h-12 text-destructive mx-auto" />
+          <h2 className="text-2xl font-bold">Access Denied</h2>
+          <p className="text-muted-foreground">You do not have permission to view this page.</p>
+        </div>
+      </div>
+    )
+  }
   const [users, setUsers] = useState<any[]>([])
   const [roles, setRoles] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)

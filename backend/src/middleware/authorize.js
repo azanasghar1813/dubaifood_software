@@ -5,18 +5,24 @@
 export const authorize = (requiredPermissions) => {
   return (req, res, next) => {
     if (!req.user || !req.user.permissions) {
-      return res.status(403).json({ error: 'Forbidden: No permissions found for user' });
+      return res.status(403).json({ success: false, message: 'Access denied. No permissions found.' });
     }
 
-    const permsArray = Array.isArray(requiredPermissions) ? requiredPermissions : [requiredPermissions];
-    
-    // User must have AT LEAST ONE of the required permissions
-    const hasPermission = permsArray.some(p => req.user.permissions.includes(p));
+    const permissionsToCheck = Array.isArray(requiredPermissions) 
+      ? requiredPermissions 
+      : [requiredPermissions];
+
+    // Super Admins automatically bypass permission checks
+    if (req.user && req.user.permissions && req.user.permissions.includes('*')) {
+      return next();
+    }
+
+    const hasPermission = permissionsToCheck.some(permission => 
+      req.user.permissions.includes(permission)
+    );
 
     if (!hasPermission) {
-      // Super Admin bypass (optional, if we want Super Admin to just have all rights implicitly)
-      // Normally, seeding Super Admin with all permissions is cleaner.
-      return res.status(403).json({ error: 'Forbidden: Insufficient privileges' });
+      return res.status(403).json({ success: false, message: 'Access denied. Insufficient permissions.' });
     }
 
     next();

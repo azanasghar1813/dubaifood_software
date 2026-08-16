@@ -144,7 +144,7 @@ class OrderSnapshotService {
 
     // 6. Tax Settings Snapshot
     const financeConfig = configService.getFinanceConfig() || {};
-    const taxRate = Number(financeConfig.tax_rate !== undefined ? financeConfig.tax_rate : 0.07); // 5% default
+    const taxRate = Number(financeConfig.tax_rate !== undefined ? financeConfig.tax_rate : 0); // 0% default
     const isTaxInclusive = financeConfig.tax_inclusive === true || financeConfig.tax_inclusive === 1;
     const taxName = financeConfig.tax_name || 'VAT';
 

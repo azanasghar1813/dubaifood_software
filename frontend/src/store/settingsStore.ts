@@ -24,7 +24,7 @@ export const useSettingsStore = create<SettingsState>()(
       address: "Sheikh Zayed Road, Dubai, UAE",
       trn: "100234567890",
       
-      taxRate: 7,
+      taxRate: 0,
       serviceChargeRate: 5,
       deliveryChargeRate: 50,
       currencySymbol: "AED",
@@ -36,8 +36,7 @@ export const useSettingsStore = create<SettingsState>()(
       name: 'settings-storage',
       version: 2,
       migrate: (persistedState: any) => {
-        // Force taxRate to 7 when migrating from old versions
-        return { ...persistedState, taxRate: 7 }
+        return { ...persistedState, taxRate: 0 }
       },
     }
   )

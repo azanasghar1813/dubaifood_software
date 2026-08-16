@@ -328,8 +328,8 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
             <h1 className="text-xl md:text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
               Cashier & Shift Management
               <span className={`text-[10px] border px-2 py-0.5 rounded-full font-black uppercase tracking-wider ${isShiftActive
-                  ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                  : 'bg-red-500/10 text-red-500 border-red-500/20'
+                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                : 'bg-red-500/10 text-red-500 border-red-500/20'
                 }`}>
                 {isShiftActive ? "Shift Open" : "Register Closed"}
               </span>
@@ -493,7 +493,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40">
-              {transactions.filter(t => !searchTerm || t.orderNo.toLowerCase().includes(searchTerm.toLowerCase()) || t.customer.toLowerCase().includes(searchTerm.toLowerCase())).map((tx, idx) => (
+              {transactions.filter((t: any) => !searchTerm || t.orderNo.toLowerCase().includes(searchTerm.toLowerCase()) || t.customer.toLowerCase().includes(searchTerm.toLowerCase())).map((tx: any, idx: number) => (
                 <tr key={idx} className="hover:bg-secondary/20 transition-colors">
                   <td className="py-2.5 text-muted-foreground">{tx.time}</td>
                   <td className="py-2.5 text-foreground">{tx.orderNo}</td>
@@ -505,8 +505,8 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                   <td className="py-2.5 text-muted-foreground">{tx.cashier}</td>
                   <td className="py-2.5 text-right">
                     <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${tx.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
-                        tx.status === 'Refunded' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
-                          'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                      tx.status === 'Refunded' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+                        'bg-amber-500/10 text-amber-500 border-amber-500/20'
                       }`}>
                       {tx.status}
                     </span>
@@ -517,9 +517,6 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
           </table>
         </div>
       </div>
-
-
-
 
       {/* ====================================================
           MODAL: CASH DROP
@@ -922,7 +919,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                       <div className="flex justify-between py-1 font-black">
                         <span className="text-muted-foreground">Calculated Difference:</span>
                         <span className={`text-sm ${(parseFloat(countedCash || "0") - expectedDrawerBalance) === 0 ? "text-emerald-500" :
-                            (parseFloat(countedCash || "0") - expectedDrawerBalance) > 0 ? "text-emerald-500" : "text-red-500"
+                          (parseFloat(countedCash || "0") - expectedDrawerBalance) > 0 ? "text-emerald-500" : "text-red-500"
                           }`}>
                           {(parseFloat(countedCash || "0") - expectedDrawerBalance) === 0 ? "Rs. 0 (Balanced)" :
                             (parseFloat(countedCash || "0") - expectedDrawerBalance) > 0 ? `+Rs. ${(parseFloat(countedCash || "0") - expectedDrawerBalance).toLocaleString()} (OVERAGE)` :

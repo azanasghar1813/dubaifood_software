@@ -15,7 +15,7 @@ const SHORTCUT_GROUPS: ShortcutCategory[] = [
   {
     category: "Global Application",
     shortcuts: [
-      { key: "F10 or Ctrl + \\", desc: "Show Keyboard Shortcuts Help", detail: "Opens this detailed menu from anywhere in the app. Also works with F1 or F3." },
+      { key: "Ctrl + \\", desc: "Show Keyboard Shortcuts Help", detail: "Opens this detailed menu from anywhere in the app." },
       { key: "F12", desc: "Toggle Kitchen Display System (KDS)", detail: "Quickly switch to the kitchen view to manage orders." },
       { key: "Ctrl + P", desc: "Print Last Receipt", detail: "Instantly sends the most recent order to the receipt printer." },
       { key: "Ctrl + Shift + P", desc: "Printer Settings", detail: "Open the global printer management and status panel." },
@@ -29,7 +29,7 @@ const SHORTCUT_GROUPS: ShortcutCategory[] = [
       { key: "Enter", desc: "Select Item / Open Checkout", detail: "Adds highlighted item to cart, or opens payment window if cart is focused." },
       { key: "Ctrl + Enter", desc: "Fast Cash Payment", detail: "Instantly checks out the order using Exact Cash." },
       { key: "Tab", desc: "Switch Focus Area", detail: "Cycle focus between Categories, Menu Items, and the Cart." },
-      { key: "Ctrl + S", desc: "Hold Order", detail: "Saves the current order as a Draft/Held order to resume later." },
+      { key: "Ctrl + S", desc: "Toggle Service Charges", detail: "Toggle whether service charges apply to the current order." },
       { key: "Ctrl + O", desc: "View Held Orders", detail: "Opens the list of Draft/Held orders to resume." },
     ]
   },

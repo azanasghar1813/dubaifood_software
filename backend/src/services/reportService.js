@@ -78,7 +78,7 @@ export const reportService = {
     const summaryQuery = `
       SELECT 
         COUNT(DISTINCT o.id) as ordersCount,
-        SUM(o.subtotal + o.tax_total - o.discount_total) as netSales,
+        SUM(o.subtotal - o.discount_total) as netSales,
         SUM(o.grand_total) as grossSales,
         SUM(o.discount_total) as discounts,
         SUM(o.tax_total) as tax,
@@ -157,9 +157,24 @@ export const reportService = {
         COUNT(DISTINCT CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN o.id END) as orders,
         SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.qty * a.base_unit_price ELSE 0 END) as gross,
         SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.discount_amount ELSE 0 END) as discount,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.tax_amount ELSE 0 END) as tax,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.total_amount ELSE 0 END) as net,
-        SUM(CASE WHEN o.lifecycle_state IN ('CANCELLED', 'REFUNDED') THEN a.total_amount ELSE 0 END) as refunds,
+        SUM(CASE 
+          WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN 
+            COALESCE(CASE 
+              WHEN o.order_type = 'Delivery' THEN COALESCE(o.delivery_fee, 0) * (a.total_amount / NULLIF(o.subtotal, 0))
+              ELSE COALESCE(o.service_charge, 0) * (a.total_amount / NULLIF(o.subtotal, 0))
+            END, 0)
+          ELSE 0 
+        END) as tax,
+        SUM(CASE 
+          WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN 
+            (a.qty * a.base_unit_price) - a.discount_amount + COALESCE(CASE WHEN o.order_type = 'Delivery' THEN COALESCE(o.delivery_fee, 0) * (a.total_amount / NULLIF(o.subtotal, 0)) ELSE COALESCE(o.service_charge, 0) * (a.total_amount / NULLIF(o.subtotal, 0)) END, 0)
+          ELSE 0 
+        END) as net,
+        SUM(CASE 
+          WHEN o.lifecycle_state IN ('CANCELLED', 'REFUNDED') THEN 
+            (a.qty * a.base_unit_price) - a.discount_amount + COALESCE(CASE WHEN o.order_type = 'Delivery' THEN COALESCE(o.delivery_fee, 0) * (a.total_amount / NULLIF(o.subtotal, 0)) ELSE COALESCE(o.service_charge, 0) * (a.total_amount / NULLIF(o.subtotal, 0)) END, 0)
+          ELSE 0 
+        END) as refunds,
         SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN COALESCE(p.price, 0) * a.qty ELSE 0 END) as original_value,
         MAX(a.is_component) as is_component,
         MAX(a.parent_deal_name) as parent_deal_name
@@ -225,7 +240,7 @@ export const reportService = {
     
     const query = `
       WITH AllSales AS (
-        SELECT order_id, product_id, quantity as qty, total_amount as net FROM order_items
+        SELECT order_id, product_id, quantity as qty, (total_amount - COALESCE(tax_amount, 0)) as net FROM order_items
         UNION ALL
         SELECT oi.order_id, occ.product_id, occ.quantity as qty, (occ.quantity * occ.price_adjustment) as net
         FROM order_combo_components occ

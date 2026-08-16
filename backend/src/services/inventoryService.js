@@ -9,7 +9,7 @@ export const inventoryService = {
         inventoryRepository.logAction(item.id, userId, 'ADD', item.quantity, item.quantity, null, 'Initial stock');
       }
       return item;
-    })();
+    });
   },
 
   updateItem: (id, data) => {
@@ -30,7 +30,7 @@ export const inventoryService = {
       inventoryRepository.logAction(id, userId, action, quantityChanged, newQuantity, referenceId, notes);
       
       return item;
-    })();
+    });
   },
 
   deleteItem: (id) => {

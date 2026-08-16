@@ -12,14 +12,14 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
-    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
-    "better-sqlite3-multiple-ciphers": "^13.0.3",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "helmet": "^8.3.0",
+    "iconv-lite": "^0.7.3",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.11.0",
     "multer": "^2.2.0",
@@ -36,13 +36,11 @@
   "build": {
     "appId": "com.dubaifood.restaurantpos",
     "productName": "Restaurant POS",
+    "icon": "build/icon.png",
     "asarUnpack": [
       "backend/**/*",
       "frontend/dist/**/*",
       "node_modules/**/*"
-    ],
-    "extraResources": [
-      "bin/node.exe"
     ],
     "npmRebuild": false,
     "directories": {
@@ -50,7 +48,10 @@
     },
     "files": [
       "main.js",
+      "splash.html",
+      "splash-logo.png",
       "backend/**/*",
+      "backend/.env",
       "frontend/dist/**/*",
       "node_modules/**/*",
       "package.json"

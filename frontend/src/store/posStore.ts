@@ -3,6 +3,7 @@ import { cartService } from '../services/posServices/cartService'
 import { apiClient } from '../api/client'
 import { useOrderStore } from './orderStore'
 import { configApi } from '../api/configApi'
+import { useSettingsStore } from './settingsStore'
 
 export interface OrderItem {
   id: string
@@ -442,7 +443,7 @@ export const usePosStore = create<POSState>((set, get) => ({
           business_date: order.business_date,
           delivery_charges: state.orderType === 'Delivery' ? state.deliveryCharges : 0,
           service_charge: state.getServiceCharge(),
-          is_tax_enabled: false // Hardcoded to remove tax
+          is_tax_enabled: state.isTaxEnabled
         })
 
         if (!(checkoutResult as any).success) {
@@ -490,19 +491,22 @@ export const usePosStore = create<POSState>((set, get) => ({
 
   getSubtotal: () => get().activeOrder?.totals?.subtotal ?? get().activeOrder?.subtotal ?? 0,
   getTax: () => {
-    // Hardcoded to completely remove tax as requested
     return 0;
   },
   getServiceCharge: () => {
-    const orderType = get().orderType;
-    if (orderType === 'Dine In') {
-      const sub = get().getSubtotal();
-      const discount = get().activeOrder?.totals?.discount_total ?? get().activeOrder?.discount_total ?? 0;
-      // Hardcoding to 7% as requested
-      const rate = 7;
-      return (sub - discount) * (rate / 100);
-    }
-    return 0;
+    if (!get().isTaxEnabled || get().orderType !== 'Dine In') return 0;
+    
+    // Only calculate service charge on Restaurant items (exclude deals, fast food, etc)
+    const cart = get().cart;
+    let applicableSubtotal = 0;
+    cart.forEach(item => {
+      const cat = (item.category || '').toLowerCase();
+      if (!cat.includes('deal') && !cat.includes('combo') && !cat.includes('burger') && !cat.includes('pizza') && !cat.includes('sandwich') && !cat.includes('broast') && !cat.includes('appetizer') && !cat.includes('fast food') && !cat.includes('roll') && !cat.includes('pasta') && !cat.includes('shawarma') && !cat.includes('drink') && !cat.includes('limka') && !cat.includes('water') && !cat.includes('beverage') && !cat.includes('chip') && !cat.includes('fries')) {
+        applicableSubtotal += (item.subtotal ?? (Number(item.price) * item.quantity));
+      }
+    });
+
+    return Math.round(applicableSubtotal * 0.07);
   },
   getGrandTotal: () => {
     const sub = get().getSubtotal();

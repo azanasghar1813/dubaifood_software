@@ -46,7 +46,9 @@ export function DealConfigurationModal({ isOpen, onClose, deal, onConfirm, avail
         }
       }
 
-      if (allowedProducts.length > 1) {
+      const isPizza = comp.name?.toLowerCase().includes('pizza');
+
+      if (isPizza && (allowedProducts.length > 1 || (allowedProducts.length === 1 && allowedProducts[0].variants?.length > 0 && !comp.target_variant_name))) {
         conf.push(comp);
       } else {
         const p = allowedProducts.length === 1 ? allowedProducts[0] : {
@@ -102,18 +104,43 @@ export function DealConfigurationModal({ isOpen, onClose, deal, onConfirm, avail
       filtered = filtered.filter(p => ids.includes(p.id));
     }
     
+    // Fallback heuristic if seeding mismatched categories
+    if (filtered.length === 0 && currentComponent.name) {
+      const compName = currentComponent.name.toLowerCase();
+      if (compName.includes('pizza')) {
+        filtered = availableProducts.filter(p => p.category?.toLowerCase().includes('pizza'));
+      } else if (compName.includes('burger')) {
+        filtered = availableProducts.filter(p => p.category?.toLowerCase().includes('burger'));
+      } else if (compName.includes('drink') || compName.includes('beverage')) {
+        filtered = availableProducts.filter(p => p.category?.toLowerCase().includes('drink') || p.category?.toLowerCase().includes('beverage'));
+      }
+    }
+
     return filtered;
   }, [currentComponent, availableProducts]);
   const currentSelection = selections[currentComponent?.id] || [];
   const itemsRemaining = currentComponent ? currentComponent.quantity - currentSelection.length : 0;
 
-  const handleSelect = (product: any, fillQuantity = false) => {
+  const [selectingVariantProduct, setSelectingVariantProduct] = useState<{product: any, fillQuantity: boolean} | null>(null);
+
+  const handleSelect = (product: any, fillQuantity = false, selectedVariantName?: string) => {
     if (!currentComponent) return;
+
+    if (product.variants && product.variants.length > 0 && !currentComponent.target_variant_name && !selectedVariantName) {
+      setSelectingVariantProduct({ product, fillQuantity });
+      return;
+    }
+
+    const productToStore = {
+       ...product,
+       selected_variant_name: selectedVariantName || product.selected_variant_name || null
+    };
+
     setSelections(prev => {
       const current = prev[currentComponent.id] || [];
       const remaining = currentComponent.quantity - current.length;
       if (remaining > 0) {
-        const added = fillQuantity ? Array(remaining).fill(product) : [product];
+        const added = fillQuantity ? Array(remaining).fill(productToStore) : [productToStore];
         return { ...prev, [currentComponent.id]: [...current, ...added] };
       }
       return prev;
@@ -140,13 +167,14 @@ export function DealConfigurationModal({ isOpen, onClose, deal, onConfirm, avail
         
         // Group identical products
         const grouped = picked.reduce((acc: any, p: any) => {
-          const key = p.id + '_' + (comp.target_variant_name || '');
+          const variantToUse = p.selected_variant_name || comp.target_variant_name || '';
+          const key = p.id + '_' + variantToUse;
           if (!acc[key]) {
             acc[key] = {
               component_id: comp.id,
               product_id: p.id,
               product_name_snapshot: p.name,
-              variant_snapshot: comp.target_variant_name || null,
+              variant_snapshot: variantToUse || null,
               price_adjustment: comp.price_adjustment || 0,
               quantity: 0,
               is_dummy: !!p.is_dummy
@@ -352,6 +380,39 @@ export function DealConfigurationModal({ isOpen, onClose, deal, onConfirm, avail
             )}
           </button>
         </div>
+        {/* Variant Selection Overlay */}
+        <AnimatePresence>
+          {selectingVariantProduct && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="absolute inset-0 z-50 bg-card rounded-3xl flex flex-col p-6 overflow-y-auto"
+            >
+              <div className="flex justify-between items-center mb-6 border-b border-border pb-4">
+                <h2 className="text-2xl font-black text-foreground">Select {selectingVariantProduct.product.name} Variant</h2>
+                <button onClick={() => setSelectingVariantProduct(null)} className="p-3 hover:bg-secondary rounded-full transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {selectingVariantProduct.product.variants.map((v: any) => (
+                  <button 
+                    key={v.id}
+                    onClick={() => {
+                      handleSelect(selectingVariantProduct.product, selectingVariantProduct.fillQuantity, v.name);
+                      setSelectingVariantProduct(null);
+                    }}
+                    className="p-6 bg-secondary hover:bg-orange-500/20 hover:text-orange-500 hover:border-orange-500 border border-transparent rounded-2xl font-bold text-center transition-all"
+                  >
+                    <div className="text-xl mb-2">{v.name}</div>
+                    <div className="text-sm opacity-70">Base Price: Rs {v.price}</div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </div>
   );

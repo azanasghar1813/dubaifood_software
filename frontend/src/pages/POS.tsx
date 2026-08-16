@@ -545,10 +545,7 @@ export default function POS() {
         }
       }
 
-      if (e.ctrlKey && e.key.toLowerCase() === 's') {
-        e.preventDefault()
-        handleProceedToPay()
-      }
+
 
       if (e.ctrlKey && e.key.toLowerCase() === 'z' && editingOrderId) {
         e.preventDefault()
@@ -1036,9 +1033,23 @@ export default function POS() {
             const ids = comp.allowed_product_ids.split(',');
             allowedProducts = allowedProducts.filter(p => ids.includes(p.id));
           }
+
+          // Fallback heuristic if seeding mismatched categories
+          if (allowedProducts.length === 0 && comp.name) {
+            const compName = comp.name.toLowerCase();
+            if (compName.includes('pizza')) {
+              allowedProducts = availableProducts.filter(p => p.category?.toLowerCase().includes('pizza'));
+            } else if (compName.includes('burger')) {
+              allowedProducts = availableProducts.filter(p => p.category?.toLowerCase().includes('burger'));
+            } else if (compName.includes('drink') || compName.includes('beverage')) {
+              allowedProducts = availableProducts.filter(p => p.category?.toLowerCase().includes('drink') || p.category?.toLowerCase().includes('beverage'));
+            }
+          }
         }
 
-        if (allowedProducts.length > 1) {
+        const isPizza = comp.name?.toLowerCase().includes('pizza');
+
+        if (isPizza && (allowedProducts.length > 1 || (allowedProducts.length === 1 && allowedProducts[0].variants?.length > 0 && !comp.target_variant_name))) {
           needsConfiguration = true;
           break;
         } else {
@@ -1310,9 +1321,10 @@ export default function POS() {
                           <div className="w-full h-full flex flex-col items-center justify-center p-2 text-white/90 bg-black/10 mix-blend-overlay">
                             <span className="font-bold mb-1 border-b border-white/20 pb-1 text-[10px] w-full text-center uppercase tracking-wider">Includes</span>
                             <div className="w-full text-[10px] overflow-hidden text-center space-y-0.5">
-                              {product.components?.slice(0, gridDensity === 'large' ? 5 : 4).map((c: any, i: number) => (
-                                <p key={i} className="truncate">{c.quantity}x {c.name}</p>
-                              ))}
+                              {product.components?.slice(0, gridDensity === 'large' ? 5 : 4).map((c: any, i: number) => {
+                                const productName = c.name || products.find(p => p.id === c.product_id)?.name || 'Generic Item';
+                                return <p key={i} className="truncate">{c.quantity}x {productName}</p>;
+                              })}
                               {product.components?.length > (gridDensity === 'large' ? 5 : 4) && <p>...</p>}
                             </div>
                           </div>
@@ -1563,16 +1575,9 @@ export default function POS() {
                       </div>
 
 
-                      {orderType === 'Dine In' && isTaxEnabled && getTax() > 0 && (
+                      {orderType === 'Dine In' && isTaxEnabled && getServiceCharge() > 0 && (
                         <div className="flex justify-between text-xs font-black text-foreground border-l-2 border-orange-500 pl-2 p-1 -mx-1">
-                          <span>Tax ({financeConfig?.tax_rate ? (Number(financeConfig.tax_rate) * 100) : 7}%)</span>
-                          <span>Rs {getTax().toLocaleString()}</span>
-                        </div>
-                      )}
-
-                      {orderType === 'Dine In' && getServiceCharge() > 0 && (
-                        <div className="flex justify-between text-xs font-black text-foreground border-l-2 border-primary pl-2 p-1 -mx-1">
-                          <span>Service Charges (7%)</span>
+                          <span>Service Charges ({financeConfig?.tax_rate ? (Number(financeConfig.tax_rate) * 100) : 7}%)</span>
                           <span>Rs {getServiceCharge().toLocaleString()}</span>
                         </div>
                       )}
@@ -1662,7 +1667,21 @@ export default function POS() {
                         <span className="text-[9px] uppercase">KDS</span>
                       </button>
                       <button
-                        onClick={() => window.print()}
+                        onClick={async () => {
+                          try {
+                            const { usePrinterStore } = await import("../store/printerStore")
+                            const ps = usePrinterStore.getState()
+                            const hasThermal = ps.printers.some(
+                              (p) => p.driver_type && p.driver_type !== 'VIRTUAL'
+                            )
+                            const currentOrderId = usePosStore.getState().editingOrderId || usePosStore.getState().activeOrder?.id
+                            if (hasThermal && currentOrderId) {
+                              const result = await ps.printReceipt(currentOrderId, user?.id || user?.name || 'cashier')
+                              if (result?.job_id) return // thermal print queued
+                            }
+                          } catch { /* fallback */ }
+                          window.print()
+                        }}
                         disabled={cart.length === 0}
                         className="p-1 bg-white hover:bg-orange-50 text-[#ff7b00] border border-[#ff7b00]/30 hover:border-[#ff7b00]/60 font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors shadow-sm"
                       >
@@ -2016,6 +2035,8 @@ export default function POS() {
                         discountVal
                       })
 
+                      const targetOrderId = usePosStore.getState().activeOrder?.id
+
                       const success = await completeOrder(
                         isPaidPrint ? [{
                           id: `pay-${Date.now()}`,
@@ -2035,10 +2056,29 @@ export default function POS() {
                         return
                       }
 
-                      setTimeout(() => {
-                        window.print()
+                      let thermalPrintQueued = false
+                      try {
+                        const { usePrinterStore } = await import("../store/printerStore")
+                        const ps = usePrinterStore.getState()
+                        const hasThermal = ps.printers.some(
+                          (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
+                        )
+                        if (hasThermal && targetOrderId) {
+                          const result = await ps.printReceipt(targetOrderId, user?.id || user?.name || 'cashier')
+                          if (result?.job_id) {
+                            thermalPrintQueued = true
+                          }
+                        }
+                      } catch { /* fallback */ }
+
+                      if (thermalPrintQueued) {
                         setLastReceipt(null)
-                      }, 100)
+                      } else {
+                        setTimeout(() => {
+                          window.print()
+                          setLastReceipt(null)
+                        }, 100)
+                      }
 
                       setCheckoutModalOpen(false)
                       setOrderNotes('')

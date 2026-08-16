@@ -31,8 +31,9 @@ export default function Reports() {
   // State Management
   const [activeTab, setActiveTab] = useState<string>("Dashboard Summary")
   const [timeRange, setTimeRange] = useState<string>("Today")
+  const [customDateFrom, setCustomDateFrom] = useState<string>("")
+  const [customDateTo, setCustomDateTo] = useState<string>("")
   const [searchQuery, setSearchQuery] = useState("")
-
   const [expandedDeal, setExpandedDeal] = useState<string | null>(null)
   const [filterCashier, setFilterCashier] = useState("All")
   const [filterPayment, setFilterPayment] = useState("All")
@@ -130,10 +131,27 @@ export default function Reports() {
     setLoadingDetailedSales(true)
     
     import('../api/reportApi').then(({ fetchDetailedSales, fetchReportSummary, fetchRecentItems }) => {
+      let activeDateFilter = timeRange;
+      if (timeRange === 'Custom Range') {
+        activeDateFilter = 'Custom Date';
+      }
+      
+      const filters = { 
+        dateFilter: activeDateFilter, 
+        cashier: filterCashier, 
+        paymentMethod: filterPayment,
+        startDate: customDateFrom || undefined,
+        endDate: customDateTo || undefined
+      };
+
+      if ((timeRange === 'Custom Date' || timeRange === 'Custom Range') && (!customDateFrom || !customDateTo)) {
+        return; // Don't fetch if custom dates are incomplete
+      }
+
       Promise.all([
-        fetchDetailedSales({ dateFilter: timeRange, cashier: filterCashier, paymentMethod: filterPayment }),
-        fetchReportSummary({ dateFilter: timeRange, cashier: filterCashier, paymentMethod: filterPayment }),
-        fetchRecentItems({ dateFilter: timeRange, cashier: filterCashier, paymentMethod: filterPayment })
+        fetchDetailedSales(filters),
+        fetchReportSummary(filters),
+        fetchRecentItems(filters)
       ]).then(([details, summary, recent]) => {
         setDetailedSales(details)
         setReportSummary(summary)
@@ -149,7 +167,7 @@ export default function Reports() {
     apiClient.get('/users').then(res => {
       setCashiers(res.data || [])
     }).catch(console.error)
-  }, [timeRange, filterCashier, filterPayment])
+  }, [timeRange, filterCashier, filterPayment, customDateFrom, customDateTo])
 
   const groupedSales = useMemo(() => {
     const tree: Record<string, any> = {};
@@ -198,7 +216,7 @@ export default function Reports() {
       ])
       csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
     } else if (activeTab === 'Detailed Sales') {
-      const headers = ['Main Category', 'Sub Category', 'Product', 'Qty Sold', 'Gross Sales', 'Discounts', 'Tax', 'Refunds', 'Net Sales']
+      const headers = ['Main Category', 'Sub Category', 'Product', 'Qty Sold', 'Gross Sales', 'Discounts', 'Service / Delivery Charge', 'Refunds', 'Net Sales']
       const rows = detailedSales.map(r => [
         `"${r.main_category}"`, `"${r.sub_category}"`, `"${r.product_name}"`, r.qty, r.gross.toFixed(2), r.discount.toFixed(2), r.tax.toFixed(2), r.refunds.toFixed(2), r.net.toFixed(2)
       ])
@@ -589,6 +607,29 @@ export default function Reports() {
     ]
   }, [orders])
 
+  const detailedTotals = useMemo(() => {
+    let totalQty = 0, totalGross = 0, totalDiscount = 0, totalTax = 0, totalRefunds = 0, totalNet = 0;
+    let discountCount = 0, refundCount = 0;
+    const categories = new Set();
+    const products = new Set();
+    detailedSales.forEach(row => {
+      totalQty += row.qty;
+      totalGross += row.gross;
+      totalDiscount += row.discount;
+      totalTax += row.tax || 0;
+      totalRefunds += row.refunds;
+      totalNet += row.net;
+      if (row.discount > 0) discountCount++;
+      if (row.refunds > 0) refundCount++;
+      if (row.main_category && row.main_category !== 'Uncategorized') categories.add(row.main_category);
+      if (row.product_name) products.add(row.product_name);
+    });
+    return {
+      totalQty, totalGross, totalDiscount, totalTax, totalRefunds, totalNet,
+      discountCount, refundCount, totalCategories: categories.size, totalProducts: products.size
+    };
+  }, [detailedSales]);
+
   // Sidebar navigation links
   const sidebarLinks = [
     "Dashboard Summary", "Detailed Sales", "Orders Report",
@@ -644,16 +685,26 @@ export default function Reports() {
         <div className="flex items-center gap-4 w-full md:w-auto">
           <div className="flex items-center gap-2">
             <span className="text-[10px] uppercase font-black text-muted-foreground tracking-wider">Time:</span>
-            <div className="flex bg-secondary/50 p-1 rounded-lg border border-border/50">
-              {["Today", "Yesterday", "This Week", "This Month"].map(opt => (
-                <button
-                  key={opt}
-                  onClick={() => setTimeRange(opt)}
-                  className={`px-3 py-1 rounded text-[10px] font-bold transition-all ${timeRange === opt ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  {opt}
-                </button>
-              ))}
+            <div className="flex items-center gap-1 shrink-0 bg-secondary/50 p-1 rounded-lg border border-border/50">
+              <select value={timeRange} onChange={(e) => setTimeRange(e.target.value)} className="h-8 rounded-lg bg-transparent text-primary text-[11px] font-black px-2 focus:outline-none cursor-pointer">
+                <option value="Today">Today</option>
+                <option value="Yesterday">Yesterday</option>
+                <option value="This Week">This Week</option>
+                <option value="This Month">This Month</option>
+                <option value="All Time">All Time</option>
+                <option value="Custom Date">Custom Date</option>
+                <option value="Custom Range">Custom Range</option>
+              </select>
+              {timeRange === 'Custom Date' && (
+                  <input type="date" value={customDateFrom} onChange={(e) => { setCustomDateFrom(e.target.value); setCustomDateTo(e.target.value); }} className="h-8 rounded-md bg-white border border-primary/30 text-[10px] font-bold px-1 focus:outline-none w-[100px]" />
+              )}
+              {timeRange === 'Custom Range' && (
+                <div className="flex gap-1 ml-1 items-center">
+                  <input type="date" value={customDateFrom} onChange={(e) => setCustomDateFrom(e.target.value)} className="h-8 rounded-md bg-white border border-primary/30 text-[10px] font-bold px-1 focus:outline-none w-[100px]" />
+                  <span className="text-[10px] text-primary font-black">-</span>
+                  <input type="date" value={customDateTo} onChange={(e) => setCustomDateTo(e.target.value)} className="h-8 rounded-md bg-white border border-primary/30 text-[10px] font-bold px-1 focus:outline-none w-[100px]" />
+                </div>
+              )}
             </div>
           </div>
 
@@ -731,12 +782,30 @@ export default function Reports() {
                         <th className="py-3 px-4 text-right">Qty</th>
                         <th className="py-3 px-4 text-right">Gross</th>
                         <th className="py-3 px-4 text-right">Discounts</th>
-                        <th className="py-3 px-4 text-right">Tax</th>
+                        <th className="py-3 px-4 text-right">Service / Delivery Charges</th>
                         <th className="py-3 px-4 text-right">Refunds</th>
                         <th className="py-3 px-4 text-right">Net Sales</th>
                       </tr>
                     </thead>
                     <tbody>
+                      <tr className="border-b border-border bg-primary/10 text-primary font-black uppercase tracking-wider text-[11px] shadow-sm">
+                        <td className="py-4 px-4">
+                          <div>Total Summary</div>
+                          <div className="text-[9px] font-bold opacity-70 normal-case">{detailedTotals.totalCategories} Categories, {detailedTotals.totalProducts} Products</div>
+                        </td>
+                        <td className="py-4 px-4 text-right text-sm">{detailedTotals.totalQty}</td>
+                        <td className="py-4 px-4 text-right text-sm">Rs. {formatCurrency(detailedTotals.totalGross)}</td>
+                        <td className="py-4 px-4 text-right text-amber-500">
+                          <div className="text-sm">- Rs. {formatCurrency(detailedTotals.totalDiscount)}</div>
+                          <div className="text-[9px] font-bold opacity-70 normal-case">{detailedTotals.discountCount} applied</div>
+                        </td>
+                        <td className="py-4 px-4 text-right text-sm">Rs. {formatCurrency(detailedTotals.totalTax)}</td>
+                        <td className="py-4 px-4 text-right text-rose-500">
+                          <div className="text-sm">- Rs. {formatCurrency(detailedTotals.totalRefunds)}</div>
+                          <div className="text-[9px] font-bold opacity-70 normal-case">{detailedTotals.refundCount} applied</div>
+                        </td>
+                        <td className="py-4 px-4 text-right text-sm text-emerald-500">Rs. {formatCurrency(detailedTotals.totalNet)}</td>
+                      </tr>
                       {groupedSales.map((main: any) => (
                         <React.Fragment key={main.name}>
                           <tr 

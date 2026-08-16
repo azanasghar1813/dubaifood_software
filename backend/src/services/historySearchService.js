@@ -88,12 +88,11 @@ class HistorySearchService {
   rebuildAllIndexes() {
     try {
       const orders = dbEngine.prepare('SELECT id FROM orders LIMIT 50000').all();
-      const rebuild = dbEngine.transaction(() => {
+      dbEngine.transaction(() => {
         for (const { id } of orders) {
           this.rebuildIndex(id);
         }
       });
-      rebuild();
       console.log(`[HistorySearch] Rebuilt search index for ${orders.length} orders.`);
     } catch (error) {
       console.error('[HistorySearch] Bulk rebuild failed:', error.message);

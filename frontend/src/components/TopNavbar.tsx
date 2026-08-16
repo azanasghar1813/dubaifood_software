@@ -127,23 +127,82 @@ export default function TopNavbar() {
     }
   }
 
+  const handleWindowControl = (action: string) => {
+    if ((window as any).require) {
+      const { ipcRenderer } = (window as any).require('electron');
+      ipcRenderer.send(action);
+    }
+  };
+
   return (
     <>
-      <header className="h-16 bg-card/80 backdrop-blur-md border-b border-border/50 flex items-center justify-between px-4 z-10 sticky top-0 shadow-sm">
-        {/* Global Header Search */}
-        <div className="hidden md:flex items-center flex-1 max-w-2xl mr-8">
-          <div className="relative w-full">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input 
-              type="text"
-              placeholder="Search POS globally... (F3)"
-              className="w-full h-9 pl-9 pr-4 bg-secondary/50 border border-border/50 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary transition-all"
-            />
+      <header 
+        className="h-16 bg-card/80 backdrop-blur-md border-b border-border/50 flex items-center justify-between px-4 z-10 sticky top-0 shadow-sm"
+        style={{ WebkitAppRegion: 'drag' } as any}
+      >
+        <div className="flex items-center gap-4 flex-1" style={{ WebkitAppRegion: 'no-drag' } as any}>
+          {/* User Profile on the left side of the search bar */}
+          <div className="relative" ref={profileRef}>
+            <div 
+              className="flex items-center gap-3 pr-4 border-r border-border/50 cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => setIsProfileOpen(!isProfileOpen)}
+            >
+              <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-lg border border-primary/20">
+                {user?.name?.charAt(0) || "?"}
+              </div>
+              <div className="flex flex-col items-start hidden sm:flex">
+                <span className="text-sm font-bold text-foreground">{user?.name || "Guest"}</span>
+              </div>
+            </div>
+
+            <AnimatePresence>
+              {isProfileOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute left-0 mt-3 w-56 bg-card border border-border shadow-xl rounded-xl overflow-hidden"
+                >
+                  <div className="p-4 border-b border-border/50 bg-secondary/30">
+                    <p className="font-bold">{user?.name}</p>
+                    <p className="text-xs text-muted-foreground">{user?.role}</p>
+                  </div>
+                  <div className="p-2 space-y-1">
+                    <button 
+                      onClick={openSwitchModal}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg hover:bg-secondary transition-colors text-left"
+                    >
+                      <Users className="w-4 h-4 text-primary" />
+                      Switch Cashier
+                    </button>
+                    <button 
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg hover:bg-destructive/10 text-destructive transition-colors text-left"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Logout
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Global Header Search moved right */}
+          <div className="hidden md:flex items-center flex-1 max-w-lg">
+            <div className="relative w-full">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input 
+                type="text"
+                placeholder="Search POS globally... (F3)"
+                className="w-full h-9 pl-9 pr-4 bg-secondary/50 border border-border/50 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+              />
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          
+        <div className="flex items-center gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
           {/* Status Indicators */}
           <div className="hidden lg:flex items-center gap-4 px-4 py-1.5 border-r border-border/50 text-muted-foreground">
             <button 
@@ -202,62 +261,24 @@ export default function TopNavbar() {
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full border border-card" />
           </Link>
 
-          <div className="relative" ref={profileRef}>
-            <div 
-              className="flex items-center gap-3 pl-4 border-l border-border/50 cursor-pointer hover:opacity-80 transition-opacity"
-              onClick={() => setIsProfileOpen(!isProfileOpen)}
+          {/* Window Controls (Electron Native) */}
+          <div className="hidden lg:flex items-center border-l border-border/50 ml-2 pl-2 gap-1">
+            <button 
+              onClick={() => handleWindowControl('window-minimize')}
+              className="p-2 hover:bg-secondary rounded transition-colors text-muted-foreground"
             >
-              <div className="flex flex-col items-end hidden sm:flex">
-                <span className="text-sm font-bold text-foreground">{user?.name || "Guest"}</span>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-lg border border-primary/20">
-                {user?.name?.charAt(0) || "?"}
-              </div>
-            </div>
-
-            <AnimatePresence>
-              {isProfileOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute right-0 mt-3 w-56 bg-card border border-border shadow-xl rounded-xl overflow-hidden"
-                >
-                  <div className="p-4 border-b border-border/50 bg-secondary/30">
-                    <p className="font-bold">{user?.name}</p>
-                    <p className="text-xs text-muted-foreground">{user?.role}</p>
-                  </div>
-                  <div className="p-2 space-y-1">
-                    <button 
-                      onClick={openSwitchModal}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg hover:bg-secondary transition-colors text-left"
-                    >
-                      <Users className="w-4 h-4 text-primary" />
-                      Switch Cashier
-                    </button>
-                    <button 
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg hover:bg-destructive/10 text-destructive transition-colors text-left"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      Logout
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Window Controls (Electron Mock) */}
-          <div className="hidden lg:flex items-center border-l border-border/50 ml-2 pl-2">
-            <button className="p-2 hover:bg-secondary rounded transition-colors text-muted-foreground">
               <Minus className="w-4 h-4" />
             </button>
-            <button className="p-2 hover:bg-secondary rounded transition-colors text-muted-foreground">
+            <button 
+              onClick={() => handleWindowControl('window-maximize')}
+              className="p-2 hover:bg-secondary rounded transition-colors text-muted-foreground"
+            >
               <Square className="w-3.5 h-3.5" />
             </button>
-            <button className="p-2 hover:bg-destructive hover:text-destructive-foreground rounded transition-colors text-muted-foreground">
+            <button 
+              onClick={() => handleWindowControl('window-close')}
+              className="p-2 hover:bg-destructive hover:text-destructive-foreground rounded transition-colors text-muted-foreground"
+            >
               <X className="w-4 h-4" />
             </button>
           </div>

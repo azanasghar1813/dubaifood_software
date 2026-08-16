@@ -29,6 +29,12 @@ class DatabaseEngine {
 
     this.dbPath = dbPath;
     
+    // Ensure the directory exists before creating the file
+    const dir = path.dirname(dbPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
     // Open connection
     this.db = new Database(dbPath, {
       verbose: process.env.NODE_ENV === 'development' ? console.log : null,

@@ -14,8 +14,8 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // F1 / F3 / F10 / Ctrl+\ -> Global Shortcuts Map
-      if (e.key === 'F1' || e.key === 'F3' || e.key === 'F10' || (e.ctrlKey && e.key === '\\')) {
+      // Ctrl+\ -> Global Shortcuts Map
+      if (e.ctrlKey && e.key === '\\') {
         e.preventDefault()
         e.stopImmediatePropagation()
         setShortcutsOpen(prev => !prev)

@@ -23,7 +23,7 @@ class CartCalculationService {
    */
   calculateLineItem(itemInput) {
     const financeConfig = configService.getFinanceConfig() || {};
-    const taxRate = Number(financeConfig.tax_rate !== undefined ? financeConfig.tax_rate : 0.07);
+    const taxRate = Number(financeConfig.tax_rate !== undefined ? financeConfig.tax_rate : 0);
     const isTaxInclusive = financeConfig.tax_inclusive === true || financeConfig.tax_inclusive === 1;
     const taxName = financeConfig.tax_name || 'VAT';
 

@@ -33,9 +33,6 @@ apiClient.interceptors.request.use(
     }
     if (cashierSessionId && config.headers) {
       config.headers['x-cashier-session-id'] = cashierSessionId
-    } else if (config.headers) {
-      // Fallback for development/testing if no shift is open
-      config.headers['x-cashier-session-id'] = 'dev-session-id'
     }
     
     return config

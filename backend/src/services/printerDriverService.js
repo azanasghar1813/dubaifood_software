@@ -1,3 +1,11 @@
+import net from 'net';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import crypto from 'crypto';
+import { execSync } from 'child_process';
+import { escposEncoder } from './escposEncoder.js';
+
 /**
  * PrinterStatus — all possible physical printer states.
  */
@@ -13,9 +21,9 @@ export const PrinterStatus = Object.freeze({
 
 /**
  * PrinterDriverType — supported printer driver backends.
- * VIRTUAL: logs to console — no hardware required.
- * ESCPOS_USB: ESC/POS over USB (requires native binding — future).
- * ESCPOS_LAN: ESC/POS over TCP/IP LAN (requires net socket — future).
+ * VIRTUAL:    logs to console — no hardware required.
+ * ESCPOS_USB: ESC/POS via Windows print spooler RAW datatype (winspool.drv).
+ * ESCPOS_LAN: ESC/POS over TCP/IP raw socket (port 9100).
  */
 export const PrinterDriverType = Object.freeze({
   VIRTUAL:    'VIRTUAL',
@@ -23,19 +31,110 @@ export const PrinterDriverType = Object.freeze({
   ESCPOS_LAN: 'ESCPOS_LAN',
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RawPrinterHelper C# source — compiled once via PowerShell Add-Type.
+// Calls winspool.drv directly: OpenPrinter → StartDocPrinter(RAW) →
+// WritePrinter → EndDocPrinter → ClosePrinter.
+// No printer sharing required — works with any installed Windows printer.
+// ─────────────────────────────────────────────────────────────────────────────
+const RAW_PRINTER_CSHARP = `
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+
+public class RawPrinterHelper
+{
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public class DOCINFOW
+    {
+        [MarshalAs(UnmanagedType.LPWStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPWStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPWStr)] public string pDatatype;
+    }
+
+    [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern bool OpenPrinter(string pPrinterName, out IntPtr hPrinter, IntPtr pDefault);
+
+    [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In] DOCINFOW pDocInfo);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+
+    public static bool SendBytesToPrinter(string printerName, string filePath)
+    {
+        byte[] bytes = File.ReadAllBytes(filePath);
+        IntPtr hPrinter = IntPtr.Zero;
+        DOCINFOW di = new DOCINFOW();
+        di.pDocName = "ESC/POS Raw Print Job";
+        di.pOutputFile = null;
+        di.pDatatype = "RAW";
+
+        bool success = false;
+
+        if (OpenPrinter(printerName, out hPrinter, IntPtr.Zero))
+        {
+            if (StartDocPrinter(hPrinter, 1, di))
+            {
+                if (StartPagePrinter(hPrinter))
+                {
+                    IntPtr pUnmanagedBytes = Marshal.AllocCoTaskMem(bytes.Length);
+                    try
+                    {
+                        Marshal.Copy(bytes, 0, pUnmanagedBytes, bytes.Length);
+                        int written;
+                        success = WritePrinter(hPrinter, pUnmanagedBytes, bytes.Length, out written);
+                    }
+                    finally
+                    {
+                        Marshal.FreeCoTaskMem(pUnmanagedBytes);
+                    }
+                    EndPagePrinter(hPrinter);
+                }
+                EndDocPrinter(hPrinter);
+            }
+            ClosePrinter(hPrinter);
+        }
+
+        if (!success)
+        {
+            int err = Marshal.GetLastWin32Error();
+            throw new Exception("WritePrinter failed. Win32 error: " + err + ". Printer: " + printerName);
+        }
+
+        return success;
+    }
+}
+`;
+
 /**
  * PrinterDriverService
  *
- * Abstract interface for all physical print execution.
- * The Print Engine calls `executePrintJob(job, printer)` and this
- * service dispatches to the correct driver backend.
+ * Dispatches print jobs to physical printers via the correct driver backend.
  *
- * Architecture principle:
- *   - VIRTUAL driver is fully functional for dev/staging
- *   - Real drivers (USB, LAN) are registered identically
+ * Architecture:
+ *   - VIRTUAL driver outputs to console (dev/staging)
+ *   - ESCPOS_LAN sends raw bytes over TCP socket to ip:port (default 9100)
+ *   - ESCPOS_USB sends raw bytes via Windows winspool.drv RawPrinterHelper
  *   - Adding a new printer type never changes the engine
  */
 class PrinterDriverService {
+  constructor() {
+    this._rawPrinterTypeLoaded = false;
+  }
+
   /**
    * Execute a print job on a physical printer.
    *
@@ -84,27 +183,34 @@ class PrinterDriverService {
 
   /**
    * Open the cash drawer via ESC/POS pulse command.
-   * Triggered independently from receipt printing.
+   * Sends the real ESC p kick-pulse through the same raw write path.
    */
   async openCashDrawer(printer) {
     const startTime = Date.now();
     const driverType = printer?.driver_type || PrinterDriverType.VIRTUAL;
 
     try {
+      const pin = printer?.cash_drawer_pin ?? 0;
+
       switch (driverType) {
         case PrinterDriverType.VIRTUAL:
           console.log(`[PrinterDriver][VIRTUAL] 💰 CASH DRAWER OPENED via printer: ${printer?.name || 'Unknown'}`);
-          console.log(`[PrinterDriver][VIRTUAL] ESC/POS: ESC p m t1 t2 (pin ${printer?.cash_drawer_pin || 2})`);
-          await this._simulateDelay(50);
+          console.log(`[PrinterDriver][VIRTUAL] ESC/POS: ESC p m t1 t2 (pin ${pin})`);
           break;
 
-        case PrinterDriverType.ESCPOS_LAN:
-        case PrinterDriverType.ESCPOS_USB:
-          // Future: send ESC p command bytes
-          // Buffer: [0x1B, 0x70, pin, 0x19, 0xFA]
-          console.warn(`[PrinterDriver] Cash drawer for ${driverType} not yet implemented — using VIRTUAL`);
-          await this._simulateDelay(50);
+        case PrinterDriverType.ESCPOS_LAN: {
+          const kickBuffer = escposEncoder.encodeCashDrawerKick(pin);
+          await this._sendTcp(printer.ip_address, printer.port || 9100, kickBuffer);
+          console.log(`[PrinterDriver][LAN] 💰 Cash drawer kick sent to ${printer.ip_address}:${printer.port || 9100}`);
           break;
+        }
+
+        case PrinterDriverType.ESCPOS_USB: {
+          const kickBuffer = escposEncoder.encodeCashDrawerKick(pin);
+          await this._sendUsb(printer, kickBuffer);
+          console.log(`[PrinterDriver][USB] 💰 Cash drawer kick sent to ${printer.usb_port || printer.name}`);
+          break;
+        }
       }
 
       return { success: true, duration_ms: Date.now() - startTime };
@@ -122,7 +228,6 @@ class PrinterDriverService {
     const driverType = printer?.driver_type || PrinterDriverType.VIRTUAL;
 
     if (driverType === PrinterDriverType.VIRTUAL) {
-      await this._simulateDelay(20);
       return { reachable: true, latency_ms: Date.now() - startTime };
     }
 
@@ -130,7 +235,10 @@ class PrinterDriverService {
       return await this._pingLan(printer, startTime);
     }
 
-    // USB: always report online in virtual mode
+    if (driverType === PrinterDriverType.ESCPOS_USB) {
+      return await this._pingUsb(printer, startTime);
+    }
+
     return { reachable: true, latency_ms: Date.now() - startTime };
   }
 
@@ -221,44 +329,268 @@ class PrinterDriverService {
     }
 
     console.log(`[PrinterDriver][VIRTUAL] ═══ END PRINT JOB ═══\n`);
-
-    // Simulate thermal printer processing time
-    await this._simulateDelay(200);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // ESC/POS USB Driver — stub (requires native binding)
-  // ──────────────────────────────────────────────────────────────────────────
-
-  async _executeEscPosUsb(job, printer) {
-    // Future implementation:
-    // 1. Require node-escpos or escpos-usb package
-    // 2. Open USB device by VID/PID
-    // 3. Build ESC/POS command buffer from job.payload
-    // 4. Send to device
-    // 5. Close connection
-    console.warn(`[PrinterDriver] ESC/POS USB driver not yet implemented for printer "${printer?.name}". Falling back to VIRTUAL.`);
-    await this._executeVirtual(job, printer);
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // ESC/POS LAN Driver — stub (requires TCP socket)
+  // ESC/POS LAN Driver — raw TCP socket to printer ip:port
   // ──────────────────────────────────────────────────────────────────────────
 
   async _executeEscPosLan(job, printer) {
-    // Future implementation:
-    // 1. Open TCP socket to printer.ip_address:printer.port
-    // 2. Build ESC/POS command buffer
-    // 3. Send over socket
-    // 4. Wait for acknowledgment / timeout
-    // 5. Close socket
-    console.warn(`[PrinterDriver] ESC/POS LAN driver not yet implemented for ${printer?.ip_address}:${printer?.port}. Falling back to VIRTUAL.`);
-    await this._executeVirtual(job, printer);
+    const ip = printer?.ip_address;
+    const port = printer?.port || 9100;
+
+    if (!ip) {
+      throw new Error(`LAN printer "${printer?.name}" has no IP address configured.`);
+    }
+
+    // Encode the receipt payload into raw ESC/POS bytes
+    const buffer = escposEncoder.encode(job.payload, printer);
+
+    console.log(`[PrinterDriver][LAN] Sending ${buffer.length} bytes to ${ip}:${port} for job ${job.id}`);
+
+    await this._sendTcp(ip, port, buffer);
+
+    console.log(`[PrinterDriver][LAN] ✅ Job ${job.id} sent successfully to ${ip}:${port}`);
   }
 
+  /**
+   * Send a raw byte buffer over TCP to a printer.
+   * @param {string} ip      - Printer IP address
+   * @param {number} port    - Printer port (default 9100)
+   * @param {Buffer} buffer  - Raw ESC/POS bytes
+   * @param {number} timeout - Connection timeout in ms (default 5000)
+   */
+  _sendTcp(ip, port, buffer, timeout = 5000) {
+    return new Promise((resolve, reject) => {
+      const socket = new net.Socket();
+      let settled = false;
+
+      const finish = (err) => {
+        if (settled) return;
+        settled = true;
+        socket.destroy();
+        if (err) reject(err);
+        else resolve();
+      };
+
+      socket.setTimeout(timeout);
+
+      socket.on('timeout', () => {
+        finish(new Error(`Printer connection timed out at ${ip}:${port} (${timeout}ms). Check that the printer is powered on and connected to the network.`));
+      });
+
+      socket.on('error', (err) => {
+        let message;
+        if (err.code === 'ECONNREFUSED') {
+          message = `Printer offline or unreachable at ${ip}:${port}. Connection refused — verify the printer is powered on and the IP/port are correct.`;
+        } else if (err.code === 'ETIMEDOUT') {
+          message = `Printer connection timed out at ${ip}:${port}. The printer may be on a different network or subnet.`;
+        } else if (err.code === 'EHOSTUNREACH') {
+          message = `Printer host unreachable at ${ip}. Check the network configuration and ensure the printer is on the same LAN.`;
+        } else {
+          message = `Printer communication error at ${ip}:${port}: ${err.message} (${err.code || 'UNKNOWN'})`;
+        }
+        finish(new Error(message));
+      });
+
+      socket.connect(port, ip, () => {
+        // Connected — write the buffer, then close cleanly
+        socket.write(buffer, (writeErr) => {
+          if (writeErr) {
+            finish(new Error(`Failed to write to printer at ${ip}:${port}: ${writeErr.message}`));
+          } else {
+            // End the socket after write completes (half-close)
+            socket.end(() => {
+              finish(null);
+            });
+          }
+        });
+      });
+    });
+  }
+
+  /**
+   * TCP connection test — connect then immediately close.
+   */
   async _pingLan(printer, startTime) {
-    // Future: TCP connect test
-    return { reachable: true, latency_ms: Date.now() - startTime };
+    const ip = printer?.ip_address;
+    const port = printer?.port || 9100;
+
+    if (!ip) {
+      return { reachable: false, latency_ms: 0, error: 'No IP address configured.' };
+    }
+
+    return new Promise((resolve) => {
+      const socket = new net.Socket();
+      let settled = false;
+
+      const done = (reachable, error) => {
+        if (settled) return;
+        settled = true;
+        socket.destroy();
+        resolve({
+          reachable,
+          latency_ms: Date.now() - startTime,
+          error: error || undefined,
+        });
+      };
+
+      socket.setTimeout(3000);
+      socket.on('timeout', () => done(false, `Connection timed out at ${ip}:${port}`));
+      socket.on('error', (err) => done(false, `${err.message} (${err.code || 'UNKNOWN'})`));
+      socket.connect(port, ip, () => done(true, null));
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // ESC/POS USB Driver — Windows winspool.drv via RawPrinterHelper
+  //
+  // Primary: Embedded C# snippet compiled via PowerShell Add-Type.
+  //          Calls winspool.drv directly — no printer sharing required.
+  //
+  // Fallback: UNC share copy /b (requires manual printer sharing).
+  //           Documented as a last resort only.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  async _executeEscPosUsb(job, printer) {
+    const printerName = printer?.usb_port || printer?.name;
+
+    if (!printerName) {
+      throw new Error('USB printer has no usb_port or name configured. Set the Windows printer name in printer settings.');
+    }
+
+    // Encode the receipt payload into raw ESC/POS bytes
+    const buffer = escposEncoder.encode(job.payload, printer);
+
+    console.log(`[PrinterDriver][USB] Sending ${buffer.length} bytes to "${printerName}" for job ${job.id}`);
+
+    await this._sendUsb(printer, buffer);
+
+    console.log(`[PrinterDriver][USB] ✅ Job ${job.id} sent successfully to "${printerName}"`);
+  }
+
+  /**
+   * Send raw bytes to a USB printer via Windows print spooler.
+   *
+   * Writes bytes to a temp file, then uses a C# RawPrinterHelper
+   * (compiled in-process via PowerShell Add-Type) to call winspool.drv
+   * APIs with RAW datatype — bytes are passed completely unmodified.
+   *
+   * @param {Object} printer - Printer config with usb_port or name
+   * @param {Buffer} buffer  - Raw ESC/POS bytes
+   */
+  async _sendUsb(printer, buffer) {
+    const printerName = printer?.usb_port || printer?.name;
+
+    if (!printerName) {
+      throw new Error('No Windows printer name configured (usb_port or name required).');
+    }
+
+    // Generate unique temp file per job to avoid collisions
+    const jobUuid = crypto.randomUUID();
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(tempDir, `escpos_${jobUuid}.bin`);
+
+    try {
+      // Write raw bytes to temp file
+      fs.writeFileSync(tempFile, buffer);
+
+      // Build PowerShell script that:
+      // 1. Compiles the RawPrinterHelper C# type (if not already loaded)
+      // 2. Calls SendBytesToPrinter with the printer name and temp file path
+      //
+      // The C# code uses winspool.drv P/Invoke to send RAW data directly
+      // to the printer — no sharing configuration needed.
+      const escapedPrinterName = printerName.replace(/'/g, "''");
+      const escapedTempFile = tempFile.replace(/'/g, "''");
+
+      const psScript = `
+        if (-not ([System.Management.Automation.PSTypeName]'RawPrinterHelper').Type) {
+          Add-Type -TypeDefinition @'
+${RAW_PRINTER_CSHARP}
+'@
+        }
+        [RawPrinterHelper]::SendBytesToPrinter('${escapedPrinterName}', '${escapedTempFile}')
+      `;
+
+      execSync(
+        `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${psScript.replace(/"/g, '\\"')}"`,
+        {
+          timeout: 15000,  // 15 second timeout
+          windowsHide: true,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }
+      );
+    } catch (error) {
+      // Parse PowerShell/winspool errors into clear messages
+      const stderr = error.stderr?.toString() || '';
+      const stdout = error.stdout?.toString() || '';
+
+      if (stderr.includes('WritePrinter failed') || stdout.includes('WritePrinter failed')) {
+        throw new Error(`USB printer "${printerName}" rejected the print job. Verify the printer name matches exactly in Windows Settings > Printers. (${stderr || stdout})`);
+      }
+      if (stderr.includes('OpenPrinter') || error.message?.includes('OpenPrinter')) {
+        throw new Error(`Cannot open USB printer "${printerName}". The printer may not be installed or the name is incorrect. Check Windows Settings > Printers & scanners.`);
+      }
+      if (error.killed) {
+        throw new Error(`USB print job timed out after 15 seconds. The printer "${printerName}" may be offline or busy.`);
+      }
+
+      throw new Error(`USB print failed for "${printerName}": ${stderr || error.message}`);
+    } finally {
+      // Always clean up temp file — even on error
+      try {
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+      } catch (cleanupErr) {
+        console.warn(`[PrinterDriver][USB] Failed to clean up temp file ${tempFile}: ${cleanupErr.message}`);
+      }
+    }
+  }
+
+  /**
+   * USB printer connectivity test.
+   * Attempts to open and immediately close the printer via winspool.
+   */
+  async _pingUsb(printer, startTime) {
+    const printerName = printer?.usb_port || printer?.name;
+    if (!printerName) {
+      return { reachable: false, latency_ms: 0, error: 'No Windows printer name configured.' };
+    }
+
+    try {
+      const escapedName = printerName.replace(/'/g, "''");
+      const psScript = `
+        if (-not ([System.Management.Automation.PSTypeName]'RawPrinterHelper').Type) {
+          Add-Type -TypeDefinition @'
+${RAW_PRINTER_CSHARP}
+'@
+        }
+        $ptr = [IntPtr]::Zero
+        $ok = [RawPrinterHelper]::OpenPrinter('${escapedName}', [ref]$ptr, [IntPtr]::Zero)
+        if ($ok) { [RawPrinterHelper]::ClosePrinter($ptr); Write-Output 'OK' }
+        else { Write-Output 'FAIL' }
+      `;
+
+      const result = execSync(
+        `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${psScript.replace(/"/g, '\\"')}"`,
+        { timeout: 5000, windowsHide: true, encoding: 'utf8' }
+      );
+
+      const reachable = result.trim().includes('OK');
+      return {
+        reachable,
+        latency_ms: Date.now() - startTime,
+        error: reachable ? undefined : `Printer "${printerName}" not found in Windows.`,
+      };
+    } catch (error) {
+      return {
+        reachable: false,
+        latency_ms: Date.now() - startTime,
+        error: `Ping failed: ${error.message}`,
+      };
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -281,10 +613,6 @@ class PrinterDriverService {
     const r = String(right || '');
     const gap = Math.max(1, width - l.length - r.length);
     return l + ' '.repeat(gap) + r;
-  }
-
-  _simulateDelay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
 
