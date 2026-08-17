@@ -81,7 +81,7 @@ interface POSState {
   duplicateItem: (cartItemId: string) => Promise<void>
   holdOrder: (holdName: string) => Promise<void>
   resumeOrder: (orderId: string) => Promise<void>
-  completeOrder: (payments?: any[]) => Promise<boolean>
+  completeOrder: (payments?: any[], discountTotal?: number) => Promise<boolean>
   clearCart: () => void
   
   // Legacy accessors
@@ -421,7 +421,7 @@ export const usePosStore = create<POSState>((set, get) => ({
     }
   },
 
-  completeOrder: async (payments: any[] = []): Promise<boolean> => {
+  completeOrder: async (payments: any[] = [], discountTotal: number = 0): Promise<boolean> => {
     const state = get()
     if (!state.activeOrder) return false
     
@@ -443,7 +443,8 @@ export const usePosStore = create<POSState>((set, get) => ({
           business_date: order.business_date,
           delivery_charges: state.orderType === 'Delivery' ? state.deliveryCharges : 0,
           service_charge: state.getServiceCharge(),
-          is_tax_enabled: state.isTaxEnabled
+          is_tax_enabled: state.isTaxEnabled,
+          discount_total: discountTotal
         })
 
         if (!(checkoutResult as any).success) {

@@ -4,18 +4,9 @@ backend/node_modules/
 frontend/node_modules/
 
 # Build outputs
-dist/
-dist-electron/
-dist-electron-*/
-frontend/dist/
-build/
+dist-electron-5/
 *.exe
-*.blockmap
-*.zip
-*.tar.gz
-*.asar
-*-unpacked/
-
+backend/bin/node.exe
 # Environment files
 .env
 .env.*

@@ -1687,7 +1687,8 @@ export default function POS() {
                       </button>
                       <button
                         onClick={async () => {
-                          const success = await usePosStore.getState().completeOrder([])
+                          const discountVal = Number(discountAmount) || 0;
+                          const success = await usePosStore.getState().completeOrder([], discountVal)
                           if (!success) {
                             alert("Could not send this order to the kitchen. Please try again.")
                           }
@@ -2079,7 +2080,8 @@ export default function POS() {
                           timestamp: new Date().toISOString(),
                           cashier: user?.name || 'Cashier',
                           status: 'Completed'
-                        }] : []
+                        }] : [],
+                        discountVal
                       )
 
                       if (!success) {
