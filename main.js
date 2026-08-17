@@ -213,6 +213,10 @@ app.whenReady().then(async () => {
     startBackendProcess();
   });
 
+  ipcMain.on('app-quit', () => {
+    app.quit();
+  });
+
   const { exec } = await import('child_process');
   app.on('will-quit', () => {
     if (backendProcess && backendProcess.pid) {

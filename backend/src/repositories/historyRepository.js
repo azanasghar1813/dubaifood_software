@@ -177,8 +177,8 @@ class HistoryRepository {
 
     // Timeline
     order.timeline = dbEngine.prepare(`
-      SELECT t.*, COALESCE(u.username, t.actor_user_id) as actor_user_id 
-      FROM order_timeline t LEFT JOIN users u ON u.id = t.actor_user_id
+      SELECT t.*, COALESCE(u.username, t.user_id) as user_id 
+      FROM order_timeline t LEFT JOIN users u ON u.id = t.user_id
       WHERE t.order_id = ? ORDER BY t.created_at ASC
     `).all(orderId);
 

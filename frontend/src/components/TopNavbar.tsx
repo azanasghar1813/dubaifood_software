@@ -41,6 +41,15 @@ export default function TopNavbar() {
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
 
+    // Global refresh shortcut
+    const handleGlobalKeydown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        window.location.reload();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeydown);
+
     // Initial server check
     checkServerHealth()
     
@@ -48,10 +57,11 @@ export default function TopNavbar() {
     const serverCheckInterval = setInterval(checkServerHealth, 30000)
     
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    
+
     return () => {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('keydown', handleGlobalKeydown)
       clearInterval(serverCheckInterval)
       clearInterval(timer)
     }
@@ -206,9 +216,9 @@ export default function TopNavbar() {
           {/* Status Indicators */}
           <div className="hidden lg:flex items-center gap-4 px-4 py-1.5 border-r border-border/50 text-muted-foreground">
             <button 
-              onClick={checkServerHealth}
+              onClick={() => window.location.reload()}
               className="flex items-center gap-1.5 hover:text-foreground transition-colors" 
-              title={isServerOnline ? "Server Connected" : "Server Disconnected (Click to retry)"}
+              title="Refresh Application (Ctrl + Shift + R)"
             >
               <RefreshCw className={`w-4 h-4 ${isServerOnline ? 'text-blue-500' : 'text-red-500'} ${isCheckingServer ? 'animate-spin' : ''}`} />
             </button>

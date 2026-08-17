@@ -125,8 +125,25 @@ export const reportService = {
     // Fetch hierarchical sales
     // We group by main category, sub category, product
     const query = `
-      WITH AllSales AS (
-        SELECT order_id, product_id, quantity as qty, base_unit_price, discount_amount, tax_amount, total_amount, product_name_snapshot as component_name, 0 as is_component, NULL as parent_deal_name FROM order_items
+      WITH OrderItemDiscounts AS (
+        SELECT order_id, SUM(discount_amount) as sum_item_disc
+        FROM order_items GROUP BY order_id
+      ),
+      AllSales AS (
+        SELECT 
+          oi.order_id, 
+          oi.product_id, 
+          oi.quantity as qty, 
+          oi.base_unit_price, 
+          oi.discount_amount + COALESCE((o.discount_total - COALESCE(oid.sum_item_disc, 0)) * ((oi.quantity * oi.base_unit_price) / NULLIF(o.subtotal, 0)), 0) as discount_amount, 
+          oi.tax_amount, 
+          oi.total_amount, 
+          oi.product_name_snapshot as component_name, 
+          0 as is_component, 
+          NULL as parent_deal_name 
+        FROM order_items oi
+        JOIN orders o ON oi.order_id = o.id
+        LEFT JOIN OrderItemDiscounts oid ON o.id = oid.order_id
         UNION ALL
         SELECT oi.order_id, occ.product_id, occ.quantity as qty, occ.price_adjustment as base_unit_price, 0 as discount_amount, 0 as tax_amount, (occ.quantity * occ.price_adjustment) as total_amount, occ.product_name_snapshot as component_name, 1 as is_component, oi.product_name_snapshot as parent_deal_name
         FROM order_combo_components occ
@@ -160,19 +177,19 @@ export const reportService = {
         SUM(CASE 
           WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN 
             COALESCE(CASE 
-              WHEN o.order_type = 'Delivery' THEN COALESCE(o.delivery_fee, 0) * (a.total_amount / NULLIF(o.subtotal, 0))
-              ELSE COALESCE(o.service_charge, 0) * (a.total_amount / NULLIF(o.subtotal, 0))
+              WHEN o.order_type = 'Delivery' THEN COALESCE(o.delivery_fee, 0) * ((a.qty * a.base_unit_price) / NULLIF(o.subtotal, 0))
+              ELSE COALESCE(o.service_charge, 0) * ((a.qty * a.base_unit_price) / NULLIF(o.subtotal, 0))
             END, 0)
           ELSE 0 
         END) as tax,
         SUM(CASE 
           WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN 
-            (a.qty * a.base_unit_price) - a.discount_amount + COALESCE(CASE WHEN o.order_type = 'Delivery' THEN COALESCE(o.delivery_fee, 0) * (a.total_amount / NULLIF(o.subtotal, 0)) ELSE COALESCE(o.service_charge, 0) * (a.total_amount / NULLIF(o.subtotal, 0)) END, 0)
+            (a.qty * a.base_unit_price) - a.discount_amount + COALESCE(CASE WHEN o.order_type = 'Delivery' THEN COALESCE(o.delivery_fee, 0) * ((a.qty * a.base_unit_price) / NULLIF(o.subtotal, 0)) ELSE COALESCE(o.service_charge, 0) * ((a.qty * a.base_unit_price) / NULLIF(o.subtotal, 0)) END, 0)
           ELSE 0 
         END) as net,
         SUM(CASE 
           WHEN o.lifecycle_state IN ('CANCELLED', 'REFUNDED') THEN 
-            (a.qty * a.base_unit_price) - a.discount_amount + COALESCE(CASE WHEN o.order_type = 'Delivery' THEN COALESCE(o.delivery_fee, 0) * (a.total_amount / NULLIF(o.subtotal, 0)) ELSE COALESCE(o.service_charge, 0) * (a.total_amount / NULLIF(o.subtotal, 0)) END, 0)
+            (a.qty * a.base_unit_price) - a.discount_amount + COALESCE(CASE WHEN o.order_type = 'Delivery' THEN COALESCE(o.delivery_fee, 0) * ((a.qty * a.base_unit_price) / NULLIF(o.subtotal, 0)) ELSE COALESCE(o.service_charge, 0) * ((a.qty * a.base_unit_price) / NULLIF(o.subtotal, 0)) END, 0)
           ELSE 0 
         END) as refunds,
         SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN COALESCE(p.price, 0) * a.qty ELSE 0 END) as original_value,

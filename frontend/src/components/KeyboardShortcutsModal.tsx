@@ -16,6 +16,7 @@ const SHORTCUT_GROUPS: ShortcutCategory[] = [
     category: "Global Application",
     shortcuts: [
       { key: "Ctrl + \\", desc: "Show Keyboard Shortcuts Help", detail: "Opens this detailed menu from anywhere in the app." },
+      { key: "Ctrl + Shift + R", desc: "Refresh Software", detail: "Fully reloads the software and clears cache." },
       { key: "F12", desc: "Toggle Kitchen Display System (KDS)", detail: "Quickly switch to the kitchen view to manage orders." },
       { key: "Ctrl + P", desc: "Print Last Receipt", detail: "Instantly sends the most recent order to the receipt printer." },
       { key: "Ctrl + Shift + P", desc: "Printer Settings", detail: "Open the global printer management and status panel." },

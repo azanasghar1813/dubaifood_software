@@ -18,6 +18,7 @@
             align-items: center;
             overflow: hidden;
             -webkit-user-select: none;
+            user-select: none;
             -webkit-app-region: drag; /* Allows moving the window if needed */
         }
 
@@ -209,12 +210,21 @@
         <div id="errorDetails" class="error-details" style="display: none;"></div>
 
         <div id="actionButtons" class="action-buttons" style="display: none;">
-            <button class="btn" onclick="require('electron').ipcRenderer.send('retry-startup')">Try Again</button>
-            <button class="btn btn-outline" onclick="window.close()">Close</button>
+            <button class="btn" id="btnTryAgain">Try Again</button>
+            <button class="btn btn-outline" id="btnClose">Close</button>
         </div>
     </div>
 
     <script>
+        const { ipcRenderer } = require('electron');
+        
+        document.getElementById('btnTryAgain').addEventListener('click', () => {
+            ipcRenderer.send('retry-startup');
+        });
+        
+        document.getElementById('btnClose').addEventListener('click', () => {
+            ipcRenderer.send('app-quit');
+        });
         // main.js will use executeJavaScript to update this
         window.updateStatus = (message, isError = false, errorLog = '') => {
             const statusEl = document.getElementById('status');
