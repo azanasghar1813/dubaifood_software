@@ -486,6 +486,27 @@ export default function POS() {
 
       // 2. Global Shortcuts (Not dependent on isTyping)
 
+      // CTRL + ArrowUp/ArrowDown: Cycle Categories
+      if (e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault()
+        const currentContext = usePosStore.getState().menuContext
+        const visibleCats = categories.filter(c => c.menuContext === 'all' || !c.menuContext || c.menuContext === currentContext)
+        const currentIdx = visibleCats.findIndex(c => c.name === activeCategory)
+        
+        let nextIdx = 0
+        if (e.key === 'ArrowDown') {
+          nextIdx = currentIdx < visibleCats.length - 1 ? currentIdx + 1 : 0
+        } else {
+          nextIdx = currentIdx > 0 ? currentIdx - 1 : visibleCats.length - 1
+        }
+        
+        const nextCat = visibleCats[nextIdx]
+        if (nextCat) {
+          setActiveCategory(nextCat.name)
+        }
+        return
+      }
+
       // CTRL + TAB: Cycle Order Type (Also Alt + O as fallback since browsers intercept Ctrl+Tab)
       if ((e.ctrlKey && e.key === 'Tab' && !e.shiftKey) || (e.altKey && e.key.toLowerCase() === 'o')) {
         e.preventDefault()
@@ -850,7 +871,8 @@ export default function POS() {
     isCartMode, cartSelectedIndex, gridDensity,
     checkoutModalOpen, checkoutFocusZone, checkoutMethodIndex,
     checkoutQuickCashIndex, checkoutDiscountPctIndex,
-    selectedPaymentMethod, discountAmount, orderType
+    selectedPaymentMethod, discountAmount, orderType,
+    categories, activeCategory
   ])
 
   // Keep cartSelectedIndex in bounds if cart shrinks
@@ -964,8 +986,13 @@ export default function POS() {
       if (p.lifecycle_state === 'HIDDEN' && !p.isDeal) return false;
       const pName = p.name.toLowerCase().replace(/\s+/g, '')
       const pCode = (p.code || '').toLowerCase()
+      const pCategory = (p.category || '').toLowerCase().replace(/\s+/g, '')
       const searchStr = q.replace(/\s+/g, '')
-      return pName.includes(searchStr) || pCode.includes(searchStr)
+      
+      const matchesCategory = pCategory.includes(searchStr) || 
+                              (p.isDeal && 'deals'.includes(searchStr));
+
+      return pName.includes(searchStr) || pCode.includes(searchStr) || matchesCategory
     })
 
     return matches.sort((a, b) => {
@@ -1211,9 +1238,8 @@ export default function POS() {
                   }
                 }}
                 placeholder="Search Product Name, Product Code, Barcode..."
-                className="w-full h-12 pl-12 pr-12 rounded-2xl bg-card border border-border focus:border-orange-500 focus:bg-background outline-none text-base font-bold transition-all placeholder:text-muted-foreground shadow-sm"
+                className="w-full h-12 pl-12 pr-4 rounded-2xl bg-card border border-border focus:border-orange-500 focus:bg-background outline-none text-base font-bold transition-all placeholder:text-muted-foreground shadow-sm"
               />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 bg-secondary text-muted-foreground text-[10px] font-bold px-2 py-0.5 rounded border border-border pointer-events-none">F3</div>
 
               {/* Global Search Dropdown */}
               <AnimatePresence>
@@ -1257,7 +1283,7 @@ export default function POS() {
                                   <h4 className="font-bold text-sm truncate">{product.name}</h4>
                                 </div>
                                 <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                                  <span className="font-bold text-orange-500">Rs {product.price.toLocaleString()}</span>
+                                  <span className="font-bold text-orange-500">Rs {(product.displayPrice !== undefined ? product.displayPrice : product.price).toLocaleString()}</span>
                                   <span>•</span>
                                   <span className="truncate">{product.category}</span>
                                   {(product.isPopular || product.isFavorite) && <span>•</span>}
@@ -1285,7 +1311,7 @@ export default function POS() {
                 <button
                   key={context}
                   onClick={() => { setMenuContext(context as any); setActiveCategory("All"); setIsCartMode(false); }}
-                  className={`px-3 py-2 text-xs font-bold rounded-lg transition-colors duration-200 flex items-center gap-1.5 ${menuContext === context ? 'bg-orange-500 shadow-sm text-white' : 'text-muted-foreground hover:text-foreground'
+                  className={`px-3 py-2 text-xs font-bold rounded-lg transition-colors duration-200 flex items-center gap-1.5 ${menuContext === context ? 'bg-orange-500 shadow-sm text-white dark:bg-primary/16 dark:text-[#F0A868]' : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
                   {context}
@@ -1313,7 +1339,7 @@ export default function POS() {
                     key={product.id}
                     onMouseEnter={() => setGridSelectedIndex(index)}
                     onClick={() => handleProductClick(product)}
-                    className={`rounded-[1.25rem] shadow-sm overflow-hidden flex flex-col text-left hover:opacity-90 transition-all group relative ${getCategoryStyles(product.category || categories.find(c => c.id === product.category_id)?.name)} ${isSelected ? 'ring-4 ring-orange-500 shadow-[0_8px_30px_rgba(249,115,22,0.3)] scale-[1.02]' : 'hover:shadow-[0_8px_30px_rgba(0,0,0,0.15)]'}`}
+                    className={`rounded-[1.25rem] shadow-sm overflow-hidden flex flex-col text-left hover:opacity-90 transition-all group relative ${getCategoryStyles(product.category || categories.find(c => c.id === product.category_id)?.name)} ${isSelected ? 'ring-4 ring-orange-500 dark:ring-primary shadow-[0_8px_30px_rgba(249,115,22,0.3)] scale-[1.02]' : 'hover:shadow-[0_8px_30px_rgba(0,0,0,0.15)]'}`}
                   >
                     {gridDensity !== 'small' && (
                       <div className={`${gridDensity === 'large' ? 'h-40' : 'h-32'} w-full relative overflow-hidden shrink-0 ${!product.image ? getCategoryGradient(product.category || categories.find(c => c.id === product.category_id)?.name) : ''}`}>
@@ -1347,10 +1373,10 @@ export default function POS() {
                           {product.code}
                         </div>
                       )}
-                      <h4 className={`font-bold line-clamp-2 leading-tight flex-1 pr-8 text-foreground ${gridDensity === 'large' ? 'text-lg' : 'text-sm'}`}>
+                      <h4 className={`font-bold line-clamp-3 leading-tight flex-1 text-foreground ${gridDensity === 'small' ? 'pr-8' : 'pr-0'} ${gridDensity === 'large' ? 'text-base' : 'text-[13px]'}`}>
                         {product.name}
                       </h4>
-                      <p className={`text-orange-500 font-black mt-2 ${gridDensity === 'large' ? 'text-2xl' : 'text-lg'}`}>
+                      <p className={`text-orange-500 dark:text-primary font-black mt-2 ${gridDensity === 'large' ? 'text-2xl' : 'text-lg'}`}>
                         Rs {product.displayPrice !== undefined ? product.displayPrice.toLocaleString() : product.price.toLocaleString()}
                       </p>
                     </div>
@@ -1442,7 +1468,7 @@ export default function POS() {
                   <div className="overflow-hidden">
                     <p className="text-xs font-bold text-foreground truncate">{usePosStore.getState().customer?.name || usePosStore.getState().customer?.first_name || "Select Customer"}</p>
                     <p className="text-[10px] text-muted-foreground font-bold truncate flex items-center gap-1">
-                      <Phone className="w-2.5 h-2.5" /> {usePosStore.getState().customer?.phone || "Press F2"}
+                      <Phone className="w-2.5 h-2.5" /> {usePosStore.getState().customer?.phone || "Ctrl+C"}
                     </p>
                   </div>
                 </button>
@@ -1626,7 +1652,7 @@ export default function POS() {
                       <input
                         ref={orderNotesRef}
                         type="text"
-                        placeholder="Add Order Notes / Special Instructions."
+                        placeholder="Add Order Notes (Ctrl+N)"
                         value={orderNotes}
                         onChange={(e) => setOrderNotes(e.target.value)}
                         className="w-full pl-9 pr-3 py-1.5 bg-secondary/60 hover:bg-secondary border border-border/50 rounded-xl text-xs font-bold text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#fcb47c]/50 transition-colors"
@@ -1637,21 +1663,27 @@ export default function POS() {
                       <button
                         onClick={() => setIsPaidPrint(!isPaidPrint)}
                         className={`p-1 font-black rounded-lg flex flex-col items-center justify-center gap-0.5 transition-colors border ${isPaidPrint
-                          ? 'bg-green-100 text-green-700 hover:bg-green-200 border-green-300'
-                          : 'bg-red-100 text-red-700 hover:bg-red-200 border-red-300'
+                          ? 'bg-green-100 text-green-700 hover:bg-green-200 border-green-300 dark:bg-[#5FBF88]/14 dark:text-[#5FBF88] dark:border-transparent dark:hover:bg-[#5FBF88]/20'
+                          : 'bg-red-100 text-red-700 hover:bg-red-200 border-red-300 dark:bg-[#E5605A]/14 dark:text-[#E5605A] dark:border-transparent dark:hover:bg-[#E5605A]/20'
                           }`}
                       >
-                        <span className="text-[10px] uppercase">{isPaidPrint ? 'Paid' : 'Unpaid'}</span>
+                          <span className="text-[10px] uppercase text-center leading-tight">
+                            {isPaidPrint ? 'Paid' : 'Unpaid'}<br />
+                            <span className="text-[7px] opacity-70 font-bold">(Ctrl+P)</span>
+                          </span>
                       </button>
                       <button
                         onClick={toggleTax}
                         className={`p-1 font-black rounded-lg flex flex-col items-center justify-center gap-0.5 transition-colors border ${isTaxEnabled
-                          ? 'bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-300'
-                          : 'bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border-transparent hover:border-border'
+                          ? 'bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-300 dark:bg-[#E8A33D]/14 dark:text-[#E8A33D] dark:border-transparent dark:hover:bg-[#E8A33D]/20'
+                          : 'bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border-transparent hover:border-border dark:bg-[#21242B] dark:text-[#9BA2AE]'
                           }`}
                       >
-                        <Tag className={`w-4 h-4 ${isTaxEnabled ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
-                        <span className="text-[9px] uppercase text-center leading-tight font-black">Charges</span>
+                          <Tag className={`w-4 h-4 ${isTaxEnabled ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+                          <span className="text-[9px] uppercase text-center leading-tight font-black">
+                            Charges<br />
+                            <span className="text-[7px] opacity-70">(Ctrl+S)</span>
+                          </span>
                       </button>
                       <button
                         onClick={async () => {
@@ -1661,7 +1693,7 @@ export default function POS() {
                           }
                         }}
                         disabled={cart.length === 0}
-                        className="p-1 bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors border border-transparent hover:border-border"
+                        className="p-1 bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors border border-transparent hover:border-border dark:bg-[#21242B] dark:text-[#9BA2AE]"
                       >
                         <Monitor className="w-4 h-4 stroke-[1.5]" />
                         <span className="text-[9px] uppercase">KDS</span>
@@ -1695,7 +1727,7 @@ export default function POS() {
                           setOrderNotes("");
                         }}
                         disabled={cart.length === 0}
-                        className="p-1 bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors border border-transparent hover:border-border"
+                        className="p-1 bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors border border-transparent hover:border-border dark:bg-[#21242B] dark:text-[#9BA2AE]"
                       >
                         <XCircle className="w-4 h-4 stroke-[1.5]" />
                         <span className="text-[9px] uppercase">Clear</span>

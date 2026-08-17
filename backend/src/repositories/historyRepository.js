@@ -39,7 +39,7 @@ class HistoryRepository {
         o.order_number,
         o.business_date,
         o.branch_id,
-        o.cashier_user_id,
+        COALESCE(u.username, o.cashier_user_id) AS cashier_user_id,
         o.shift_id,
         o.customer_id,
         IFNULL(dt.table_number, o.table_id) as table_id,
@@ -78,9 +78,10 @@ class HistoryRepository {
         ) AS customer_phone,
         o.service_charge AS service_charge,
         o.delivery_fee AS delivery_charges,
-        (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM activity_logs al WHERE al.entity_id = o.id AND al.action IN ('ITEM_REMOVED', 'ITEM_ADDED', 'QUANTITY_CHANGED')) AS is_edited
+        (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM activity_logs al WHERE al.entity_id = o.id AND al.action IN ('ITEM_REMOVED', 'ITEM_ADDED', 'QUANTITY_CHANGED', 'ORDER_UPDATED')) AS is_edited
       FROM orders o
       LEFT JOIN dining_tables dt ON dt.id = o.table_id
+      LEFT JOIN users u ON u.id = o.cashier_user_id
       ${whereSql}
       ORDER BY ${orderBySql}
       LIMIT ? OFFSET ?
@@ -108,11 +109,13 @@ class HistoryRepository {
   findFullDetail(orderId) {
     const order = dbEngine.prepare(`
       SELECT o.*,
+        COALESCE(u.username, o.cashier_user_id) AS cashier_user_id,
         IFNULL(dt.table_number, o.table_id) as table_id,
         o.service_charge AS service_charge,
         o.delivery_fee AS delivery_charges
       FROM orders o 
       LEFT JOIN dining_tables dt ON dt.id = o.table_id
+      LEFT JOIN users u ON u.id = o.cashier_user_id
       WHERE o.id = ?
     `).get(orderId);
     if (!order) return null;
@@ -174,7 +177,9 @@ class HistoryRepository {
 
     // Timeline
     order.timeline = dbEngine.prepare(`
-      SELECT * FROM order_timeline WHERE order_id = ? ORDER BY created_at ASC
+      SELECT t.*, COALESCE(u.username, t.actor_user_id) as actor_user_id 
+      FROM order_timeline t LEFT JOIN users u ON u.id = t.actor_user_id
+      WHERE t.order_id = ? ORDER BY t.created_at ASC
     `).all(orderId);
 
     // Parse timeline metadata
@@ -188,13 +193,13 @@ class HistoryRepository {
 
     // Audit trail (Combine order_audit_trail and activity_logs)
     const audits = dbEngine.prepare(`
-      SELECT id, user_id, action, old_value, new_value, reason, created_at 
-      FROM order_audit_trail WHERE order_id = ?
+      SELECT o.id, COALESCE(u.username, o.user_id) as user_id, o.action, o.old_value, o.new_value, o.reason, o.created_at 
+      FROM order_audit_trail o LEFT JOIN users u ON u.id = o.user_id WHERE o.order_id = ?
     `).all(orderId);
     
     const activities = dbEngine.prepare(`
-      SELECT id, user_id, action, NULL as old_value, details as new_value, NULL as reason, created_at
-      FROM activity_logs WHERE entity_type = 'ORDER' AND entity_id = ?
+      SELECT al.id, COALESCE(u.username, al.user_id) as user_id, al.action, NULL as old_value, al.details as new_value, NULL as reason, al.created_at
+      FROM activity_logs al LEFT JOIN users u ON u.id = al.user_id WHERE al.entity_type = 'ORDER' AND al.entity_id = ?
     `).all(orderId);
     
     order.audit_trail = [...audits, ...activities].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
@@ -223,10 +228,10 @@ class HistoryRepository {
    */
   findLightweight(orderId) {
     const order = dbEngine.prepare(`
-      SELECT id, order_number, business_date, order_type, lifecycle_state,
-             payment_state, kitchen_state, grand_total, cashier_user_id,
-             customer_id, table_id, created_at, updated_at, sync_status
-      FROM orders WHERE id = ?
+      SELECT o.id, o.order_number, o.business_date, o.order_type, o.lifecycle_state,
+             o.payment_state, o.kitchen_state, o.grand_total, COALESCE(u.username, o.cashier_user_id) AS cashier_user_id,
+             o.customer_id, o.table_id, o.created_at, o.updated_at, o.sync_status
+      FROM orders o LEFT JOIN users u ON u.id = o.cashier_user_id WHERE o.id = ?
     `).get(orderId);
 
     if (!order) return null;

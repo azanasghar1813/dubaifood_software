@@ -6,8 +6,8 @@ import { toast } from "../store/toastStore"
 import { motion, AnimatePresence } from "framer-motion"
 
 export default function Categories() {
-  const authStore = useAuthStore()
-  const canManageProducts = (authStore as any).hasPermission ? (authStore as any).hasPermission("MANAGE_PRODUCTS") : true
+  const { user } = useAuthStore()
+  const canManageProducts = user?.role === 'Super Admin' || user?.role === 'Admin' || (user?.permissions?.includes("MANAGE_PRODUCTS") ?? false)
 
   const [categories, setCategories] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)

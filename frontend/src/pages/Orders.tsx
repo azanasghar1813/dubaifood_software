@@ -43,6 +43,45 @@ const paymentStatusColors: Record<string, string> = {
   Refunded: "bg-purple-500/10 text-purple-500 border-purple-500/20"
 }
 
+const formatAuditMessage = (actionType: string, oldVal: any, newVal: any) => {
+  const safeParse = (str: any) => {
+    try { return JSON.parse(str); } catch { return str; }
+  };
+  const parsedNew = safeParse(newVal);
+  
+  if (actionType === 'ITEM_ADDED') {
+    return `Added ${parsedNew?.quantity || 1}x ${parsedNew?.item_name || 'item'} to cart.`;
+  }
+  if (actionType === 'QUANTITY_CHANGED') {
+    return `Changed quantity of ${parsedNew?.item_name || 'item'} to ${parsedNew?.new_quantity || parsedNew?.quantity || ''}.`;
+  }
+  if (actionType === 'ITEM_REMOVED') {
+    return `Removed ${parsedNew?.item_name || 'item'} from cart.`;
+  }
+  if (actionType === 'ORDER_CREATED') {
+    return `Order created.`;
+  }
+  if (actionType === 'ORDER_UPDATED' || actionType === 'METADATA_UPDATED') {
+    if (typeof parsedNew === 'object' && parsedNew !== null) {
+       const changes = Object.entries(parsedNew)
+         .filter(([k]) => k !== 'order_number' && k !== 'branch_id')
+         .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+         .join(', ');
+       return changes ? `Updated: ${changes}` : 'Updated order details.';
+    }
+  }
+  
+  // Fallback generic formatting
+  if (typeof parsedNew === 'object' && parsedNew !== null) {
+    const changes = Object.entries(parsedNew)
+      .filter(([k]) => k !== 'order_number' && k !== 'branch_id')
+      .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+      .join(', ');
+    return changes || String(newVal || '-');
+  }
+  return String(newVal || '-');
+};
+
 export default function Orders() {
   const navigate = useNavigate()
   const { orders, lockOrder, unlockOrder, updateOrder, addTimelineEvent, addAuditLog, syncOrdersFromBackend } = useOrderStore()
@@ -761,7 +800,10 @@ export default function Orders() {
               <div className="p-6 border-b border-border bg-secondary/30 flex items-start justify-between shrink-0">
                 <div>
                   <div className="flex items-center gap-3 mb-1">
-                    <h2 className="text-2xl font-black">Order #{selectedOrder.orderNumber}</h2>
+                    <h2 className="text-2xl font-black flex items-center gap-2">
+                      Order #{selectedOrder.orderNumber}
+                      {selectedOrder.isEdited && <span className="text-[10px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded uppercase border border-amber-500/20 font-bold tracking-widest leading-none">Edited</span>}
+                    </h2>
                     <span className={`text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest border ${orderStatusColors[selectedOrder.status]}`}>{selectedOrder.status}</span>
                   </div>
                   <p className="text-sm font-bold text-muted-foreground">{new Date(selectedOrder.timestamp).toLocaleString()}</p>
@@ -947,9 +989,8 @@ export default function Orders() {
                               <p className="text-sm font-bold mt-2">By {log.who} at {new Date(log.when).toLocaleString()}</p>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-4 mt-3 bg-secondary/30 p-3 rounded-xl border border-border/50 text-sm font-bold">
-                            <div><p className="text-xs text-muted-foreground uppercase mb-1">Previous Value</p><p className="line-through opacity-70">{log.oldValue}</p></div>
-                            <div><p className="text-xs text-muted-foreground uppercase mb-1">New Value</p><p className="text-emerald-500">{log.newValue}</p></div>
+                          <div className="mt-3 bg-secondary/30 p-3 rounded-xl border border-border/50 text-sm font-bold text-emerald-500">
+                            {formatAuditMessage(log.actionType, log.oldValue, log.newValue)}
                           </div>
                           {log.reason && <p className="text-xs font-bold text-muted-foreground mt-3 italic">Reason: {log.reason}</p>}
                         </div>

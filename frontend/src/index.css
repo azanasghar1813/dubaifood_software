@@ -45,44 +45,44 @@
   }
 
   .dark {
-    --background: 0 0% 0%;
-    --foreground: 0 0% 100%;
-    --card: 0 0% 10%;
-    --card-foreground: 0 0% 100%;
-    --popover: 0 0% 7%;
-    --popover-foreground: 0 0% 100%;
-    --primary: 349 74% 37%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 14%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 0 0% 14%;
-    --muted-foreground: 0 0% 70%;
-    --accent: 0 0% 14%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 348 100% 55%;
+    --background: 220 12% 9%;
+    --foreground: 220 14% 96%;
+    --card: 220 13% 14%;
+    --card-foreground: 220 14% 96%;
+    --popover: 220 14% 12%;
+    --popover-foreground: 220 14% 96%;
+    --primary: 36 79% 57%;
+    --primary-foreground: 27 52% 8%;
+    --secondary: 220 14% 12%;
+    --secondary-foreground: 222 11% 65%;
+    --muted: 220 13% 19%;
+    --muted-foreground: 222 11% 65%;
+    --accent: 36 79% 57%;
+    --accent-foreground: 27 52% 8%;
+    --destructive: 3 74% 63%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 15%;
-    --input: 0 0% 15%;
-    --ring: 349 74% 37%;
+    --border: 222 11% 16%;
+    --input: 222 11% 16%;
+    --ring: 36 79% 57%;
     
-    /* KFC Color-coded categories */
-    --cat-core-bg: #A6192E;
-    --cat-core-text: #FFFFFF;
-    --cat-burgers-bg: #0D47A1;
-    --cat-burgers-text: #FFFFFF;
-    --cat-sides-bg: #FFC400;
-    --cat-sides-text: #000000;
-    --cat-drinks-bg: #00B0FF;
-    --cat-drinks-text: #000000;
-    --cat-desserts-bg: #E91E63;
-    --cat-desserts-text: #FFFFFF;
-    --cat-border-color: #000000;
-    --cat-border-width: 3px;
+    /* Categories */
+    --cat-core-bg: #1F2228;
+    --cat-core-text: #F2F3F5;
+    --cat-burgers-bg: #1F2228;
+    --cat-burgers-text: #F2F3F5;
+    --cat-sides-bg: #1F2228;
+    --cat-sides-text: #F2F3F5;
+    --cat-drinks-bg: #1F2228;
+    --cat-drinks-text: #F2F3F5;
+    --cat-desserts-bg: #1F2228;
+    --cat-desserts-text: #F2F3F5;
+    --cat-border-color: #25282f;
+    --cat-border-width: 1px;
     
-    /* Checkout button KFC Red */
-    --checkout-bg: #A6192E;
-    --checkout-hover: #8C1526;
-    --checkout-text: #ffffff;
+    /* Checkout button */
+    --checkout-bg: #E8A33D;
+    --checkout-hover: #D79331;
+    --checkout-text: #20140A;
   }
 
   .colorful-theme {

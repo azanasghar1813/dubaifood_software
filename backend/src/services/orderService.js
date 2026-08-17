@@ -51,7 +51,7 @@ class OrderService {
     order.metadata = orderMetadataRepository.getAllMeta(order.id);
     order.tags = orderMetadataRepository.getTags(order.id);
     order.attachments = orderMetadataRepository.getAttachments(order.id);
-    
+
     // Auto-populate customer info if a customer is linked
     if (order.customer_id) {
       try {
@@ -80,7 +80,7 @@ class OrderService {
       if (!order) throw new Error('Order not found.');
 
       const items = orderItemRepository.findItemsByOrderId(orderId);
-      
+
       let subtotal = 0;
       let taxTotal = 0;
       let discountTotal = 0;
@@ -127,7 +127,7 @@ class OrderService {
     return dbEngine.transaction(() => {
       const businessDate = options.business_date || new Date().toISOString().split('T')[0];
       const branchId = options.branch_id || 'DEFAULT_BRANCH';
-      
+
       // Allocate atomic Business Order Number
       const orderNumber = orderNumberService.generateNextNumber(branchId, businessDate);
       const orderId = crypto.randomUUID();
@@ -334,7 +334,7 @@ class OrderService {
       // If the order has already been sent to kitchen, we should log a reason
       const isSent = order.kitchen_state !== 'PENDING';
       const description = `Removed ${item ? item.product_name_snapshot : 'item'} from order ${order.order_number}`;
-      
+
       orderTimelineService.recordEvent(orderId, actorUserId, 'ITEM_REMOVED', {
         description: description + (reason ? ` - Reason: ${reason}` : ''),
         metadata: { item_id: itemId, reason }
@@ -415,12 +415,19 @@ class OrderService {
       if (!order) throw new Error('Order not found.');
 
       const updates = {};
-      
+
       if (meta.order_type !== undefined) {
         updates.order_type = meta.order_type;
       }
       if (meta.table_id !== undefined) {
         updates.table_id = meta.table_id;
+        if (meta.table_id) {
+          try {
+            dbEngine.db.prepare('INSERT OR IGNORE INTO dining_tables (id, table_number, status) VALUES (?, ?, ?)').run(meta.table_id, meta.table_id, 'OCCUPIED');
+          } catch (err) {
+            console.error('Error auto-creating dining table on meta update:', err);
+          }
+        }
       }
       if (meta.customer_id !== undefined) {
         updates.customer_id = meta.customer_id;
@@ -431,9 +438,15 @@ class OrderService {
 
       if (Object.keys(updates).length > 0) {
         orderRepository.update(orderId, updates);
-        
+
         // Log activity
         activityLogService.logActivity(userId, 'ORDER_UPDATED', 'ORDER', orderId, meta);
+        
+        orderTimelineService.recordEvent(orderId, userId, 'Order Edited', {
+          description: `Order metadata updated.`,
+          metadata: meta
+        });
+
         syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', meta);
       }
 
@@ -460,7 +473,7 @@ class OrderService {
 
       const success = orderRepository.delete(orderId);
       if (!success) throw new Error('Failed to delete order.');
-      
+
       orderCacheService.invalidate(orderId);
       syncService.queueSyncEvent('ORDER_DELETED', orderId, { order_number: order.order_number });
       return { success: true, message: 'Order deleted successfully' };

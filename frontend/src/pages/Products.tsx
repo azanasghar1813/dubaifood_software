@@ -22,7 +22,7 @@ const getImageUrl = (path?: string) => {
 
 export default function Products() {
   const { user } = useAuthStore()
-  const canManageProducts = user?.permissions?.includes("MANAGE_PRODUCTS") ?? false
+  const canManageProducts = user?.role === 'Super Admin' || user?.role === 'Admin' || (user?.permissions?.includes("MANAGE_PRODUCTS") ?? false)
 
   const [products, setProducts] = useState<any[]>([])
   const [categoriesList, setCategoriesList] = useState<any[]>([])
@@ -92,12 +92,24 @@ export default function Products() {
       const loadedProducts = (prodRes.data || []).map((p: any) => {
         const cat = catsWithContext.find((c: any) => c.id === p.category_id)
         const primaryImage = p.images?.find((img: any) => img.is_primary === 1)?.image_path || p.images?.[0]?.image_path || null;
+        
+        let displayPrice = p.price || 0;
+        if (p.variants && p.variants.length > 0) {
+          const minVariantPrice = Math.min(...p.variants.map((v: any) => v.price || 0));
+          if (minVariantPrice > 0) {
+            displayPrice = minVariantPrice;
+          }
+        }
+        
         return {
           ...p,
           code: p.code || p.product_code,
           category: cat?.name || 'Unknown',
           menuContext: cat?.menuContext || 'all',
-          image: p.image || primaryImage
+          image: p.image || primaryImage,
+          displayPrice,
+          kitchen: p.kitchen_printer_id || "Main Kitchen",
+          status: p.status === "AVAILABLE" ? "Active" : p.status === "HIDDEN" ? "Hidden" : p.status === "DRAFT" ? "Draft" : "Hidden"
         }
       })
 
@@ -202,19 +214,28 @@ export default function Products() {
       setIsSaving(true)
       // Find the category_id from the categoriesList based on the selected category name
       const categoryObj = categoriesList.find(c => c.name === selectedProduct.category)
-      // We will explicitly map to the backend's expected schema
-      const payload = {
+      
+      const payload: any = {
         name: selectedProduct.name,
-        product_code: selectedProduct.code,
-        price: selectedProduct.price,
+        price: Number(selectedProduct.price) || 0,
         cost: 0,
-        description: selectedProduct.description,
         status: selectedProduct.status === "Active" ? "AVAILABLE" : "UNAVAILABLE",
         lifecycle_state: selectedProduct.status === "Active" ? "ACTIVE" : selectedProduct.status === "Hidden" ? "HIDDEN" : "DRAFT",
-        category_id: categoryObj ? categoryObj.id : undefined,
-        kitchen_printer_id: selectedProduct.kitchen,
-        variants: selectedProduct.variants || [],
+        kitchen_printer_id: selectedProduct.kitchen || null,
+        variants: (selectedProduct.variants || []).map((v: any) => ({
+          name: v.name,
+          price: Number(v.price) || 0
+        })),
       }
+
+      if (selectedProduct.variants && selectedProduct.variants.length > 0) {
+        payload.price = Math.min(...payload.variants.map((v: any) => v.price));
+      }
+
+      if (selectedProduct.code) payload.product_code = String(selectedProduct.code);
+      if (selectedProduct.description) payload.description = String(selectedProduct.description);
+      if (categoryObj && categoryObj.id) payload.category_id = categoryObj.id;
+
 
       const formatResponseProduct = (data: any) => {
         const cat = categoriesList.find((c: any) => c.id === data.category_id)
@@ -329,8 +350,8 @@ export default function Products() {
       name: "",
       category: "Burgers",
       kitchen: "Fast Food",
-      price: 150,
-      costPrice: 80,
+      price: 0,
+      costPrice: 0,
       status: "Active",
       stockStatus: "In Stock",
       isPopular: false,
@@ -840,7 +861,7 @@ export default function Products() {
                       <td className="px-4 py-2 font-black text-foreground text-xs">{product.name}</td>
                       <td className="px-4 py-2 text-[10px] font-semibold text-muted-foreground">{product.category}</td>
                       <td className="px-4 py-2 text-[10px] font-bold text-foreground">{product.kitchen}</td>
-                      <td className="px-4 py-2 font-black text-primary text-xs">Rs. {product.price}</td>
+                      <td className="px-4 py-2 font-black text-primary text-xs">Rs. {product.displayPrice !== undefined ? product.displayPrice : product.price}</td>
                       <td className="px-4 py-2 text-center font-bold text-[11px] text-foreground">
                         {product.variants?.length || 0}
                       </td>
@@ -1002,19 +1023,7 @@ export default function Products() {
                           <option value="Drinks">Drinks Bar</option>
                         </select>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-xs uppercase font-black text-muted-foreground">Status</label>
-                        <select
-                          disabled={drawerMode === "view"}
-                          value={selectedProduct.status}
-                          onChange={e => setSelectedProduct({ ...selectedProduct, status: e.target.value })}
-                          className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-bold text-foreground disabled:opacity-60"
-                        >
-                          <option value="Active">Active</option>
-                          <option value="Draft">Draft</option>
-                          <option value="Archived">Archived</option>
-                        </select>
-                      </div>
+
 
                       <div className="col-span-2 space-y-1">
                         <label className="text-xs uppercase font-black text-muted-foreground">Product Name</label>
@@ -1045,7 +1054,7 @@ export default function Products() {
                         </select>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs uppercase font-black text-muted-foreground">Availability</label>
+                        <label className="text-xs uppercase font-black text-muted-foreground">Status / Availability</label>
                         <select
                           disabled={drawerMode === "view"}
                           value={selectedProduct.status}
@@ -1054,6 +1063,7 @@ export default function Products() {
                         >
                           <option value="Active">Available (Active)</option>
                           <option value="Hidden">Not Available (Hidden)</option>
+                          <option value="Draft">Draft (Incomplete)</option>
                         </select>
                       </div>
                       {(!selectedProduct.variants || selectedProduct.variants.length === 0) && (

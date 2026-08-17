@@ -172,7 +172,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
   const auditLog = (detail?.audit_trail || []).map((entry: any) => ({
     id: entry.id,
     who: formatName(entry.user_id),
-    when: entry.created_at,
+    when: entry.created_at ? (entry.created_at.includes('Z') ? entry.created_at : entry.created_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
     actionType: (entry.action || 'Other') as AuditLogEntry['actionType'],
     oldValue: typeof entry.old_value === 'string' ? entry.old_value : JSON.stringify(entry.old_value ?? ''),
     newValue: typeof entry.new_value === 'string' ? entry.new_value : JSON.stringify(entry.new_value ?? ''),

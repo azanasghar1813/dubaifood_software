@@ -25,6 +25,7 @@ const SHORTCUT_GROUPS: ShortcutCategory[] = [
   {
     category: "Point of Sale (POS) - Navigation",
     shortcuts: [
+      { key: "Ctrl + ↑/↓", desc: "Cycle Categories", detail: "Move instantly between categories like Fast Food or Deals without the mouse." },
       { key: "Arrow Keys (↑↓←→)", desc: "Navigate Menus & Cart", detail: "Move between product categories, items, and the cart seamlessly." },
       { key: "Enter", desc: "Select Item / Open Checkout", detail: "Adds highlighted item to cart, or opens payment window if cart is focused." },
       { key: "Ctrl + Enter", desc: "Fast Cash Payment", detail: "Instantly checks out the order using Exact Cash." },

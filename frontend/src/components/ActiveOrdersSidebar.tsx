@@ -5,7 +5,7 @@ import {
   Receipt, Edit,
   AlertCircle, ChevronRight,
   CheckCircle2, PlusCircle, CreditCard,
-  Utensils, Printer
+  Utensils, Printer, Phone
 } from "lucide-react"
 import { useOrderStore, mapHistoryDetailToOrder } from "../store/orderStore"
 import type { Order, OrderStatus, KitchenStatus, PaymentStatus } from "../store/orderStore"
@@ -82,14 +82,15 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       result = result.filter(o => 
-        o.orderNumber.toLowerCase().includes(q) ||
+        o.orderNumber?.toString().toLowerCase().includes(q) ||
         (o.customerName && o.customerName.toLowerCase().includes(q)) ||
-        (o.tableNumber && o.tableNumber.toLowerCase().includes(q)) ||
+        (o.tableNumber && o.tableNumber.toString().toLowerCase().includes(q)) ||
         (o.customerPhone && o.customerPhone.toLowerCase().includes(q)) ||
         (o.orderType && o.orderType.toLowerCase().includes(q)) ||
         (o.status && o.status.toLowerCase().includes(q)) ||
         (o.paymentStatus && o.paymentStatus.toLowerCase().includes(q)) ||
-        (o.kitchenStatus && o.kitchenStatus.toLowerCase().includes(q))
+        (o.kitchenStatus && o.kitchenStatus.toLowerCase().includes(q)) ||
+        (o.total && o.total.toString().includes(q))
       )
     }
     return result
@@ -329,8 +330,17 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                             {new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                           <span className="flex items-center gap-1 text-blue-400 font-medium">
-                            <Hash className="w-3.5 h-3.5" />
-                            Table {order.tableNumber || 'N/A'}
+                            {order.orderType === 'Delivery' ? (
+                              <>
+                                <Phone className="w-3.5 h-3.5" />
+                                {order.customerPhone || 'N/A'}
+                              </>
+                            ) : (
+                              <>
+                                <Hash className="w-3.5 h-3.5" />
+                                Table {order.tableNumber || 'N/A'}
+                              </>
+                            )}
                           </span>
                         </div>
                       </div>
@@ -341,7 +351,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 mt-2">
                       <span className={`text-xs px-2 py-1 rounded-md border ${orderStatusColors[order.status] || ''}`}>
                         {order.status}
                       </span>
@@ -351,44 +361,49 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                       <span className={`text-xs px-2 py-1 rounded-md border ${paymentStatusColors[order.paymentStatus] || ''}`}>
                         {order.paymentStatus}
                       </span>
+                      {order.isEdited && (
+                        <span className="text-[9px] px-1.5 py-1 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20 uppercase font-bold flex items-center gap-0.5">
+                          <Edit className="w-2.5 h-2.5" /> Edited
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex gap-2 mt-2 pt-3 border-t border-border/50">
                       <button 
                         onClick={() => handleEdit(order)}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-[11px] font-bold leading-tight transition-colors ${
                           selectedIndex === index && selectedActionIndex === 0
                             ? 'bg-primary text-primary-foreground ring-2 ring-primary/50 shadow-lg shadow-primary/20'
                             : 'bg-secondary hover:bg-secondary/80 text-foreground'
                         }`}
                       >
-                        <Edit className="w-4 h-4" />
+                        <Edit className="w-3.5 h-3.5" />
                         Edit / Load
                       </button>
                       
                       {order.paymentStatus === 'Unpaid' && (
                         <button 
                           onClick={(e) => handleMarkComplete(e, order)}
-                          className={`flex-1 flex items-center justify-center gap-2 border py-2 rounded-lg text-sm font-medium transition-colors ${
+                          className={`flex-1 flex items-center justify-center gap-1.5 border py-2 px-1 rounded-lg text-[11px] font-bold leading-tight transition-colors ${
                             selectedIndex === index && selectedActionIndex === 1
                               ? 'bg-emerald-500 text-white ring-2 ring-emerald-500/50 border-emerald-500 shadow-lg shadow-emerald-500/20'
                               : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border-emerald-500/20'
                           }`}
                         >
-                          <CheckCircle2 className="w-4 h-4" />
+                          <CheckCircle2 className="w-3.5 h-3.5" />
                           Mark Complete
                         </button>
                       )}
 
                       <button 
                         onClick={(e) => handlePrint(e, order)}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-[11px] font-bold leading-tight transition-colors ${
                           selectedIndex === index && selectedActionIndex === 2
                             ? 'bg-blue-500 text-white ring-2 ring-blue-500/50 shadow-lg shadow-blue-500/20'
                             : 'bg-secondary hover:bg-secondary/80 text-foreground'
                         }`}
                       >
-                        <Printer className="w-4 h-4" />
+                        <Printer className="w-3.5 h-3.5" />
                         Print
                       </button>
                     </div>

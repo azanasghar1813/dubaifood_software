@@ -195,7 +195,7 @@ export default function TopNavbar() {
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input 
                 type="text"
-                placeholder="Search POS globally... (F3)"
+                placeholder="Search POS globally..."
                 className="w-full h-9 pl-9 pr-4 bg-secondary/50 border border-border/50 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary transition-all"
               />
             </div>

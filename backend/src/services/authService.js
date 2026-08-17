@@ -58,6 +58,13 @@ export const authService = {
       sessionRepository.createSession(user.id, tokenId, deviceInfo);
 
       const permissions = userRepository.getUserPermissions(user.role_id);
+      const role = roleRepository.findById(user.role_id);
+      if (role && role.name === 'Super Admin') {
+        if (!permissions.includes('*')) {
+          permissions.push('*');
+        }
+      }
+
       cashierSessionId = cashierSessionRepository.getOrCreateOpenSession(user.id, deviceInfo, 0);
       
       // Token payload
