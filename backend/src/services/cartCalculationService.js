@@ -143,7 +143,7 @@ class CartCalculationService {
           resolvedCombos.push({
             component_id: comp.component_id || null,
             product_id: comp.product_id || 'DUMMY',
-            product_name_snapshot: comp.product_name_snapshot || comp.product_name || comp.name || 'Generic Item',
+            product_name_snapshot: comp.product_name_snapshot || comp.product_name || comp.name || 'Item',
             variant_snapshot: comp.variant_snapshot || comp.variant_name || null,
             price_adjustment: 0,
             quantity: comp.quantity || 1

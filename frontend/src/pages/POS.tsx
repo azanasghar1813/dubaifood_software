@@ -82,7 +82,7 @@ export default function POS() {
   const [isLoading, setIsLoading] = useState(true)
 
   // Layout & Panel State
-  const [leftCollapsed] = useState(false)
+  // const [leftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
 
   // Modals state
@@ -924,23 +924,29 @@ export default function POS() {
     return () => window.removeEventListener("click", handleGlobalClick)
   }, [checkoutModalOpen, customizeModalOpen, sizeModalOpen, customerModalOpen, tableModalOpen, recentOrdersModalOpen])
 
+  // Scroll to category when activeCategory changes via keyboard shortcut
+  useEffect(() => {
+    if (activeCategory && activeCategory !== "All") {
+      const el = document.getElementById(`category-${activeCategory.replace(/\s+/g, '-')}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+  }, [activeCategory])
+
   // Grid Category Filtering
   const gridFilteredProducts = products.filter(p => {
     if (p.lifecycle_state === 'HIDDEN' && !p.isDeal) return false;
     let matchCategory = true
-    if (activeCategory === "Favorites") {
-      matchCategory = !!p.isFavorite
-    } else if (activeCategory !== "All") {
-      matchCategory = p.category === activeCategory
-    } else {
-      // If "All" is selected, filter by menuContext
-      if (menuContext === 'Deals' && !p.isDeal) return false;
-      if (menuContext !== 'Deals' && p.isDeal) return false;
-      const catObj = categories.find(c => c.name === p.category)
-      if (catObj && catObj.menuContext && catObj.menuContext !== 'all' && catObj.menuContext !== menuContext) {
-        matchCategory = false
-      }
+    
+    // Always show all categories for the current context (no longer filtering by activeCategory)
+    if (menuContext === 'Deals' && !p.isDeal) return false;
+    if (menuContext !== 'Deals' && p.isDeal) return false;
+    const catObj = categories.find(c => c.name === p.category)
+    if (catObj && catObj.menuContext && catObj.menuContext !== 'all' && catObj.menuContext !== menuContext) {
+      matchCategory = false
     }
+    
     return matchCategory
   }).sort((a, b) => {
     // Sort by display_order for products, deals by code number
@@ -1040,7 +1046,7 @@ export default function POS() {
     }, 100)
   }
 
-  const handleProductClick = (product: Product) => {
+  const handleProductClick = (product: Product, selectedVariantName?: string) => {
     // Handle Deals
     if (product.isDeal && product.components && product.components.length > 0) {
       const availableProducts = products.filter(p => !p.isDeal);
@@ -1080,10 +1086,11 @@ export default function POS() {
           needsConfiguration = true;
           break;
         } else {
+          const compFallbackName = comp.name || products.find(p => p.id === comp.product_id)?.name || categories.find(cat => cat.id === comp.target_category_id)?.name || (comp.allowed_product_ids ? 'Choice of Item' : 'Item');
           const p = allowedProducts.length === 1 ? allowedProducts[0] : {
             id: 'dummy-' + comp.id,
-            name: comp.name,
-            product_name_snapshot: comp.name,
+            name: compFallbackName,
+            product_name_snapshot: compFallbackName,
             variant_snapshot: comp.target_variant_name || '',
             is_dummy: true,
             price: 0
@@ -1091,7 +1098,7 @@ export default function POS() {
           autoComboComponents.push({
             component_id: comp.id,
             product_id: p.id,
-            product_name_snapshot: p.name || p.product_name_snapshot,
+            product_name_snapshot: p.name || p.product_name_snapshot || compFallbackName,
             variant_snapshot: comp.target_variant_name || p.variant_snapshot || null,
             price_adjustment: comp.price_adjustment || 0,
             quantity: comp.quantity || 1
@@ -1112,6 +1119,25 @@ export default function POS() {
       setSearchQuery("") // Clear search
       searchInputRef.current?.blur() // Remove focus so modal can capture events
       return;
+    }
+
+    // Check if a specific variant was clicked directly
+    if (selectedVariantName) {
+      const variant = product.variants?.find((v: any) => v.name === selectedVariantName);
+      if (variant) {
+        addToCart({
+          ...product,
+          variant_id: variant.id,
+          name: `${product.name} (${variant.name})`,
+          price: variant.price,
+          code: variant.code || product.code,
+          variant_snapshot: variant.name
+        });
+        setSearchQuery("");
+        searchInputRef.current?.focus();
+        scrollToTop();
+        return;
+      }
     }
 
     // Check if variant selection is needed
@@ -1169,39 +1195,8 @@ export default function POS() {
       {/* Main Content Area */}
       <PanelGroup id="pos-main-layout" orientation="horizontal" className="flex-1 overflow-hidden bg-background">
 
-        {/* Left Panel: Categories */}
-        <Panel defaultSize="18%" minSize="15%" maxSize="30%" className="flex flex-col z-10 border-r border-border bg-card">
-          <div className="flex-1 overflow-y-auto p-3 custom-scrollbar space-y-2">
-            {categories.filter(c => c.menuContext === 'all' || !c.menuContext || c.menuContext === menuContext).map(cat => {
-              const isActive = activeCategory === cat.name;
-              return (
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  transition={{ duration: 0.1 }}
-                  key={cat.id}
-                  onClick={() => setActiveCategory(cat.name)}
-                  title={cat.name}
-                  className={`w-full flex items-center p-3.5 rounded-2xl transition-all duration-200 ${isActive
-                    ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20"
-                    : "bg-transparent text-muted-foreground hover:bg-secondary hover:text-foreground"
-                    } ${leftCollapsed ? 'justify-center' : 'justify-start gap-4'}`}
-                >
-                  <div className={isActive ? "text-white" : "text-muted-foreground"}>
-                    {getCategoryIcon(cat.name)}
-                  </div>
-                  {!leftCollapsed && (
-                    <span className="font-bold text-sm tracking-wide truncate">{cat.name}</span>
-                  )}
-                </motion.button>
-              )
-            })}
-          </div>
-        </Panel>
-
-        <PanelResizeHandle className="w-1 bg-border/50 hover:bg-orange-500/50 transition-colors cursor-col-resize z-50" />
-
         {/* Center Panel: Product Grid & Search */}
-        <Panel defaultSize="52%" minSize="40%" className="flex flex-col bg-background relative">
+        <Panel defaultSize="70%" minSize="40%" className="flex flex-col bg-background relative">
 
           {/* Center Header: Search & Filters */}
           <div className="p-4 shrink-0 flex items-center justify-between gap-4">
@@ -1323,67 +1318,106 @@ export default function POS() {
           </div>
 
           {/* Product Grid */}
-          <div className="flex-1 p-4 pt-0 overflow-y-auto custom-scrollbar">
-            <div ref={gridContainerRef} className={`grid gap-4 ${gridDensity === 'small' ? 'grid-cols-4 md:grid-cols-5 xl:grid-cols-6' :
-              gridDensity === 'medium' ? 'grid-cols-3 md:grid-cols-4 xl:grid-cols-5' :
-                'grid-cols-2 md:grid-cols-3 xl:grid-cols-4'
-              }`}>
-              {gridFilteredProducts.map((product, index) => {
-                const isSelected = index === gridSelectedIndex;
-                return (
-                  <motion.button
-                    id={`grid-item-${index}`}
-                    whileHover={{ y: -4 }}
-                    whileTap={{ scale: 0.96 }}
-                    transition={{ duration: 0.15 }}
-                    key={product.id}
-                    onMouseEnter={() => setGridSelectedIndex(index)}
-                    onClick={() => handleProductClick(product)}
-                    className={`rounded-[1.25rem] shadow-sm overflow-hidden flex flex-col text-left hover:opacity-90 transition-all group relative ${getCategoryStyles(product.category || categories.find(c => c.id === product.category_id)?.name)} ${isSelected ? 'ring-4 ring-orange-500 dark:ring-primary shadow-[0_8px_30px_rgba(249,115,22,0.3)] scale-[1.02]' : 'hover:shadow-[0_8px_30px_rgba(0,0,0,0.15)]'}`}
+          <div className="flex-1 p-4 pt-0 overflow-y-auto custom-scrollbar space-y-8" ref={gridContainerRef}>
+            {categories.filter(c => c.menuContext === 'all' || !c.menuContext || c.menuContext === menuContext).map(cat => {
+              const catProducts = gridFilteredProducts.filter(p => (p.category || categories.find(c => c.id === p.category_id)?.name) === cat.name);
+              
+              if (catProducts.length === 0) return null;
+
+              return (
+                <div key={cat.id} className="mb-2">
+                  <h3 
+                    id={`category-${cat.name.replace(/\s+/g, '-')}`}
+                    className={`text-xl font-black mb-4 flex items-center gap-2 p-2 rounded-xl transition-all duration-300 ${activeCategory === cat.name ? 'bg-orange-500/10 text-orange-500 border border-orange-500/30 shadow-sm' : 'text-foreground border border-transparent'}`}
                   >
-                    {gridDensity !== 'small' && (
-                      <div className={`${gridDensity === 'large' ? 'h-40' : 'h-32'} w-full relative overflow-hidden shrink-0 ${!product.image ? getCategoryGradient(product.category || categories.find(c => c.id === product.category_id)?.name) : ''}`}>
-                        {product.isDeal ? (
-                          <div className="w-full h-full flex flex-col items-center justify-center p-2 text-white/90 bg-black/10 mix-blend-overlay">
-                            <span className="font-bold mb-1 border-b border-white/20 pb-1 text-[10px] w-full text-center uppercase tracking-wider">Includes</span>
-                            <div className="w-full text-[10px] overflow-hidden text-center space-y-0.5">
-                              {product.components?.slice(0, gridDensity === 'large' ? 5 : 4).map((c: any, i: number) => {
-                                const productName = c.name || products.find(p => p.id === c.product_id)?.name || 'Generic Item';
-                                return <p key={i} className="truncate">{c.quantity}x {productName}</p>;
-                              })}
-                              {product.components?.length > (gridDensity === 'large' ? 5 : 4) && <p>...</p>}
+                    {getCategoryIcon(cat.name)}
+                    {cat.name}
+                  </h3>
+                  <div className={`grid gap-4 ${gridDensity === 'small' ? 'grid-cols-4 md:grid-cols-5 xl:grid-cols-6' :
+                    gridDensity === 'medium' ? 'grid-cols-3 md:grid-cols-4 xl:grid-cols-5' :
+                      'grid-cols-2 md:grid-cols-3 xl:grid-cols-4'
+                    }`}>
+                    {catProducts.map((product) => {
+                      const index = gridFilteredProducts.indexOf(product);
+                      const isSelected = index === gridSelectedIndex;
+                      return (
+                        <motion.div
+                          id={`grid-item-${index}`}
+                          whileHover={{ y: -4 }}
+                          whileTap={{ scale: 0.96 }}
+                          transition={{ duration: 0.15 }}
+                          key={product.id}
+                          onMouseEnter={() => setGridSelectedIndex(index)}
+                          onClick={() => handleProductClick(product)}
+                          className={`rounded-[1.25rem] shadow-sm overflow-hidden flex flex-col text-left hover:opacity-90 transition-all group relative cursor-pointer ${getCategoryStyles(product.category || categories.find(c => c.id === product.category_id)?.name)} ${isSelected ? 'ring-4 ring-orange-500 dark:ring-primary shadow-[0_8px_30px_rgba(249,115,22,0.3)] scale-[1.02]' : 'hover:shadow-[0_8px_30px_rgba(0,0,0,0.15)]'}`}
+                        >
+                          {gridDensity !== 'small' && (
+                            <div className={`${gridDensity === 'large' ? 'h-32' : 'h-24'} w-full relative overflow-hidden shrink-0 ${!product.image ? getCategoryGradient(product.category || categories.find(c => c.id === product.category_id)?.name) : ''}`}>
+                              {product.isDeal ? (
+                                <div className="w-full h-full flex flex-col items-center justify-center p-2 text-white/90 bg-black/10 mix-blend-overlay">
+                                  <span className="font-bold mb-1 border-b border-white/20 pb-1 text-[10px] w-full text-center uppercase tracking-wider">Includes</span>
+                                  <div className="w-full text-[10px] overflow-hidden text-center space-y-0.5">
+                                    {product.components?.slice(0, gridDensity === 'large' ? 5 : 4).map((c: any, i: number) => {
+                                      const productName = c.name || products.find(p => p.id === c.product_id)?.name || categories.find(cat => cat.id === c.target_category_id)?.name || (c.allowed_product_ids ? 'Choice of Item' : 'Item');
+                                      return <p key={i} className="truncate">{c.quantity}x {productName}</p>;
+                                    })}
+                                    {product.components?.length > (gridDensity === 'large' ? 5 : 4) && <p>...</p>}
+                                  </div>
+                                </div>
+                              ) : product.image ? (
+                                <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex flex-col items-center justify-center text-white/50 mix-blend-overlay">
+                                  {getCategoryIcon(product.category)}
+                                </div>
+                              )}
+                              {/* Subtle Code Badge */}
+                              <div className="absolute top-2 right-2 bg-background/80 backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold tracking-widest text-foreground shadow-sm">
+                                {product.code}
+                              </div>
                             </div>
+                          )}
+                          <div className="p-4 flex flex-col flex-1 relative">
+                            {gridDensity === 'small' && (
+                              <div className="absolute top-3 right-3 text-[10px] font-bold text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+                                {product.code}
+                              </div>
+                            )}
+                            <h4 className={`font-bold line-clamp-3 leading-tight flex-1 text-foreground ${gridDensity === 'small' ? 'pr-8' : 'pr-0'} ${gridDensity === 'large' ? 'text-base' : 'text-[13px]'}`}>
+                              {product.name}
+                            </h4>
+                            {!(product.variants && product.variants.length > 0) && (
+                              <p className={`text-orange-500 dark:text-primary font-black mt-2 ${gridDensity === 'large' ? 'text-2xl' : 'text-lg'}`}>
+                                Rs {product.displayPrice !== undefined ? product.displayPrice.toLocaleString() : product.price.toLocaleString()}
+                              </p>
+                            )}
+                            
+                            {/* Variant Chips */}
+                            {product.variants && product.variants.length > 0 && (
+                              <div className="mt-3 grid grid-cols-2 gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                {product.variants.map((v: any) => (
+                                  <button
+                                    key={v.name}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleProductClick(product, v.name);
+                                    }}
+                                    className="text-[10px] sm:text-xs font-bold bg-orange-500/10 text-orange-600 dark:text-orange-400 hover:bg-orange-500 hover:text-white transition-colors border border-orange-500/30 rounded-md px-1 py-1.5 flex flex-col items-center justify-center truncate"
+                                  >
+                                    <span className="truncate w-full">{v.name}</span>
+                                    <span className="text-[9px] opacity-80">Rs {v.price.toLocaleString()}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        ) : product.image ? (
-                          <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center text-white/50 mix-blend-overlay">
-                            {getCategoryIcon(product.category)}
-                          </div>
-                        )}
-                        {/* Subtle Code Badge */}
-                        <div className="absolute top-2 right-2 bg-background/80 backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold tracking-widest text-foreground shadow-sm">
-                          {product.code}
-                        </div>
-                      </div>
-                    )}
-                    <div className="p-4 flex flex-col flex-1 relative">
-                      {gridDensity === 'small' && (
-                        <div className="absolute top-3 right-3 text-[10px] font-bold text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
-                          {product.code}
-                        </div>
-                      )}
-                      <h4 className={`font-bold line-clamp-3 leading-tight flex-1 text-foreground ${gridDensity === 'small' ? 'pr-8' : 'pr-0'} ${gridDensity === 'large' ? 'text-base' : 'text-[13px]'}`}>
-                        {product.name}
-                      </h4>
-                      <p className={`text-orange-500 dark:text-primary font-black mt-2 ${gridDensity === 'large' ? 'text-2xl' : 'text-lg'}`}>
-                        Rs {product.displayPrice !== undefined ? product.displayPrice.toLocaleString() : product.price.toLocaleString()}
-                      </p>
-                    </div>
-                  </motion.button>
-                )
-              })}
-            </div>
+                        </motion.div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
             {gridFilteredProducts.length === 0 && (
               <div className="flex flex-col items-center justify-center text-muted-foreground h-full min-h-[50vh]">
                 <Search className="w-16 h-16 opacity-20 mb-4" />
@@ -1415,34 +1449,44 @@ export default function POS() {
                 </div>
               )}
               {/* Header: Order Info */}
-              <div className="p-3 border-b border-border flex items-center justify-between bg-secondary/30">
-                <div>
-                  <h2 className="font-black tracking-wider uppercase text-muted-foreground text-[10px] mb-2 mt-1">Order #{orderCounter}</h2>
-                  <p className="font-black text-lg text-foreground leading-none">{orderType}</p>
-                </div>
-
-                {(customer?.is_vip || customer?.isVip) && (
-                  <div className="flex flex-col items-center justify-center">
-                    <span className="bg-gradient-to-r from-amber-200 to-yellow-500 text-yellow-950 font-black text-[11px] px-3 py-1 rounded-full uppercase tracking-widest shadow-sm border border-yellow-400/50 flex items-center gap-1">
-                      <Star className="w-3 h-3 fill-yellow-950" /> VIP
-                    </span>
+              {/* Header: Order Info */}
+              <div className="p-3 border-b border-border bg-secondary/30">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h2 className="font-black tracking-wider uppercase text-muted-foreground text-[10px] mb-1 mt-1">Order #{orderCounter}</h2>
                   </div>
-                )}
 
-                <div className="text-right">
-                  <div className="mb-1">
+                  {(customer?.is_vip || customer?.isVip) && (
+                    <div className="flex flex-col items-center justify-center">
+                      <span className="bg-gradient-to-r from-amber-200 to-yellow-500 text-yellow-950 font-black text-[11px] px-3 py-1 rounded-full uppercase tracking-widest shadow-sm border border-yellow-400/50 flex items-center gap-1">
+                        <Star className="w-3 h-3 fill-yellow-950" /> VIP
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="text-right">
                     <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded uppercase border ${isPaidPrint ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'
                       }`}>
                       {isPaidPrint ? 'Paid' : 'Unpaid'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 justify-end">
-                    {(['Dine In', 'Takeaway', 'Delivery'] as const).map(type => (
-                      <button key={type} onClick={() => setOrderType(type)} className={`p-1.5 rounded-lg transition-colors ${orderType === type ? 'bg-[var(--checkout-bg)] text-white shadow-sm' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'}`}>
+                </div>
+
+                <div className="flex w-full rounded-lg border border-blue-500 overflow-hidden shadow-sm">
+                    {(['Dine In', 'Takeaway', 'Delivery'] as const).map((type, index) => (
+                      <button 
+                        key={type} 
+                        onClick={() => setOrderType(type)} 
+                        className={`flex-1 py-1.5 flex items-center justify-center gap-2 text-sm font-semibold transition-colors ${
+                          orderType === type 
+                            ? 'bg-blue-500 text-white' 
+                            : 'bg-white text-blue-500 hover:bg-blue-50 dark:bg-card dark:text-blue-500 dark:hover:bg-blue-500/10'
+                        } ${index < 2 ? 'border-r border-blue-500' : ''}`}
+                      >
                         {type === 'Dine In' ? <Store className="w-4 h-4" /> : type === 'Takeaway' ? <UtensilsCrossed className="w-4 h-4" /> : <Truck className="w-4 h-4" />}
+                        {type}
                       </button>
                     ))}
-                  </div>
                 </div>
               </div>
 

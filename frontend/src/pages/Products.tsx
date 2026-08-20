@@ -697,127 +697,111 @@ export default function Products() {
       {/* ==================================================
           PRODUCT VIEW MODE CONTAINER
           ================================================== */}
-      <div className="flex flex-col lg:flex-row gap-6 items-start h-[calc(100vh-280px)] pb-4">
-        {/* Left Side Category Bar */}
-        <div className="w-full lg:w-52 shrink-0 bg-card border border-border rounded-3xl p-4 shadow-sm flex flex-col gap-2 h-full overflow-y-auto custom-scrollbar">
-          <h3 className="text-xs font-black uppercase text-muted-foreground mb-2 px-2">Categories</h3>
-          <button
-            onClick={() => setSelectedCategory("All")}
-            className={`w-full flex items-center p-3 rounded-2xl transition-all duration-200 text-left ${selectedCategory === "All"
-              ? "bg-orange-500 text-white shadow-md shadow-orange-500/20"
-              : "bg-transparent text-muted-foreground hover:bg-secondary hover:text-foreground"
-              }`}
-          >
-            <span className="font-bold text-sm tracking-wide truncate">All Categories</span>
-          </button>
-
-          {categoriesList
-            .filter((c) => (c.menuContext as any) === mainTab || (mainTab === 'Drinks' && (c.name.toLowerCase().includes('drink') || c.name.toLowerCase().includes('beverage'))))
-            .map((cat) => {
-              const isActive = selectedCategory === cat.name;
-              return (
-                <button
-                  key={cat.id || cat.name}
-                  onClick={() => setSelectedCategory(cat.name)}
-                  title={cat.name}
-                  className={`w-full flex items-center p-3 rounded-2xl transition-all duration-200 text-left ${isActive
-                    ? "bg-orange-500 text-white shadow-md shadow-orange-500/20"
-                    : "bg-transparent text-muted-foreground hover:bg-secondary hover:text-foreground"
-                    }`}
-                >
-                  <span className="font-bold text-sm tracking-wide truncate">{cat.name}</span>
-                </button>
-              )
-            })}
-        </div>
-
+      <div className="flex flex-col gap-6 items-start h-[calc(100vh-280px)] pb-4">
+        
         <div className="flex-1 w-full min-w-0 h-full overflow-y-auto custom-scrollbar pr-2 pb-8">
           {viewMode === "grid" ? (
 
             // GRID VIEW LAYOUT
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-              {filteredAndSorted.map((product) => {
-                const hasVariants = product.variants && product.variants.length > 0
-                const varCount = product.variants?.length || 0
-                const isDeal = product.category?.toLowerCase().includes("deal")
+            <div className="flex flex-col gap-8">
+              {categoriesList
+                .filter((c) => selectedCategory === 'All' ? ((c.menuContext as any) === mainTab || (mainTab === 'Drinks' && (c.name.toLowerCase().includes('drink') || c.name.toLowerCase().includes('beverage')))) : c.name === selectedCategory)
+                .map(cat => {
+                  const catProducts = filteredAndSorted.filter(p => (p.category || categoriesList.find(c => c.id === p.category_id)?.name) === cat.name);
+                  if (catProducts.length === 0) return null;
 
-                return (
-                  <motion.div
-                    layout
-                    key={product.id}
-                    onClick={() => handleOpenView(product)}
-                    className="bg-card hover:bg-secondary/40 border border-border/60 hover:border-primary/50 rounded-2xl p-2.5 shadow-sm hover:shadow-xl hover:-translate-y-1 cursor-pointer transition-all duration-300 flex flex-col justify-between relative group overflow-hidden"
-                  >
-                    <div>
-                      {/* Thumbnail / Image Simulation */}
-                      <div className="w-full h-24 bg-secondary/30 rounded-xl overflow-hidden border border-border/50 flex items-center justify-center text-muted-foreground relative mb-2.5 shrink-0 group-hover:border-primary/30 transition-colors">
-                        {product.image ? (
-                          <img src={getImageUrl(product.image)} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                        ) : (
-                          <Package className="w-6 h-6 opacity-20 group-hover:scale-110 group-hover:opacity-40 transition-all duration-300" />
-                        )}
+                  return (
+                    <div key={cat.id || cat.name} className="flex flex-col gap-4">
+                      <h3 className="text-xl font-black text-foreground flex items-center gap-2">
+                        {cat.name}
+                      </h3>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                        {catProducts.map((product) => {
+                          const hasVariants = product.variants && product.variants.length > 0
+                          const varCount = product.variants?.length || 0
+                          const isDeal = product.category?.toLowerCase().includes("deal")
 
-                        {product.isPopular && (
-                          <span className="absolute top-2 right-2 text-[9px] bg-amber-500 text-white font-black px-2 py-0.5 rounded-full shadow-md shadow-amber-500/20 backdrop-blur-md">BEST SELLER</span>
-                        )}
-                        {isDeal && (
-                          <span className="absolute top-2 left-2 text-[9px] bg-primary/90 text-white font-black px-2 py-0.5 rounded-full shadow-md backdrop-blur-md flex items-center gap-1">
-                            <Sparkles className="w-2.5 h-2.5" /> DEAL
-                          </span>
-                        )}
-                      </div>
+                          return (
+                            <motion.div
+                              layout
+                              key={product.id}
+                              onClick={() => handleOpenView(product)}
+                              className="bg-card hover:bg-secondary/40 border border-border/60 hover:border-primary/50 rounded-2xl p-2.5 shadow-sm hover:shadow-xl hover:-translate-y-1 cursor-pointer transition-all duration-300 flex flex-col justify-between relative group overflow-hidden"
+                            >
+                              <div>
+                                {/* Thumbnail / Image Simulation */}
+                                <div className="w-full h-24 bg-secondary/30 rounded-xl overflow-hidden border border-border/50 flex items-center justify-center text-muted-foreground relative mb-2.5 shrink-0 group-hover:border-primary/30 transition-colors">
+                                  {product.image ? (
+                                    <img src={getImageUrl(product.image)} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                  ) : (
+                                    <Package className="w-6 h-6 opacity-20 group-hover:scale-110 group-hover:opacity-40 transition-all duration-300" />
+                                  )}
 
-                      <div className="flex items-center justify-between gap-1.5">
-                        <span className="text-[9px] font-black tracking-widest text-muted-foreground/80 uppercase truncate">#{product.code}</span>
-                        <span
-                          title={product.status === "Active" ? "Available" : "Not Available"}
-                          className={`w-2 h-2 rounded-full shrink-0 ${product.status === "Active" ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]'}`}
-                        />
-                      </div>
+                                  {product.isPopular && (
+                                    <span className="absolute top-2 right-2 text-[9px] bg-amber-500 text-white font-black px-2 py-0.5 rounded-full shadow-md shadow-amber-500/20 backdrop-blur-md">BEST SELLER</span>
+                                  )}
+                                  {isDeal && (
+                                    <span className="absolute top-2 left-2 text-[9px] bg-primary/90 text-white font-black px-2 py-0.5 rounded-full shadow-md backdrop-blur-md flex items-center gap-1">
+                                      <Sparkles className="w-2.5 h-2.5" /> DEAL
+                                    </span>
+                                  )}
+                                </div>
 
-                      <h4 className="text-[11px] font-black text-foreground mt-1 leading-snug group-hover:text-primary transition-colors line-clamp-2">{product.name}</h4>
+                                <div className="flex items-center justify-between gap-1.5">
+                                  <span className="text-[9px] font-black tracking-widest text-muted-foreground/80 uppercase truncate">#{product.code}</span>
+                                  <span
+                                    title={product.status === "Active" ? "Available" : "Not Available"}
+                                    className={`w-2 h-2 rounded-full shrink-0 ${product.status === "Active" ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]'}`}
+                                  />
+                                </div>
 
-                      <div className="flex flex-wrap gap-1 mt-1.5 items-center">
-                        <span className="text-[9px] text-muted-foreground font-semibold px-1.5 py-0.5 bg-secondary rounded">{product.category}</span>
+                                <h4 className="text-[11px] font-black text-foreground mt-1 leading-snug group-hover:text-primary transition-colors line-clamp-2">{product.name}</h4>
+
+                                <div className="flex flex-wrap gap-1 mt-1.5 items-center">
+                                  <span className="text-[9px] text-muted-foreground font-semibold px-1.5 py-0.5 bg-secondary rounded">{product.category}</span>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 pt-2 border-t border-border/40 flex flex-col gap-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-black text-primary">Rs. {product.price.toLocaleString()}</span>
+
+                                  {hasVariants && (
+                                    <span className="text-[8px] bg-sky-500/10 text-sky-500 border border-sky-500/20 px-1.5 py-0.5 rounded font-black flex items-center gap-0.5">
+                                      <Plus className="w-2.5 h-2.5" /> {varCount}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Grid Action Buttons */}
+                                <div className="flex justify-end items-center gap-1.5 pt-1.5 border-t border-border/30" onClick={e => e.stopPropagation()}>
+                                  <button
+                                    onClick={() => handleOpenView(product)}
+                                    className="p-1.5 bg-secondary text-foreground hover:bg-border border border-border rounded-lg transition-colors flex justify-center items-center shadow-sm"
+                                    title="View"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </button>
+                                  {canManageProducts && (
+                                    <button
+                                      onClick={() => handleDeleteProduct(product.id)}
+                                      className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20 rounded-lg transition-colors flex justify-center items-center shadow-sm"
+                                      title="Delete"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </motion.div>
+                          )
+                        })}
                       </div>
                     </div>
-
-                    <div className="mt-3 pt-2 border-t border-border/40 flex flex-col gap-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-black text-primary">Rs. {product.price.toLocaleString()}</span>
-
-                        {hasVariants && (
-                          <span className="text-[8px] bg-sky-500/10 text-sky-500 border border-sky-500/20 px-1.5 py-0.5 rounded font-black flex items-center gap-0.5">
-                            <Plus className="w-2.5 h-2.5" /> {varCount}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Grid Action Buttons */}
-                      <div className="flex justify-end items-center gap-1.5 pt-1.5 border-t border-border/30" onClick={e => e.stopPropagation()}>
-                        <button
-                          onClick={() => handleOpenView(product)}
-                          className="p-1.5 bg-secondary text-foreground hover:bg-border border border-border rounded-lg transition-colors flex justify-center items-center shadow-sm"
-                          title="View"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        {canManageProducts && (
-                          <button
-                            onClick={() => handleDeleteProduct(product.id)}
-                            className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20 rounded-lg transition-colors flex justify-center items-center shadow-sm"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </motion.div>
-                )
-              })}
+                  )
+                })}
               {filteredAndSorted.length === 0 && (
-                <div className="col-span-full py-16 text-center text-muted-foreground font-bold">
+                <div className="py-16 text-center text-muted-foreground font-bold">
                   No products found matching search filters.
                 </div>
               )}
@@ -826,84 +810,98 @@ export default function Products() {
           ) : (
 
             // TABLE VIEW LAYOUT
-            <div className="bg-card border border-border rounded-3xl shadow-sm overflow-hidden">
-              <table className="w-full text-xs text-left border-collapse">
-                <thead className="bg-secondary/30 text-muted-foreground text-[10px] uppercase font-bold border-b border-border">
-                  <tr>
-                    <th className="px-4 py-3">Image</th>
-                    <th className="px-4 py-3">Code</th>
-                    <th className="px-4 py-3">Product Name</th>
-                    <th className="px-4 py-3">Category</th>
-                    <th className="px-4 py-3">Kitchen</th>
-                    <th className="px-4 py-3">Price</th>
-                    <th className="px-4 py-3 text-center">Variants</th>
-                    <th className="px-4 py-3 text-center">Status</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {filteredAndSorted.map((product) => (
-                    <tr
-                      key={product.id}
-                      onClick={() => handleOpenView(product)}
-                      className="hover:bg-secondary/20 transition-colors cursor-pointer group"
-                    >
-                      <td className="px-4 py-2">
-                        <div className="w-8 h-8 rounded-lg bg-secondary/50 overflow-hidden border border-border flex items-center justify-center text-muted-foreground">
-                          {product.image ? (
-                            <img src={getImageUrl(product.image)} alt={product.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <Package className="w-4 h-4 opacity-30" />
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 font-bold text-muted-foreground text-[11px]">#{product.code}</td>
-                      <td className="px-4 py-2 font-black text-foreground text-xs">{product.name}</td>
-                      <td className="px-4 py-2 text-[10px] font-semibold text-muted-foreground">{product.category}</td>
-                      <td className="px-4 py-2 text-[10px] font-bold text-foreground">{product.kitchen}</td>
-                      <td className="px-4 py-2 font-black text-primary text-xs">Rs. {product.displayPrice !== undefined ? product.displayPrice : product.price}</td>
-                      <td className="px-4 py-2 text-center font-bold text-[11px] text-foreground">
-                        {product.variants?.length || 0}
-                      </td>
-                      <td className="px-4 py-2 text-center">
-                        <div className="flex justify-center items-center">
-                          <span
-                            title={product.status === "Active" ? "Available" : "Not Available"}
-                            className={`w-2.5 h-2.5 rounded-full ${product.status === "Active" ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'}`}
-                          />
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 text-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-end gap-1.5">
-                          <button
-                            onClick={() => handleOpenView(product)}
-                            className="p-1.5 bg-secondary text-foreground hover:bg-border border border-border rounded-lg transition-colors shadow-sm"
-                            title="View"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          {canManageProducts && (
-                            <button
-                              onClick={() => handleDeleteProduct(product.id)}
-                              className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20 rounded-lg transition-colors shadow-sm"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredAndSorted.length === 0 && (
-                    <tr>
-                      <td colSpan={9} className="py-12 text-center text-muted-foreground font-bold">
-                        No products matching search criteria.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+            <div className="flex flex-col gap-8">
+              {categoriesList
+                .filter((c) => selectedCategory === 'All' ? ((c.menuContext as any) === mainTab || (mainTab === 'Drinks' && (c.name.toLowerCase().includes('drink') || c.name.toLowerCase().includes('beverage')))) : c.name === selectedCategory)
+                .map(cat => {
+                  const catProducts = filteredAndSorted.filter(p => (p.category || categoriesList.find(c => c.id === p.category_id)?.name) === cat.name);
+                  if (catProducts.length === 0) return null;
+
+                  return (
+                    <div key={cat.id || cat.name} className="flex flex-col gap-4">
+                      <h3 className="text-xl font-black text-foreground flex items-center gap-2">
+                        {cat.name}
+                      </h3>
+                      <div className="bg-card border border-border rounded-3xl shadow-sm overflow-hidden">
+                        <table className="w-full text-xs text-left border-collapse">
+                          <thead className="bg-secondary/30 text-muted-foreground text-[10px] uppercase font-bold border-b border-border">
+                            <tr>
+                              <th className="px-4 py-3">Image</th>
+                              <th className="px-4 py-3">Code</th>
+                              <th className="px-4 py-3">Product Name</th>
+                              <th className="px-4 py-3">Category</th>
+                              <th className="px-4 py-3">Kitchen</th>
+                              <th className="px-4 py-3">Price</th>
+                              <th className="px-4 py-3 text-center">Variants</th>
+                              <th className="px-4 py-3 text-center">Status</th>
+                              <th className="px-4 py-3 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {catProducts.map((product) => (
+                              <tr
+                                key={product.id}
+                                onClick={() => handleOpenView(product)}
+                                className="hover:bg-secondary/20 transition-colors cursor-pointer group"
+                              >
+                                <td className="px-4 py-2">
+                                  <div className="w-8 h-8 rounded-lg bg-secondary/50 overflow-hidden border border-border flex items-center justify-center text-muted-foreground">
+                                    {product.image ? (
+                                      <img src={getImageUrl(product.image)} alt={product.name} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <Package className="w-4 h-4 opacity-30" />
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2 font-bold text-muted-foreground text-[11px]">#{product.code}</td>
+                                <td className="px-4 py-2 font-black text-foreground text-xs">{product.name}</td>
+                                <td className="px-4 py-2 text-[10px] font-semibold text-muted-foreground">{product.category}</td>
+                                <td className="px-4 py-2 text-[10px] font-bold text-foreground">{product.kitchen}</td>
+                                <td className="px-4 py-2 font-black text-primary text-xs">Rs. {product.displayPrice !== undefined ? product.displayPrice : product.price}</td>
+                                <td className="px-4 py-2 text-center font-bold text-[11px] text-foreground">
+                                  {product.variants?.length || 0}
+                                </td>
+                                <td className="px-4 py-2 text-center">
+                                  <div className="flex justify-center items-center">
+                                    <span
+                                      title={product.status === "Active" ? "Available" : "Not Available"}
+                                      className={`w-2.5 h-2.5 rounded-full ${product.status === "Active" ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'}`}
+                                    />
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2 text-right" onClick={e => e.stopPropagation()}>
+                                  <div className="flex justify-end gap-1.5">
+                                    <button
+                                      onClick={() => handleOpenView(product)}
+                                      className="p-1.5 bg-secondary text-foreground hover:bg-border border border-border rounded-lg transition-colors shadow-sm"
+                                      title="View"
+                                    >
+                                      <Eye className="w-3.5 h-3.5" />
+                                    </button>
+                                    {canManageProducts && (
+                                      <button
+                                        onClick={() => handleDeleteProduct(product.id)}
+                                        className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20 rounded-lg transition-colors shadow-sm"
+                                        title="Delete"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )
+                })}
+              {filteredAndSorted.length === 0 && (
+                <div className="py-16 text-center text-muted-foreground font-bold">
+                  No products found matching search filters.
+                </div>
+              )}
             </div>
 
           )}
