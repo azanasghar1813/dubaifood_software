@@ -288,7 +288,8 @@ export const usePosStore = create<POSState>((set, get) => ({
             name: item.variant_name ? `${item.product_name_snapshot || item.product_name || item.name} (${item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Unknown'), 
             price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, 
             cartItemId: item._cart_item_id || item.cartItemId || item.id, 
-            selectedModifiers: item.modifiers || item.selectedModifiers || [] 
+            selectedModifiers: item.modifiers || item.selectedModifiers || [],
+            combo_components: item.combo_components || item.comboComponents || []
           }))
         })
       }

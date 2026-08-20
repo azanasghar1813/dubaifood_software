@@ -92,11 +92,17 @@ class DealRepository {
     `);
 
     components.forEach(comp => {
+      const type = comp.component_type || 'FIXED_PRODUCT';
+      
+      if (type === 'FIXED_PRODUCT' && !comp.product_id) {
+        throw new Error(`Validation Error: A FIXED_PRODUCT component must have a valid product selected. (Deal ID: ${dealId})`);
+      }
+
       insertComponent.run({
         id: crypto.randomUUID(),
         deal_id: dealId,
         name: comp.name || null,
-        component_type: comp.component_type || 'FIXED_PRODUCT',
+        component_type: type,
         product_id: comp.product_id || null,
         quantity: comp.quantity || 1,
         target_category_id: comp.target_category_id || null,

@@ -1355,7 +1355,6 @@ export default function POS() {
                             <div className={`${gridDensity === 'large' ? 'h-32' : 'h-24'} w-full relative overflow-hidden shrink-0 ${!product.image ? getCategoryGradient(product.category || categories.find(c => c.id === product.category_id)?.name) : ''}`}>
                               {product.isDeal ? (
                                 <div className="w-full h-full flex flex-col items-center justify-center p-2 text-white/90 bg-black/10 mix-blend-overlay">
-                                  <span className="font-bold mb-1 border-b border-white/20 pb-1 text-[10px] w-full text-center uppercase tracking-wider">Includes</span>
                                   <div className="w-full text-[10px] overflow-hidden text-center space-y-0.5">
                                     {product.components?.slice(0, gridDensity === 'large' ? 5 : 4).map((c: any, i: number) => {
                                       const productName = c.name || products.find(p => p.id === c.product_id)?.name || categories.find(cat => cat.id === c.target_category_id)?.name || (c.allowed_product_ids ? 'Choice of Item' : 'Item');
