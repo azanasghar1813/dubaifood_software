@@ -61,6 +61,7 @@ export interface Order {
   deliveryCharge?: number
   discount: number
   isEdited?: boolean
+  isNegativeEdit?: boolean
   total: number
   businessDate?: string
   status: OrderStatus
@@ -179,6 +180,17 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     reason: entry.reason || ''
   }))
 
+  const isNegativeEdit = Boolean(row.is_edited) && (detail?.timeline || []).some((e: any) => {
+    if (e.event_type === 'ITEM_REMOVED') return true;
+    if (e.event_type === 'ITEM_QUANTITY_CHANGED') {
+      try {
+        const metadata = typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata;
+        if (metadata && metadata.old_qty > metadata.new_qty) return true;
+      } catch (err) {}
+    }
+    return false;
+  })
+
   return {
     id: row.id,
     orderNumber: row.order_number.replace('POS-', '').replace(new RegExp(`^\\d{8}-`), ''),
@@ -204,6 +216,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     timestamp: row.created_at ? (row.created_at.includes('Z') ? row.created_at : row.created_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
     lastEdited: row.updated_at ? (row.updated_at.includes('Z') ? row.updated_at : row.updated_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
     isEdited: Boolean(row.is_edited),
+    isNegativeEdit,
     editedBy: undefined,
     isLocked: false,
     lockedBy: undefined,

@@ -362,7 +362,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                         {order.paymentStatus}
                       </span>
                       {order.isEdited && (
-                        <span className="text-[9px] px-1.5 py-1 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20 uppercase font-bold flex items-center gap-0.5">
+                        <span className={`text-[9px] px-1.5 py-1 rounded border uppercase font-bold flex items-center gap-0.5 ${order.isNegativeEdit ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>
                           <Edit className="w-2.5 h-2.5" /> Edited
                         </span>
                       )}

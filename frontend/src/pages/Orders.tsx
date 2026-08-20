@@ -669,7 +669,7 @@ export default function Orders() {
                   <td className="p-4 font-black">
                     <div className="flex flex-col items-start gap-1">
                       <span>#{order.orderNumber}</span>
-                      {order.isEdited && <span className="text-[8px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded uppercase border border-amber-500/20 font-bold tracking-widest leading-none">Edited</span>}
+                      {order.isEdited && <span className={`text-[8px] px-1.5 py-0.5 rounded uppercase border font-bold tracking-widest leading-none ${order.isNegativeEdit ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>Edited</span>}
                     </div>
                   </td>
                   <td className="p-4 text-xs font-medium text-muted-foreground">
@@ -802,7 +802,7 @@ export default function Orders() {
                   <div className="flex items-center gap-3 mb-1">
                     <h2 className="text-2xl font-black flex items-center gap-2">
                       Order #{selectedOrder.orderNumber}
-                      {selectedOrder.isEdited && <span className="text-[10px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded uppercase border border-amber-500/20 font-bold tracking-widest leading-none">Edited</span>}
+                      {selectedOrder.isEdited && <span className={`text-[10px] px-2 py-0.5 rounded uppercase border font-bold tracking-widest leading-none ${selectedOrder.isNegativeEdit ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>Edited</span>}
                     </h2>
                     <span className={`text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest border ${orderStatusColors[selectedOrder.status]}`}>{selectedOrder.status}</span>
                   </div>
