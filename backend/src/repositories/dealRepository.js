@@ -98,6 +98,10 @@ class DealRepository {
         throw new Error(`Validation Error: A FIXED_PRODUCT component must have a valid product selected. (Deal ID: ${dealId})`);
       }
 
+      if (type === 'CATEGORY_CHOICE' && !comp.target_category_id && !comp.allowed_product_ids) {
+        throw new Error(`Validation Error: A CATEGORY_CHOICE component must have either a target category or allowed products. (Deal ID: ${dealId})`);
+      }
+
       insertComponent.run({
         id: crypto.randomUUID(),
         deal_id: dealId,

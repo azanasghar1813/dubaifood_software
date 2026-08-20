@@ -26,6 +26,28 @@ export default {
         SELECT RAISE(ABORT, 'FIXED_PRODUCT components must have a product_id');
       END;
     `);
+
+    // Add BEFORE INSERT trigger for CATEGORY_CHOICE
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS prevent_invalid_category_choice_insert
+      BEFORE INSERT ON deal_components
+      FOR EACH ROW
+      WHEN NEW.component_type = 'CATEGORY_CHOICE' AND NEW.target_category_id IS NULL AND NEW.allowed_product_ids IS NULL
+      BEGIN
+        SELECT RAISE(ABORT, 'CATEGORY_CHOICE components must have either target_category_id or allowed_product_ids');
+      END;
+    `);
+
+    // Add BEFORE UPDATE trigger for CATEGORY_CHOICE
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS prevent_invalid_category_choice_update
+      BEFORE UPDATE ON deal_components
+      FOR EACH ROW
+      WHEN NEW.component_type = 'CATEGORY_CHOICE' AND NEW.target_category_id IS NULL AND NEW.allowed_product_ids IS NULL
+      BEGIN
+        SELECT RAISE(ABORT, 'CATEGORY_CHOICE components must have either target_category_id or allowed_product_ids');
+      END;
+    `);
   },
 
   down: (db) => {
