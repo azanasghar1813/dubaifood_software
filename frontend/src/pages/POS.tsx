@@ -1301,19 +1301,30 @@ export default function POS() {
               </AnimatePresence>
             </form>
 
-            <div className="flex items-center gap-1 bg-card p-1 rounded-xl border border-border">
-              {([['Fast Food', 'F1'], ['Restaurant', 'F2'], ['Deals', 'F3']] as const).map(([context, fkey]) => (
-                <button
-                  key={context}
-                  onClick={() => { setMenuContext(context as any); setActiveCategory("All"); setIsCartMode(false); }}
-                  className={`px-3 py-2 text-xs font-bold rounded-lg transition-colors duration-200 flex items-center gap-1.5 ${menuContext === context ? 'bg-orange-500 shadow-sm text-white dark:bg-primary/16 dark:text-[#F0A868]' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                >
-                  {context}
-                  <span className={`text-[9px] font-black px-1 py-0.5 rounded ${menuContext === context ? 'bg-white/20 text-white' : 'bg-secondary text-muted-foreground'
-                    }`}>{fkey}</span>
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setRecentOrdersModalOpen(true)}
+                className="flex items-center gap-2 bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-500/20 dark:text-orange-400 px-3 py-2 rounded-xl text-xs font-bold border border-orange-200 dark:border-orange-500/30 transition-colors shadow-sm"
+              >
+                <Receipt className="w-4 h-4" />
+                Active Orders
+              </button>
+
+              <div className="flex items-center gap-1 bg-card p-1 rounded-xl border border-border">
+                {([['Fast Food', 'F1'], ['Restaurant', 'F2'], ['Deals', 'F3']] as const).map(([context, fkey]) => (
+                  <button
+                    key={context}
+                    onClick={() => { setMenuContext(context as any); setActiveCategory("All"); setIsCartMode(false); }}
+                    className={`px-3 py-2 text-xs font-bold rounded-lg transition-colors duration-200 flex items-center gap-1.5 ${menuContext === context ? 'bg-orange-500 shadow-sm text-white dark:bg-primary/16 dark:text-[#F0A868]' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                  >
+                    {context}
+                    <span className={`text-[9px] font-black px-1 py-0.5 rounded ${menuContext === context ? 'bg-white/20 text-white' : 'bg-secondary text-muted-foreground'
+                      }`}>{fkey}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
