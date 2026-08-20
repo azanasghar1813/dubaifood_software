@@ -8,8 +8,7 @@
   "scripts": {
     "start": "electron .",
     "build:frontend": "npm run build --prefix frontend",
-    "build:exe": "npm run build:frontend && electron-builder",
-    "postinstall": "electron-builder install-app-deps"
+    "build:exe": "npm run build:frontend && electron-builder"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

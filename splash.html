@@ -22,6 +22,32 @@
             -webkit-app-region: drag; /* Allows moving the window if needed */
         }
 
+        .close-btn-top {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: transparent;
+            border: none;
+            color: #64748b;
+            font-size: 28px;
+            cursor: pointer;
+            z-index: 100;
+            line-height: 1;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: background-color 0.2s, color 0.2s;
+            -webkit-app-region: no-drag;
+        }
+
+        .close-btn-top:hover {
+            background-color: #f1f5f9;
+            color: #ef4444;
+        }
+
         .container {
             display: flex;
             flex-direction: column;
@@ -156,43 +182,10 @@
             white-space: pre-wrap;
             word-break: break-all;
         }
-
-        .action-buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-            margin-bottom: 20px;
-        }
-
-        .btn {
-            background-color: #ff7b00;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 13px;
-            transition: opacity 0.2s;
-        }
-
-        .btn:hover {
-            opacity: 0.9;
-        }
-
-        .btn-outline {
-            background-color: transparent;
-            color: #64748b;
-            border: 1px solid #cbd5e1;
-        }
-
-        .btn-outline:hover {
-            background-color: #f8fafc;
-            color: #334155;
-        }
     </style>
 </head>
 <body>
+    <button class="close-btn-top" id="btnCloseTop" title="Close">&times;</button>
     <div class="container">
         <div class="logo-container">
             <div class="logo-pulse"></div>
@@ -208,21 +201,12 @@
         </div>
         
         <div id="errorDetails" class="error-details" style="display: none;"></div>
-
-        <div id="actionButtons" class="action-buttons" style="display: none;">
-            <button class="btn" id="btnTryAgain">Try Again</button>
-            <button class="btn btn-outline" id="btnClose">Close</button>
-        </div>
     </div>
 
     <script>
         const { ipcRenderer } = require('electron');
         
-        document.getElementById('btnTryAgain').addEventListener('click', () => {
-            ipcRenderer.send('retry-startup');
-        });
-        
-        document.getElementById('btnClose').addEventListener('click', () => {
+        document.getElementById('btnCloseTop').addEventListener('click', () => {
             ipcRenderer.send('app-quit');
         });
         // main.js will use executeJavaScript to update this
@@ -230,7 +214,6 @@
             const statusEl = document.getElementById('status');
             const containerEl = document.getElementById('statusContainer');
             const errorDetailsEl = document.getElementById('errorDetails');
-            const actionButtonsEl = document.getElementById('actionButtons');
             
             statusEl.textContent = message;
             
@@ -240,11 +223,9 @@
                     errorDetailsEl.textContent = errorLog;
                     errorDetailsEl.style.display = 'block';
                 }
-                actionButtonsEl.style.display = 'flex';
             } else {
                 containerEl.classList.remove('error-state');
                 errorDetailsEl.style.display = 'none';
-                actionButtonsEl.style.display = 'none';
             }
         };
     </script>
