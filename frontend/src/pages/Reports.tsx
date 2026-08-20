@@ -19,7 +19,7 @@ export const mapCategory = (cat: string | null | undefined) => {
   if (lower.includes("chicken") || lower.includes("bbq") || lower.includes("karahi") || lower.includes("restaurant")) return "Restaurant"
   if (lower.includes("deal") || lower.includes("combo")) return "Deals"
   if (lower.includes("drink") || lower.includes("beverage") || lower.includes("shake") || lower.includes("water") || lower.includes("juice") || lower.includes("tea") || lower.includes("coffee") || lower.includes("cold") || lower.includes("limka")) return "Drinks"
-  if (lower.includes("chip") || lower.includes("potato")) return "Potato Chips"
+  if (lower.includes("chip") || lower.includes("potato") || lower.includes("fries")) return "Fries Corner"
   return "Other"
 }
 
@@ -288,8 +288,9 @@ export default function Reports() {
               ['Restaurant Sales', `Rs. ${formatCurrency(reportStats.restaurantSales || 0)}`],
               ['Fast Food Sales', `Rs. ${formatCurrency(reportStats.fastFoodSales || 0)}`],
               ['Deals Sales', `Rs. ${formatCurrency(reportStats.dealsSales || 0)}`],
+              ['Drink Corner', `Rs. ${formatCurrency(reportStats.specialDrinksSales || 0)}`],
               ['Drinks Sales', `Rs. ${formatCurrency(reportStats.drinksSales || 0)}`],
-              ['Potato Chips Sales', `Rs. ${formatCurrency(reportStats.chipsSales || 0)}`]
+              ['Fries Corner', `Rs. ${formatCurrency(reportStats.chipsSales || 0)}`]
             ],
             theme: 'grid',
           })
@@ -365,6 +366,8 @@ export default function Reports() {
           <tr><td>Card/Digital Sales</td><td>Rs. ${formatCurrency(reportStats.cardSales || 0)}</td></tr>
           <tr><td>Restaurant Sales</td><td>Rs. ${formatCurrency(reportStats.restaurantSales || 0)}</td></tr>
           <tr><td>Fast Food Sales</td><td>Rs. ${formatCurrency(reportStats.fastFoodSales || 0)}</td></tr>
+          <tr><td>Drink Corner</td><td>Rs. ${formatCurrency(reportStats.specialDrinksSales || 0)}</td></tr>
+          <tr><td>Fries Corner</td><td>Rs. ${formatCurrency(reportStats.chipsSales || 0)}</td></tr>
         </table>
         <h2>Order Details</h2>
         <table>
@@ -402,7 +405,7 @@ export default function Reports() {
         totalOrdersCount: 0, grossSales: 0, netSales: 0, totalTax: 0, totalService: 0,
         totalDiscount: 0, totalDelivery: 0, paidCount: 0, unpaidCount: 0, refundsCount: 0, cashSales: 0,
         cardSales: 0, digitalSales: 0, avgBill: 0, netEstimatedProfit: 0,
-        restaurantSales: 0, fastFoodSales: 0, dealsSales: 0, totalCatSales: 0
+        restaurantSales: 0, fastFoodSales: 0, dealsSales: 0, totalCatSales: 0, specialDrinksSales: 0
       }
     }
 
@@ -411,6 +414,7 @@ export default function Reports() {
     let dealsSales = 0
     let drinksSales = 0
     let chipsSales = 0
+    let specialDrinksSales = 0
 
     detailedSales.forEach(row => {
       const cat = ((row.main_category || '') + " " + (row.sub_category || '')).toLowerCase()
@@ -418,13 +422,16 @@ export default function Reports() {
       // Only count actual items or parent deals for the Sales Split revenue cards.
       // Components (is_component === 1) have their revenue already included in the parent deal.
       if (row.is_component !== 1) {
+        const simpleSale = row.gross - row.discount;
+
         if (cat.includes("deal") || cat.includes("combo")) {
-          dealsSales += row.net
+          dealsSales += simpleSale
         }
-        else if (cat.includes("chip") || cat.includes("potato")) chipsSales += row.net
-        else if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) fastFoodSales += row.net
-        else if (cat.includes("drink") || cat.includes("beverage") || cat.includes("shake") || cat.includes("water") || cat.includes("juice") || cat.includes("tea") || cat.includes("coffee") || cat.includes("cold") || cat.includes("limka")) drinksSales += row.net
-        else restaurantSales += row.net
+        else if (cat.includes("chip") || cat.includes("potato") || cat.includes("fries")) chipsSales += simpleSale
+        else if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) fastFoodSales += simpleSale
+        else if (cat.includes("special drink") || cat.includes("special drinks") || cat.includes("drink corner")) specialDrinksSales += simpleSale
+        else if (cat.includes("hot") || cat.includes("cold")) drinksSales += simpleSale
+        else restaurantSales += simpleSale
       }
     })
 
@@ -463,7 +470,8 @@ export default function Reports() {
       dealsSales, 
       drinksSales,
       chipsSales,
-      totalCatSales: restaurantSales + fastFoodSales + dealsSales + drinksSales + chipsSales
+      specialDrinksSales,
+      totalCatSales: restaurantSales + fastFoodSales + dealsSales + drinksSales + chipsSales + specialDrinksSales
     }
   }, [reportSummary, detailedSales])
 
@@ -1026,9 +1034,18 @@ export default function Reports() {
                           {(reportStats.totalCatSales || 0) > 0 ? Math.round(((reportStats.drinksSales || 0) / (reportStats.totalCatSales || 1)) * 100) : 0}%
                         </span>
                       </div>
+                      <div className="p-3 bg-cyan-500/10 border border-cyan-500/25 rounded-2xl flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] text-cyan-500 font-bold uppercase">Drink Corner</span>
+                          <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.specialDrinksSales || 0)}</p>
+                        </div>
+                        <span className="text-sm font-bold text-cyan-500 bg-cyan-500/20 px-3 py-1.5 rounded-lg">
+                          {(reportStats.totalCatSales || 0) > 0 ? Math.round(((reportStats.specialDrinksSales || 0) / (reportStats.totalCatSales || 1)) * 100) : 0}%
+                        </span>
+                      </div>
                       <div className="p-3 bg-yellow-500/10 border border-yellow-500/25 rounded-2xl flex justify-between items-center">
                         <div>
-                          <span className="text-[10px] text-yellow-500 font-bold uppercase">Potato Chips</span>
+                          <span className="text-[10px] text-yellow-500 font-bold uppercase">Fries Corner</span>
                           <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.chipsSales || 0)}</p>
                         </div>
                         <span className="text-sm font-bold text-yellow-500 bg-yellow-500/20 px-3 py-1.5 rounded-lg">
