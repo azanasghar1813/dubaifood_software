@@ -57,6 +57,9 @@ export interface HistoryOrderRow {
   waiter_id?:            string | null;
   waiter_name?:          string | null;
   waiter_name_snapshot?: string | null;
+  rider_id?:             string | null;
+  rider_name?:           string | null;
+  rider_name_snapshot?:  string | null;
   order_type:            string;
   lifecycle_state:       string;
   kitchen_state:         string;

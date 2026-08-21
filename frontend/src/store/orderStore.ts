@@ -48,6 +48,8 @@ export interface Order {
   orderNumber: string
   waiterId?: string
   waiterName?: string
+  riderId?: string
+  riderName?: string
   cashierName: string
   customerName: string
   customerPhone?: string
@@ -198,6 +200,8 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     orderNumber: row.order_number.replace('POS-', '').replace(new RegExp(`^\\d{8}-`), ''),
     waiterId: row.waiter_id || undefined,
     waiterName: row.waiter_name_snapshot || row.waiter_name || undefined,
+    riderId: row.rider_id || undefined,
+    riderName: row.rider_name_snapshot || row.rider_name || undefined,
     cashierName: formatName(row.cashier_user_id),
     customerName: row.customer_name || detail?.metadata?.customer_name || row.customer_id || 'Guest',
     customerPhone: row.customer_phone || detail?.metadata?.customer_phone || undefined,

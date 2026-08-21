@@ -65,6 +65,8 @@ interface POSState {
   tableNumber: string | null
   waiterId: string | null
   waiterName: string | null
+  riderId: string | null
+  riderName: string | null
   guestCount: number
   isTaxEnabled: boolean
   orderType: string
@@ -102,6 +104,8 @@ interface POSState {
   setTableNumber: (table: string | null) => void
   setWaiterId: (waiter: string | null, waiterName?: string | null) => void
   setWaiterName: (name: string | null) => void
+  setRiderId: (rider: string | null, riderName?: string | null) => void
+  setRiderName: (name: string | null) => void
   setGuestCount: (count: number) => void
   setDeliveryCharges: (amount: number) => void
   toggleTax: () => void
@@ -125,6 +129,8 @@ export const usePosStore = create<POSState>((set, get) => ({
   tableNumber: null,
   waiterId: null,
   waiterName: null,
+  riderId: null,
+  riderName: null,
   guestCount: 1,
   isTaxEnabled: true,
   orderType: 'Dine In',
@@ -226,6 +232,7 @@ export const usePosStore = create<POSState>((set, get) => ({
       orderType: order?.orderType || order?.order_type || (backendOrder?.order_type === 'DINE_IN' ? 'Dine In' : backendOrder?.order_type === 'TAKEAWAY' ? 'Takeaway' : backendOrder?.order_type === 'DELIVERY' ? 'Delivery' : get().orderType),
       tableNumber: order?.tableNumber || order?.table_id || backendOrder?.table_id || null,
       waiterId: order?.waiterId || order?.waiter_id || backendOrder?.waiter_id || null,
+      riderId: order?.riderId || order?.rider_id || backendOrder?.rider_id || null,
       customer: order?.customerName ? { name: order.customerName, phone: order.customerPhone || order.customer_phone } : get().customer,
       deliveryCharges: Number(order.deliveryCharges || order.delivery_charges || order.metadata?.delivery_charges || backendOrder?.delivery_fee || 0)
     })
@@ -447,6 +454,7 @@ export const usePosStore = create<POSState>((set, get) => ({
           is_vip: !!state.customer?.is_vip || !!state.customer?.isVip,
           table_id: state.tableNumber || order.table_id || null,
           waiter_id: state.waiterId || order.waiter_id || null,
+          rider_id: state.riderId || order.rider_id || null,
           notes: order.notes || null,
           branch_id: order.branch_id || 'DEFAULT_BRANCH',
           business_date: order.business_date,
@@ -476,7 +484,7 @@ export const usePosStore = create<POSState>((set, get) => ({
         })
       }
       // Draft order is now completed. Fetch a new draft order and sync history.
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null })
       await get().fetchDraftOrder()
       // Immediately sync order history for instant status updates
       useOrderStore.getState().syncOrdersFromBackend()
@@ -491,10 +499,10 @@ export const usePosStore = create<POSState>((set, get) => ({
 
   clearCart: () => {
     void cartService.clearCart().then(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, deliveryCharges: 0 })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0 })
       void get().fetchDraftOrder()
     }).catch(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, deliveryCharges: 0 })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0 })
       void get().fetchDraftOrder()
     })
   },
@@ -628,6 +636,27 @@ export const usePosStore = create<POSState>((set, get) => ({
     }
   },
   setWaiterName: (name) => set({ waiterName: name }),
+  setRiderId: async (rider, newRiderName) => {
+    const nameToUse = newRiderName !== undefined ? newRiderName : get().riderName;
+    set({ riderId: rider, riderName: nameToUse })
+    try {
+      const state = get();
+      if (state.editingOrderId && state.activeOrder && state.activeOrder.order_number) {
+        const res = await apiClient.put(`/orders/${state.editingOrderId}/meta`, { rider_id: rider, rider_name_snapshot: nameToUse });
+        if ((res as any).success) {
+          set({ activeOrder: (res as any).data });
+        }
+      } else {
+        const res = await cartService.setMeta({ rider_id: rider, rider_name_snapshot: nameToUse });
+        if ((res as any).success) {
+          set({ activeOrder: (res as any).data });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to sync rider ID:', e);
+    }
+  },
+  setRiderName: (name) => set({ riderName: name }),
   setGuestCount: (count) => set({ guestCount: count }),
   setDeliveryCharges: async (deliveryCharges) => {
     set({ deliveryCharges })

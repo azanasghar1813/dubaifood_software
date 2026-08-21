@@ -45,6 +45,8 @@ class HistoryRepository {
         IFNULL(dt.table_number, o.table_id) as table_id,
         o.waiter_id,
         COALESCE(o.waiter_name_snapshot, w.username) AS waiter_name,
+        o.rider_id,
+        COALESCE(o.rider_name_snapshot, r.username) AS rider_name,
         o.order_type,
         o.lifecycle_state,
         o.kitchen_state,
@@ -85,6 +87,7 @@ class HistoryRepository {
       LEFT JOIN dining_tables dt ON dt.id = o.table_id
       LEFT JOIN users u ON u.id = o.cashier_user_id
       LEFT JOIN users w ON w.id = o.waiter_id
+      LEFT JOIN users r ON r.id = o.rider_id
       ${whereSql}
       ORDER BY ${orderBySql}
       LIMIT ? OFFSET ?
@@ -122,6 +125,7 @@ class HistoryRepository {
       LEFT JOIN dining_tables dt ON dt.id = o.table_id
       LEFT JOIN users u ON u.id = o.cashier_user_id
       LEFT JOIN users w ON w.id = o.waiter_id
+      LEFT JOIN users r ON r.id = o.rider_id
       WHERE o.id = ?
     `).get(orderId);
     if (!order) return null;
@@ -236,10 +240,11 @@ class HistoryRepository {
     const order = dbEngine.prepare(`
       SELECT o.id, o.order_number, o.business_date, o.order_type, o.lifecycle_state,
              o.payment_state, o.kitchen_state, o.grand_total, COALESCE(u.username, o.cashier_user_id) AS cashier_user_id,
-             o.customer_id, o.table_id, o.waiter_id, COALESCE(o.waiter_name_snapshot, w.username) AS waiter_name, o.created_at, o.updated_at, o.sync_status
+             o.customer_id, o.table_id, o.waiter_id, COALESCE(o.waiter_name_snapshot, w.username) AS waiter_name, o.rider_id, COALESCE(o.rider_name_snapshot, r.username) AS rider_name, o.created_at, o.updated_at, o.sync_status
       FROM orders o 
       LEFT JOIN users u ON u.id = o.cashier_user_id 
       LEFT JOIN users w ON w.id = o.waiter_id
+      LEFT JOIN users r ON r.id = o.rider_id
       WHERE o.id = ?
     `).get(orderId);
 

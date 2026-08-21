@@ -331,15 +331,15 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                           </span>
                           <span className="flex items-center gap-1 text-blue-400 font-medium">
                             {order.orderType === 'Delivery' ? (
-                              <>
-                                <Phone className="w-3.5 h-3.5" />
-                                {order.customerPhone || 'N/A'}
-                              </>
+                              <span className="flex items-center gap-2">
+                                <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {order.customerPhone || 'N/A'}</span>
+                                {order.riderName && <span className="flex items-center gap-1 opacity-80 border-l pl-2 border-border/50"><User className="w-3.5 h-3.5" /> {order.riderName}</span>}
+                              </span>
                             ) : (
-                              <>
-                                <Hash className="w-3.5 h-3.5" />
-                                Table {order.tableNumber || 'N/A'}
-                              </>
+                              <span className="flex items-center gap-2">
+                                <span className="flex items-center gap-1"><Hash className="w-3.5 h-3.5" /> Table {order.tableNumber || 'N/A'}</span>
+                                {order.waiterName && <span className="flex items-center gap-1 opacity-80 border-l pl-2 border-border/50"><User className="w-3.5 h-3.5" /> {order.waiterName}</span>}
+                              </span>
                             )}
                           </span>
                         </div>

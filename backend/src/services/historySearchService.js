@@ -140,10 +140,12 @@ class HistorySearchService {
                o.lifecycle_state, o.payment_state, o.kitchen_state,
                o.grand_total, o.cashier_user_id, o.customer_id, IFNULL(dt.table_number, o.table_id) as table_id,
                o.waiter_id, COALESCE(o.waiter_name_snapshot, w.username) AS waiter_name,
+               o.rider_id, COALESCE(o.rider_name_snapshot, r.username) AS rider_name,
                o.created_at, o.updated_at, o.sync_status, o.notes
         FROM orders o
         LEFT JOIN dining_tables dt ON dt.id = o.table_id
         LEFT JOIN users w ON w.id = o.waiter_id
+        LEFT JOIN users r ON r.id = o.rider_id
         ${where}
         ORDER BY o.created_at DESC
         LIMIT ? OFFSET ?
@@ -189,10 +191,12 @@ class HistorySearchService {
              o.lifecycle_state, o.payment_state, o.kitchen_state,
              o.grand_total, o.cashier_user_id, o.customer_id, IFNULL(dt.table_number, o.table_id) as table_id,
              o.waiter_id, COALESCE(o.waiter_name_snapshot, w.username) AS waiter_name,
+             o.rider_id, COALESCE(o.rider_name_snapshot, r.username) AS rider_name,
              o.created_at, o.updated_at, o.sync_status, o.notes
       FROM orders o
       LEFT JOIN dining_tables dt ON dt.id = o.table_id
       LEFT JOIN users w ON w.id = o.waiter_id
+      LEFT JOIN users r ON r.id = o.rider_id
       ${where}
       ORDER BY o.created_at DESC
       LIMIT ? OFFSET ?

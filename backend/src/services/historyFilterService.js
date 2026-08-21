@@ -85,6 +85,10 @@ class HistoryFilterService {
       conditions.push('o.waiter_id = ?');
       params.push(filters.waiter_id);
     }
+    if (filters.rider_id) {
+      conditions.push('o.rider_id = ?');
+      params.push(filters.rider_id);
+    }
 
     if (filters.branch_id) {
       conditions.push('o.branch_id = ?');

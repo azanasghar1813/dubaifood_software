@@ -16,6 +16,8 @@ export const transactionsSchema = `
     delivery_state TEXT DEFAULT NULL,
     waiter_id TEXT,
     waiter_name_snapshot TEXT,
+    rider_id TEXT,
+    rider_name_snapshot TEXT,
     subtotal REAL NOT NULL DEFAULT 0,
     tax_total REAL NOT NULL DEFAULT 0,
     discount_total REAL NOT NULL DEFAULT 0,
@@ -39,7 +41,8 @@ export const transactionsSchema = `
     FOREIGN KEY (table_id) REFERENCES dining_tables(id) ON DELETE SET NULL,
     FOREIGN KEY (shift_id) REFERENCES cashier_sessions(id) ON DELETE RESTRICT,
     FOREIGN KEY (cashier_user_id) REFERENCES users(id) ON DELETE RESTRICT,
-    FOREIGN KEY (waiter_id) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (waiter_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (rider_id) REFERENCES users(id) ON DELETE SET NULL
   );
 
   -- Order Items Snapshot Table
@@ -201,8 +204,10 @@ export const transactionsSchema = `
   CREATE INDEX IF NOT EXISTS idx_orders_branch ON orders(branch_id);
   CREATE INDEX IF NOT EXISTS idx_orders_sync ON orders(sync_status);
   CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
-  CREATE INDEX IF NOT EXISTS idx_orders_table ON orders(table_id);
+  CREATE INDEX IF NOT EXISTS idx_orders_history_completed_at
+        ON orders(completed_at DESC) WHERE completed_at IS NOT NULL;
   CREATE INDEX IF NOT EXISTS idx_orders_waiter ON orders(waiter_id);
+  CREATE INDEX IF NOT EXISTS idx_orders_rider ON orders(rider_id);
   CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
   CREATE INDEX IF NOT EXISTS idx_item_variants_item ON order_item_variants(order_item_id);
   CREATE INDEX IF NOT EXISTS idx_item_modifiers_item ON order_item_modifiers(order_item_id);

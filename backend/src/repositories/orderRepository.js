@@ -5,13 +5,13 @@ class OrderRepository {
     dbEngine.prepare(`
       INSERT INTO orders (
         id, order_number, business_date, branch_id, cashier_user_id, shift_id,
-        customer_id, table_id, waiter_id, waiter_name_snapshot, order_type, lifecycle_state, kitchen_state, payment_state, delivery_state,
+        customer_id, table_id, waiter_id, waiter_name_snapshot, rider_id, rider_name_snapshot, order_type, lifecycle_state, kitchen_state, payment_state, delivery_state,
         subtotal, tax_total, discount_total, tip_total, delivery_fee, service_charge, grand_total,
         paid_total, due_total, hold_name, held_at, notes, sync_status, sync_version,
         created_at, updated_at
       ) VALUES (
         @id, @order_number, @business_date, @branch_id, @cashier_user_id, @shift_id,
-        @customer_id, @table_id, @waiter_id, @waiter_name_snapshot, @order_type, @lifecycle_state, @kitchen_state, @payment_state, @delivery_state,
+        @customer_id, @table_id, @waiter_id, @waiter_name_snapshot, @rider_id, @rider_name_snapshot, @order_type, @lifecycle_state, @kitchen_state, @payment_state, @delivery_state,
         @subtotal, @tax_total, @discount_total, @tip_total, @delivery_fee, @service_charge, @grand_total,
         @paid_total, @due_total, @hold_name, @held_at, @notes, @sync_status, @sync_version,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
@@ -27,6 +27,8 @@ class OrderRepository {
       table_id: orderData.table_id || null,
       waiter_id: orderData.waiter_id || null,
       waiter_name_snapshot: orderData.waiter_name_snapshot || null,
+      rider_id: orderData.rider_id || null,
+      rider_name_snapshot: orderData.rider_name_snapshot || null,
       order_type: orderData.order_type || 'DINE_IN',
       lifecycle_state: orderData.lifecycle_state || 'DRAFT',
       kitchen_state: orderData.kitchen_state || 'PENDING',

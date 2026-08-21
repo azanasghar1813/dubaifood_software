@@ -37,6 +37,8 @@ class CartService {
       table_id: options.table_id || null,
       waiter_id: options.waiter_id || null,
       waiter_name_snapshot: options.waiter_name_snapshot || null,
+      rider_id: options.rider_id || null,
+      rider_name_snapshot: options.rider_name_snapshot || null,
       notes: options.notes || null,
       kitchen_notes: options.kitchen_notes || null,
       items: [],
@@ -358,7 +360,7 @@ class CartService {
   /**
    * Updates cart metadata (order type, customer, table).
    */
-  setCartMeta(sessionId, { order_type, customer_id, table_id, waiter_id, waiter_name_snapshot } = {}) {
+  setCartMeta(sessionId, { order_type, customer_id, table_id, waiter_id, waiter_name_snapshot, rider_id, rider_name_snapshot } = {}) {
     const cart = this.getCart(sessionId);
     if (!cart) throw new Error('No active cart found for this session.');
 
@@ -367,6 +369,8 @@ class CartService {
     if (table_id !== undefined) cart.table_id = table_id;
     if (waiter_id !== undefined) cart.waiter_id = waiter_id;
     if (waiter_name_snapshot !== undefined) cart.waiter_name_snapshot = waiter_name_snapshot;
+    if (rider_id !== undefined) cart.rider_id = rider_id;
+    if (rider_name_snapshot !== undefined) cart.rider_name_snapshot = rider_name_snapshot;
 
     cart.updated_at = new Date().toISOString();
     this._persist(cart);

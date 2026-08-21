@@ -20,6 +20,7 @@ import { menuService } from "../services/menuService"
 import { CustomerPanelModal } from "../components/CustomerPanelModal"
 import { TableSelectorModal } from "../components/TableSelectorModal"
 import { WaiterSelectorModal } from "../components/WaiterSelectorModal"
+import { RiderSelectorModal } from "../components/RiderSelectorModal"
 import { ActiveOrdersSidebar } from "../components/ActiveOrdersSidebar"
 import { DealConfigurationModal } from "../components/DealConfigurationModal"
 import type { PaymentMethod } from "../store/orderStore"
@@ -119,6 +120,7 @@ export default function POS() {
   const [customerModalOpen, setCustomerModalOpen] = useState(false)
   const [tableModalOpen, setTableModalOpen] = useState(false)
   const [waiterModalOpen, setWaiterModalOpen] = useState(false)
+  const [riderModalOpen, setRiderModalOpen] = useState(false)
   const [recentOrdersModalOpen, setRecentOrdersModalOpen] = useState(false)
 
   // Payment Selection
@@ -146,6 +148,7 @@ export default function POS() {
     updateItemModifiers, updateItemNotes, orderType, setOrderType,
     setCustomer, gridDensity, tableNumber, setTableNumber, customer,
     waiterId, setWaiterId, waiterName, setWaiterName,
+    riderId, setRiderId, riderName, setRiderName,
     isTaxEnabled, toggleTax, menuContext, setMenuContext,
     editingOrderId, clearEditMode, completeOrder,
     deliveryCharges, setDeliveryCharges,
@@ -1531,7 +1534,7 @@ export default function POS() {
               {/* Customer & Table & Waiter Management */}
               <div className="p-2 border-b border-border bg-card grid grid-cols-3 gap-2">
                 <div className="relative">
-                  <button onClick={() => setCustomerModalOpen(true)} className="flex items-center gap-2 p-2 rounded-xl border-2 border-orange-500/20 bg-secondary/80 hover:bg-secondary hover:border-orange-500/60 shadow-sm transition-all text-left w-full h-full">
+                  <button onClick={() => setCustomerModalOpen(true)} className="flex items-center gap-2 p-2 rounded-xl border-2 border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 hover:border-orange-500/80 shadow-md transition-all text-left w-full h-full">
                     <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
                       {(customer?.is_vip || customer?.isVip) ? <Star className="w-4 h-4 text-orange-500 fill-orange-500" /> : <User className="w-4 h-4" />}
                     </div>
@@ -1551,7 +1554,7 @@ export default function POS() {
                   )}
                 </div>
                 <div className="relative">
-                  <button onClick={() => setTableModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border-2 border-orange-500/20 bg-secondary/80 hover:bg-secondary hover:border-orange-500/60 shadow-sm transition-all w-full h-full">
+                  <button onClick={() => setTableModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border-2 border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 hover:border-orange-500/80 shadow-md transition-all w-full h-full">
                     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Hash className="w-3 h-3" /> Table</p>
                     <p className="text-sm font-black text-foreground">{tableNumber || "Select"}</p>
                   </button>
@@ -1565,21 +1568,39 @@ export default function POS() {
                     </button>
                   )}
                 </div>
-                <div className="relative">
-                  <button onClick={() => setWaiterModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border-2 border-orange-500/20 bg-secondary/80 hover:bg-secondary hover:border-orange-500/60 shadow-sm transition-all w-full h-full">
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><User className="w-3 h-3" /> Waiter</p>
-                    <p className="text-sm font-black text-foreground truncate w-full text-left">{waiterName ? waiterName : "Select"}</p>
-                  </button>
-                  {waiterId && (
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setWaiterId(null, null); }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
-                      title="Clear Waiter"
-                    >
-                      <XCircle className="w-4 h-4" />
-                    </button>
+                  {orderType === 'Delivery' ? (
+                    <div className="relative">
+                      <button onClick={() => setRiderModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border-2 border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 hover:border-orange-500/80 shadow-md transition-all w-full h-full">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><User className="w-3 h-3" /> Rider</p>
+                        <p className="text-sm font-black text-foreground truncate w-full text-left">{riderName ? riderName : "Select"}</p>
+                      </button>
+                      {riderId && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setRiderId(null, null); }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
+                          title="Clear Rider"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <button onClick={() => setWaiterModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border-2 border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 hover:border-orange-500/80 shadow-md transition-all w-full h-full">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><User className="w-3 h-3" /> Waiter</p>
+                        <p className="text-sm font-black text-foreground truncate w-full text-left">{waiterName ? waiterName : "Select"}</p>
+                      </button>
+                      {waiterId && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setWaiterId(null, null); }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
+                          title="Clear Waiter"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   )}
-                </div>
               </div>
 
               <PanelGroup orientation="vertical" className="flex-1 flex flex-col h-full overflow-hidden">
@@ -2472,6 +2493,11 @@ export default function POS() {
       <WaiterSelectorModal
         isOpen={waiterModalOpen}
         onClose={() => setWaiterModalOpen(false)}
+      />
+
+      <RiderSelectorModal
+        isOpen={riderModalOpen}
+        onClose={() => setRiderModalOpen(false)}
       />
 
       <ActiveOrdersSidebar

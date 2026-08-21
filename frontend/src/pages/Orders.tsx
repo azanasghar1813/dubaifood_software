@@ -701,7 +701,10 @@ export default function Orders() {
                         <div className="text-[10px] font-bold text-muted-foreground">Waiter: {order.waiterName || order.waiterId ? (order.waiterName || order.waiterId?.substring(0,6)) : "Unassigned"}</div>
                       </div>
                     ) : order.orderType === 'Delivery' ? (
-                      <div className="text-[10px] font-bold text-muted-foreground">{order.customerPhone || "—"}</div>
+                      <div className="flex flex-col gap-0.5">
+                        <div className="text-[10px] font-bold text-muted-foreground">Rider: {order.riderName || order.riderId ? (order.riderName || order.riderId?.substring(0,6)) : "Unassigned"}</div>
+                        <div className="text-[10px] font-bold text-muted-foreground">Phone: {order.customerPhone || "—"}</div>
+                      </div>
                     ) : (
                       <div className="text-[10px] font-bold text-muted-foreground">—</div>
                     )}
