@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Search, Clock, X, User, UtensilsCrossed } from "lucide-react"
 import { usePosStore } from "../store/posStore"
 import { useOrderStore } from "../store/orderStore"
+import { useTableStore } from "../store/tableStore"
 type Table = any;
 type TableStatus = any;
 
@@ -11,13 +12,21 @@ interface TableSelectorModalProps {
   onClose: () => void
 }
 
-const GROUND_TABLES = Array.from({ length: 12 }, (_, i) => ({ id: `G${i + 1}`, label: `G${i + 1}`, zone: 'Ground' as const, status: 'Available' as TableStatus }))
-const FAMILY_TABLES = Array.from({ length: 6 }, (_, i) => ({ id: `F${i + 1}`, label: `F${i + 1}`, zone: 'Family Hall' as const, status: 'Available' as TableStatus }))
-const ROOFTOP_TABLES = Array.from({ length: 8 }, (_, i) => ({ id: `T${i + 1}`, label: `T${i + 1}`, zone: 'Rooftop' as const, status: 'Available' as TableStatus }))
-
-const ALL_TABLES: any[] = [...GROUND_TABLES, ...FAMILY_TABLES, ...ROOFTOP_TABLES]
-
 export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps) {
+  const { categories, tables: backendTables, fetchData } = useTableStore()
+  
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  const ALL_TABLES = backendTables.map(t => ({
+    id: t.id,
+    label: t.name,
+    zone: t.category_name || '',
+    zoneId: t.category_id,
+    status: t.status
+  }))
+
   const { openOrders, switchOrder, setTableNumber, activeOrderId } = usePosStore()
   const { orders } = useOrderStore()
   const [searchQuery, setSearchQuery] = useState("")
@@ -167,9 +176,9 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
 
   const selectedTableId = filteredTables[selectedIndex]?.id
 
-  const handleClearTables = (zone?: string) => {
-    const tablesToClear = zone 
-      ? ALL_TABLES.filter(t => t.zone === zone).map(t => t.label) 
+  const handleClearTables = async (zoneId?: string) => {
+    const tablesToClear = zoneId 
+      ? ALL_TABLES.filter(t => t.zoneId === zoneId).map(t => t.label) 
       : ALL_TABLES.map(t => t.label)
     
     // Clear the active posStore state if the current active table is being cleared
@@ -179,7 +188,10 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
       usePosStore.getState().setTableNumber(null)
     }
 
-    // Clear orders locally for these tables so they show as available
+    const currentOrders = useOrderStore.getState().orders;
+    const ordersToClearBackend = currentOrders.filter(o => o.tableNumber && tablesToClear.includes(o.tableNumber) && o.status !== 'Completed' && o.status !== 'Cancelled');
+
+    // Clear orders locally for these tables so they show as available immediately
     useOrderStore.setState(state => ({
       orders: state.orders.map(o => 
         (o.tableNumber && tablesToClear.includes(o.tableNumber)) 
@@ -187,14 +199,26 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
           : o
       )
     }))
+
+    if (ordersToClearBackend.length > 0) {
+      try {
+        const { apiClient } = await import('../api/client');
+        await Promise.all(ordersToClearBackend.map(o => 
+          apiClient.post(`/orders/${o.id}/transition`, { targetState: 'COMPLETED', reason: 'Cleared from table view' }).catch(e => console.error(e))
+        ));
+        await useOrderStore.getState().syncOrdersFromBackend();
+      } catch (e) {
+        console.error('Failed to clear table orders on backend', e);
+      }
+    }
   }
 
-  const TableGrid = ({ title, tables, zone }: { title: string, tables: any[], zone: string }) => (
+  const TableGrid = ({ title, tables, zoneId }: { title: string, tables: any[], zoneId: string }) => (
     <div className="mb-6">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-black text-foreground uppercase tracking-wider">{title}</h3>
         <button
-          onClick={() => handleClearTables(zone)}
+          onClick={() => handleClearTables(zoneId)}
           className="text-xs font-bold text-red-500 hover:text-white hover:bg-red-500 px-3 py-1.5 rounded-lg transition-colors border border-red-500/20 shadow-sm"
         >
           Clear {title.split(' ')[0]}
@@ -307,9 +331,11 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
               </div>
             </div>
 
-            <TableGrid title="Ground Floor" zone="Ground" tables={filteredTables.filter(t => t.zone === 'Ground')} />
-            <TableGrid title="Family Hall" zone="Family Hall" tables={filteredTables.filter(t => t.zone === 'Family Hall')} />
-            <TableGrid title="Rooftop" zone="Rooftop" tables={filteredTables.filter(t => t.zone === 'Rooftop')} />
+            {categories.map(c => {
+              const zoneTables = filteredTables.filter(t => t.zoneId === c.id);
+              if (zoneTables.length === 0) return null;
+              return <TableGrid key={c.id} title={c.name} zoneId={c.id} tables={zoneTables} />
+            })}
           </div>
         </motion.div>
       </motion.div>

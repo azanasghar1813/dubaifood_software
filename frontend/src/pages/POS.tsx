@@ -1374,13 +1374,13 @@ export default function POS() {
                     className={`w-full text-xl font-black mb-4 flex items-center gap-3 p-3 pl-4 rounded-xl transition-all duration-300 relative overflow-hidden shadow-sm ${activeCategory === cat.name ? 'ring-2 ring-orange-500' : ''}`}
                   >
                     {/* Background Layer */}
-                    <div className="absolute inset-0 bg-orange-500/20 border border-border rounded-xl pointer-events-none"></div>
+                    <div className="absolute inset-0 bg-orange-600 border border-orange-700 rounded-xl pointer-events-none"></div>
                     {/* Left accent bar */}
-                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-orange-500 rounded-l-xl pointer-events-none"></div>
+                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-orange-800 rounded-l-xl pointer-events-none"></div>
                     
                     {/* Content */}
-                    <span className="relative z-10 flex items-center gap-3 text-foreground">
-                      <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-orange-500 flex items-center justify-center shrink-0">
+                    <span className="relative z-10 flex items-center gap-3 text-white">
+                      <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                         {getCategoryIcon(cat.name)}
                       </div>
                       {cat.name}

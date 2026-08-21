@@ -11,6 +11,7 @@ import {
 import { useOrderStore } from "../store/orderStore"
 import { usePosStore } from "../store/posStore"
 import { useAuthStore } from "../store/authStore"
+import { useTableStore } from "../store/tableStore"
 import { dashboardService } from "../services/dashboardService"
 import type { DashboardSummary, DashboardOperations, RevenueAnalytics, PopularProduct, ActivityFeedItem } from "../services/dashboardService"
 import { toast } from "../store/toastStore"
@@ -43,7 +44,8 @@ const paymentStatusColors: Record<string, string> = {
 export default function Dashboard() {
   const navigate = useNavigate()
   const { orders, syncOrdersFromBackend } = useOrderStore()
-  const { loadOrderForEdit, clearCart } = usePosStore()
+  const { loadOrderForEdit, clearCart, openOrders, tableNumber, cart, waiterName: currentWaiterName } = usePosStore()
+  const { categories, tables: backendTables, fetchData: fetchTableData } = useTableStore()
   const { user } = useAuthStore()
 
   // Backend state
@@ -66,37 +68,34 @@ export default function Dashboard() {
   // Hardware/System Simulation states
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  // Live Table states (derived from active orders)
-  const activeTablesMap = useMemo(() => {
-    const map = new Map<string, string>()
-    orders.forEach(o => {
-      if (o.status !== "Completed" && o.status !== "Cancelled" && o.tableNumber) {
-        map.set(o.tableNumber.toString(), o.waiterName || '')
+  const enhancedTables = useMemo(() => {
+    return backendTables.map(t => {
+      let status = t.status || 'Available'
+      let waiterName = ""
+
+      // Find in backend orders
+      const backendOrder = orders.find(o => o.tableNumber === t.name && o.status !== "Completed" && o.status !== "Cancelled")
+      if (backendOrder) {
+        status = 'Occupied'
+        waiterName = backendOrder.waiterName || ""
       }
-    })
-    return map
-  }, [orders])
 
-  const groundFloorTables = useMemo(() => {
-    return Array.from({ length: 12 }, (_, i) => {
-      const id = `G${i + 1}`
-      return { id, status: activeTablesMap.has(id) ? "Occupied" : "Available", waiterName: activeTablesMap.get(id) }
-    })
-  }, [activeTablesMap])
+      // Find in POS openOrders
+      const orderForTable = Object.values(openOrders).find(o => o.tableNumber === t.name)
+      if (orderForTable && orderForTable.cart.length > 0) {
+        status = 'Occupied'
+        waiterName = orderForTable.waiterName || ""
+      }
 
-  const familyTables = useMemo(() => {
-    return Array.from({ length: 6 }, (_, i) => {
-      const id = `F${i + 1}`
-      return { id, status: activeTablesMap.has(id) ? "Occupied" : "Available", waiterName: activeTablesMap.get(id) }
-    })
-  }, [activeTablesMap])
+      // Check current active POS cart
+      if (tableNumber === t.name && cart.length > 0) {
+        status = 'Occupied'
+        waiterName = currentWaiterName || ""
+      }
 
-  const rooftopTables = useMemo(() => {
-    return Array.from({ length: 8 }, (_, i) => {
-      const id = `T${i + 1}`
-      return { id, status: activeTablesMap.has(id) ? "Occupied" : "Available", waiterName: activeTablesMap.get(id) }
+      return { ...t, status, waiterName }
     })
-  }, [activeTablesMap])
+  }, [backendTables, orders, openOrders, tableNumber, cart.length, currentWaiterName])
 
   // Notifications (Now using backend activity feed)
   const liveStats = useMemo(() => {
@@ -171,6 +170,7 @@ export default function Dashboard() {
   // Auto refresh
   useEffect(() => {
     fetchDashboardData()
+    fetchTableData()
     syncOrdersFromBackend()
     // Poll every 60 seconds
     const interval = setInterval(() => {
@@ -500,68 +500,31 @@ export default function Dashboard() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-              {/* Ground Floor */}
-              <div>
-                <h4 className="font-black text-xs uppercase text-foreground mb-3 text-center">Ground Floor</h4>
-                <div className="grid grid-cols-3 gap-2">
-                  {groundFloorTables.map((t, idx) => (
-                    <div
-                      key={t.id}
-                      className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${t.status === "Occupied"
-                        ? 'bg-red-500/10 text-red-500 border-red-500/30'
-                        : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
-                        }`}
-                    >
-                      {t.id}
-                      {t.status === "Occupied" && t.waiterName && (
-                        <div className="text-[9px] font-bold mt-1 opacity-80 truncate">{t.waiterName}</div>
-                      )}
+              {categories.map(c => {
+                const zoneTables = enhancedTables.filter(t => t.category_id === c.id);
+                if (zoneTables.length === 0) return null;
+                return (
+                  <div key={c.id}>
+                    <h4 className="font-black text-xs uppercase text-foreground mb-3 text-center">{c.name}</h4>
+                    <div className="grid grid-cols-3 gap-2">
+                      {zoneTables.map((t) => (
+                        <div
+                          key={t.id}
+                          className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${t.status === "Occupied"
+                            ? 'bg-red-500/10 text-red-500 border-red-500/30'
+                            : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
+                            }`}
+                        >
+                          {t.name}
+                          {t.status === "Occupied" && t.waiterName && (
+                            <div className="text-[9px] font-bold mt-1 opacity-80 truncate">{t.waiterName}</div>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Family Hall */}
-              <div>
-                <h4 className="font-black text-xs uppercase text-foreground mb-3 text-center">Family Hall</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {familyTables.map((t, idx) => (
-                    <div
-                      key={t.id}
-                      className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${t.status === "Occupied"
-                        ? 'bg-red-500/10 text-red-500 border-red-500/30'
-                        : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
-                        }`}
-                    >
-                      {t.id}
-                      {t.status === "Occupied" && t.waiterName && (
-                        <div className="text-[9px] font-bold mt-1 opacity-80 truncate">{t.waiterName}</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Rooftop */}
-              <div>
-                <h4 className="font-black text-xs uppercase text-foreground mb-3 text-center">Rooftop</h4>
-                <div className="grid grid-cols-3 gap-2">
-                  {rooftopTables.map((t, idx) => (
-                    <div
-                      key={t.id}
-                      className={`p-3 rounded-xl border text-xs font-black text-center transition-all ${t.status === "Occupied"
-                        ? 'bg-red-500/10 text-red-500 border-red-500/30'
-                        : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
-                        }`}
-                    >
-                      {t.id}
-                      {t.status === "Occupied" && t.waiterName && (
-                        <div className="text-[9px] font-bold mt-1 opacity-80 truncate">{t.waiterName}</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
+                )
+              })}
 
             </div>
           </div>

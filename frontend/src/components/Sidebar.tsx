@@ -19,7 +19,8 @@ import {
   Database,
   History,
   Shield,
-  Menu
+  Menu,
+  Grid2X2
 } from "lucide-react"
 
 const menuItems = [
@@ -30,6 +31,7 @@ const menuItems = [
   { path: "/kds", name: "Kitchen", icon: ChefHat, permission: "VIEW_KITCHEN" },
   { path: "/products", name: "Products", icon: UtensilsCrossed, permission: "VIEW_PRODUCTS" },
   { path: "/categories", name: "Categories", icon: Tags, permission: "VIEW_CATEGORIES" },
+  { path: "/tables", name: "Tables", icon: Grid2X2, permission: "VIEW_DASHBOARD" },
   { path: "/cashier", name: "Cashiers", icon: Wallet, permission: "VIEW_CASHIERS" },
   { path: "/settings", name: "Settings", icon: Building2, permission: "VIEW_SETTINGS" },
   { path: "/backup", name: "Backup", icon: Database, permission: "VIEW_BACKUP" },

@@ -26,6 +26,7 @@ const NotificationCenter = lazy(() => import('./pages/NotificationCenter.tsx'))
 const ReceiptPreview = lazy(() => import('./pages/ReceiptPreview.tsx'))
 const KDS = lazy(() => import('./pages/KDS.tsx').then(m => ({ default: m.KDS })))
 const UsersPermissions = lazy(() => import('./pages/UsersPermissions.tsx'))
+const TablesManagement = lazy(() => import('./pages/TablesManagement.tsx'))
 const ActivityLogs = lazy(() => import('./pages/ActivityLogs.tsx'))
 const Backup = lazy(() => import('./pages/Backup.tsx'))
 
@@ -72,6 +73,7 @@ const router = createBrowserRouter([
           { path: "/sync", element: <SuspenseWrapper><Synchronization /></SuspenseWrapper> },
           { path: "/notifications", element: <SuspenseWrapper><NotificationCenter /></SuspenseWrapper> },
           { path: "/receipt", element: <SuspenseWrapper><ReceiptPreview /></SuspenseWrapper> },
+          { path: "/tables", element: <SuspenseWrapper><TablesManagement /></SuspenseWrapper> },
           { path: "/permissions", element: <SuspenseWrapper><UsersPermissions /></SuspenseWrapper> },
           { path: "/activity-logs", element: <SuspenseWrapper><ActivityLogs /></SuspenseWrapper> },
           { path: "/backup", element: <SuspenseWrapper><Backup /></SuspenseWrapper> },

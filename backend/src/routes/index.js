@@ -19,11 +19,13 @@ import expenseRoutes from './expenseRoutes.js';
 import activityLogRoutes from './activityLogRoutes.js';
 import reportRoutes from './reportRoutes.js';
 import shiftRoutes from './shiftRoutes.js';
+import tableRoutes from './tableRoutes.js';
 
 const router = Router();
 
 // Mount all routes here
 router.use('/health', healthRoutes);
+router.use('/tables', tableRoutes);
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/roles', roleRoutes);
