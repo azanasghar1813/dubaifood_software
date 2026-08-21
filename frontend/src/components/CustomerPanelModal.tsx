@@ -25,6 +25,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
   const [isVip, setIsVip] = useState(false)
   const [isFavourite, setIsFavourite] = useState(false)
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null)
+  const [suggestedCustomer, setSuggestedCustomer] = useState<any | null>(null)
 
   const nameRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
@@ -80,6 +81,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
         setIsVip(false)
         setIsFavourite(true) // Default to true so it saves to DB
         setEditingCustomerId(null)
+        setSuggestedCustomer(null)
       }
       
       setSelectedIndex(-1)
@@ -234,6 +236,32 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
     setIsVip(false)
     setIsFavourite(true) // Default to true so it saves to DB
     setEditingCustomerId(null)
+    setSuggestedCustomer(null)
+  }
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/[^0-9]/g, '');
+    val = val.slice(0, 11);
+    if (val.length > 4) {
+      val = val.slice(0, 4) + '-' + val.slice(4);
+    }
+    setNewPhone(val);
+
+    // Autocomplete logic
+    if (val.replace(/[^0-9]/g, '').length >= 3) {
+      const match = customers.find(c => c.phone && c.phone.startsWith(val));
+      setSuggestedCustomer(match || null);
+    } else {
+      setSuggestedCustomer(null);
+    }
+  }
+
+  const acceptSuggestion = () => {
+    if (suggestedCustomer) {
+      handleSelect(suggestedCustomer);
+      setSuggestedCustomer(null);
+      toast.success(`Customer selected: ${suggestedCustomer.name || 'Guest'}`, { id: 'customer-found' });
+    }
   }
 
   const handleEditClick = (c: any) => {
@@ -358,23 +386,27 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
                   {filteredCustomers.map((c, i) => (
                     <div 
                       key={c.id || i} 
-                      className={`w-full text-left p-3 rounded-xl hover:bg-secondary transition-colors flex items-center gap-3 group ${selectedIndex === i ? 'bg-secondary ring-2 ring-orange-500' : ''}`}
+                      className={`w-full text-left p-3 rounded-xl hover:bg-secondary transition-all flex items-center gap-3 group border-2 ${selectedIndex === i ? 'bg-secondary border-orange-500 shadow-md' : 'border-transparent'}`}
                     >
-                      <button onClick={() => handleSelect(c)} className="flex-1 flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${c.is_vip || c.isVip ? 'bg-orange-500/20 text-orange-500' : 'bg-primary/10 text-primary'}`}>
+                      <button onClick={() => handleSelect(c)} className="flex-1 flex items-start gap-3 outline-none">
+                        <div className={`w-10 h-10 mt-0.5 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${c.is_vip || c.isVip ? 'bg-gradient-to-br from-orange-400 to-orange-600 text-white' : 'bg-primary/10 text-primary'}`}>
                           {c.is_vip || c.isVip ? <Star className="w-5 h-5 fill-current" /> : <User className="w-5 h-5" />}
                         </div>
                         <div className="flex-1 text-left">
-                          <div className="flex items-center justify-between">
-                            <p className="font-bold text-foreground group-hover:text-orange-500 transition-colors">{c.name}</p>
-                            {(c.is_vip || c.isVip) && <span className="text-[9px] bg-orange-500 text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">VIP</span>}
+                          <div className="flex items-center justify-between mb-0.5">
+                            <p className="font-bold text-foreground text-sm group-hover:text-orange-500 transition-colors">{c.name}</p>
+                            {(c.is_vip || c.isVip) && <span className="text-[10px] bg-orange-500/10 text-orange-600 border border-orange-500/20 px-1.5 py-0.5 rounded font-black uppercase tracking-wider">VIP</span>}
                           </div>
-                          <p className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" /> {c.phone}</p>
+                          <div className="flex flex-col gap-1">
+                            <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-foreground/50" /> {c.phone || 'No Phone'}</p>
+                            {c.address && <p className="text-[11px] text-muted-foreground/80 flex items-start gap-1.5 pr-2"><MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-foreground/50" /> <span className="line-clamp-2">{c.address}</span></p>}
+                            {c.notes && <p className="text-[10px] text-muted-foreground/60 flex items-start gap-1.5 pr-2 italic"><StickyNote className="w-3 h-3 mt-0.5 flex-shrink-0 text-foreground/50" /> <span className="line-clamp-1">{c.notes}</span></p>}
+                          </div>
                         </div>
                       </button>
-                      <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                        <button id={`edit-btn-${i}`} onClick={(e) => { e.stopPropagation(); handleEditClick(c); }} className="p-1.5 focus:bg-orange-500/20 hover:bg-orange-500/10 text-muted-foreground hover:text-orange-500 focus:text-orange-500 outline-none rounded-lg transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button id={`delete-btn-${i}`} onClick={(e) => { e.stopPropagation(); handleDeleteClick(c.id); }} className="p-1.5 focus:bg-red-500/20 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 focus:text-red-500 outline-none rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <div className="flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                        <button id={`edit-btn-${i}`} onClick={(e) => { e.stopPropagation(); handleEditClick(c); }} className="p-2 bg-background hover:bg-orange-500 text-muted-foreground hover:text-white focus:bg-orange-500 focus:text-white shadow-sm border border-border outline-none rounded-lg transition-all"><Pencil className="w-4 h-4" /></button>
+                        <button id={`delete-btn-${i}`} onClick={(e) => { e.stopPropagation(); handleDeleteClick(c.id); }} className="p-2 bg-background hover:bg-red-500 text-muted-foreground hover:text-white focus:bg-red-500 focus:text-white shadow-sm border border-border outline-none rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
                   ))}
@@ -396,40 +428,105 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Name</label>
-                  <div className="relative">
-                    <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input ref={nameRef} onFocus={() => setActiveInput(0)} type="text" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(e as any); } }} className="w-full h-10 pl-9 pr-4 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold" placeholder="Guest" />
+                  <div className="relative bg-secondary rounded-xl flex items-center overflow-hidden">
+                    <User className="w-4 h-4 absolute left-3 text-muted-foreground z-20" />
+                    
+                    {suggestedCustomer && !newName && (
+                      <div className="absolute inset-0 flex items-center pl-9 pointer-events-none z-10 text-sm font-semibold">
+                        <span className="text-orange-500 opacity-80">{suggestedCustomer.name}</span>
+                      </div>
+                    )}
+
+                    <input ref={nameRef} onFocus={() => setActiveInput(0)} type="text" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(e as any); } }} className="w-full h-10 pl-9 pr-4 rounded-xl bg-transparent border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold relative z-20 text-foreground placeholder:text-muted-foreground/50" placeholder="Guest" />
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone</label>
-                  <div className="relative">
-                    <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input ref={phoneRef} onFocus={() => setActiveInput(1)} type="text" value={newPhone} onChange={e => {
-                      let val = e.target.value.replace(/[^0-9]/g, '');
-                      val = val.slice(0, 11);
-                      if (val.length > 4) {
-                        val = val.slice(0, 4) + '-' + val.slice(4);
-                      }
-                      setNewPhone(val);
-                    }} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(e as any); } }} className="w-full h-10 pl-9 pr-4 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold" placeholder="03XX-XXXXXXX" maxLength={12} />
+                  <div className="relative bg-secondary rounded-xl flex items-center">
+                    <Phone className="w-4 h-4 absolute left-3 text-muted-foreground z-20" />
+                    
+                    {suggestedCustomer && suggestedCustomer.phone.startsWith(newPhone) && (
+                      <div className="absolute left-0 top-0 bottom-0 flex items-center pl-9 pointer-events-none z-10 text-sm font-semibold whitespace-pre">
+                        <span className="opacity-0">{newPhone}</span>
+                        <span className="text-orange-500 opacity-80">{suggestedCustomer.phone.slice(newPhone.length)}</span>
+                      </div>
+                    )}
+
+                    <input 
+                      ref={phoneRef} 
+                      onFocus={() => setActiveInput(1)} 
+                      type="text" 
+                      value={newPhone} 
+                      onChange={handlePhoneChange} 
+                      onKeyDown={(e) => { 
+                        if (e.key === 'Tab' || e.key === 'ArrowRight') {
+                          if (suggestedCustomer && suggestedCustomer.phone.startsWith(newPhone)) {
+                            e.preventDefault();
+                            acceptSuggestion();
+                            return;
+                          }
+                        }
+                        e.stopPropagation(); 
+                        if (e.key === 'Enter' && !e.shiftKey) { 
+                          e.preventDefault(); 
+                          if (suggestedCustomer && suggestedCustomer.phone.startsWith(newPhone)) {
+                            acceptSuggestion();
+                          } else {
+                            handleSave(e as any); 
+                          }
+                        } 
+                      }} 
+                      className="w-full h-10 pl-9 pr-12 rounded-xl bg-transparent border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold relative z-20 text-foreground placeholder:text-muted-foreground/50" 
+                      placeholder="03XX-XXXXXXX" 
+                      maxLength={12} 
+                    />
+
+                    <AnimatePresence>
+                      {suggestedCustomer && suggestedCustomer.phone.startsWith(newPhone) && (
+                        <motion.button
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          type="button"
+                          onClick={acceptSuggestion}
+                          className="absolute right-2 z-30 p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-md shadow-sm transition-colors cursor-pointer flex items-center justify-center"
+                          title="Accept suggestion (Tab or Right Arrow)"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                        </motion.button>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Address</label>
-                <div className="relative">
-                  <MapPin className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
-                  <textarea ref={addressRef} onFocus={() => setActiveInput(2)} value={newAddress} onChange={e => setNewAddress(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(e as any); } }} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none" placeholder="Delivery address..." />
+                <div className="relative bg-secondary rounded-xl overflow-hidden">
+                  <MapPin className="w-4 h-4 absolute left-3 top-3 text-muted-foreground z-20" />
+                  
+                  {suggestedCustomer && !newAddress && (
+                    <div className="absolute inset-0 pt-2.5 pl-9 pr-4 pointer-events-none z-10 text-sm font-semibold">
+                      <span className="text-orange-500 opacity-80">{suggestedCustomer.address}</span>
+                    </div>
+                  )}
+
+                  <textarea ref={addressRef} onFocus={() => setActiveInput(2)} value={newAddress} onChange={e => setNewAddress(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(e as any); } }} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-transparent border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none relative z-20 text-foreground placeholder:text-muted-foreground/50" placeholder="Delivery address..." />
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Notes</label>
-                <div className="relative">
-                  <StickyNote className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
-                  <textarea ref={notesRef} onFocus={() => setActiveInput(3)} value={newNotes} onChange={e => setNewNotes(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(e as any); } }} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none" placeholder="Allergies, preferences..." />
+                <div className="relative bg-secondary rounded-xl overflow-hidden">
+                  <StickyNote className="w-4 h-4 absolute left-3 top-3 text-muted-foreground z-20" />
+                  
+                  {suggestedCustomer && !newNotes && (
+                    <div className="absolute inset-0 pt-2.5 pl-9 pr-4 pointer-events-none z-10 text-sm font-semibold">
+                      <span className="text-orange-500 opacity-80">{suggestedCustomer.notes}</span>
+                    </div>
+                  )}
+
+                  <textarea ref={notesRef} onFocus={() => setActiveInput(3)} value={newNotes} onChange={e => setNewNotes(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(e as any); } }} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-transparent border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none relative z-20 text-foreground placeholder:text-muted-foreground/50" placeholder="Allergies, preferences..." />
                 </div>
               </div>
 

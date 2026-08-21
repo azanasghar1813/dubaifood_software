@@ -142,7 +142,7 @@ export default function POS() {
     cart, addToCart, removeFromCart, updateQuantity, duplicateItem,
     getSubtotal, getTax, getServiceCharge, getGrandTotal, clearCart, getNetTotal,
     updateItemModifiers, updateItemNotes, orderType, setOrderType,
-    setCustomer, gridDensity, tableNumber, customer,
+    setCustomer, gridDensity, tableNumber, setTableNumber, customer,
     isTaxEnabled, toggleTax, menuContext, setMenuContext,
     editingOrderId, clearEditMode, completeOrder,
     deliveryCharges, setDeliveryCharges,
@@ -1515,22 +1515,42 @@ export default function POS() {
 
               {/* Customer & Table Management */}
               <div className="p-2 border-b border-border bg-card grid grid-cols-2 gap-2">
-                <button onClick={() => setCustomerModalOpen(true)} className="flex items-center gap-2 p-2 rounded-xl border border-border bg-secondary/50 hover:bg-secondary hover:border-orange-500/50 transition-all text-left">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
-                    {(usePosStore.getState().customer?.is_vip || usePosStore.getState().customer?.isVip) ? <Star className="w-4 h-4 text-orange-500 fill-orange-500" /> : <User className="w-4 h-4" />}
-                  </div>
-                  <div className="overflow-hidden">
-                    <p className="text-xs font-bold text-foreground truncate">{usePosStore.getState().customer?.name || usePosStore.getState().customer?.first_name || "Select Customer"}</p>
-                    <p className="text-[10px] text-muted-foreground font-bold truncate flex items-center gap-1">
-                      <Phone className="w-2.5 h-2.5" /> {usePosStore.getState().customer?.phone || "Ctrl+C"}
-                    </p>
-                  </div>
-                </button>
-                <div className="grid grid-cols-1 gap-2">
+                <div className="relative">
+                  <button onClick={() => setCustomerModalOpen(true)} className="flex items-center gap-2 p-2 rounded-xl border border-border bg-secondary/50 hover:bg-secondary hover:border-orange-500/50 transition-all text-left w-full">
+                    <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+                      {(customer?.is_vip || customer?.isVip) ? <Star className="w-4 h-4 text-orange-500 fill-orange-500" /> : <User className="w-4 h-4" />}
+                    </div>
+                    <div className="overflow-hidden pr-4">
+                      <p className="text-xs font-bold text-foreground truncate">{customer?.name || customer?.first_name || "Select Customer"}</p>
+                      <p className="text-[10px] text-muted-foreground font-bold truncate flex items-center gap-1">
+                        <Phone className="w-2.5 h-2.5" /> {customer?.phone || "Ctrl+C"}
+                      </p>
+                    </div>
+                  </button>
+                  {customer && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setCustomer(null); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
+                      title="Clear Customer"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
                   <button onClick={() => setTableModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border border-border bg-secondary/50 hover:bg-secondary hover:border-orange-500/50 transition-all w-full">
                     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Hash className="w-3 h-3" /> Table</p>
                     <p className="text-sm font-black text-foreground">{tableNumber || "Ctrl+T"}</p>
                   </button>
+                  {tableNumber && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setTableNumber(null); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
+                      title="Clear Table"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 
