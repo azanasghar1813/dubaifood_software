@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Search, Clock, X } from "lucide-react"
+import { Search, Clock, X, User, UtensilsCrossed } from "lucide-react"
 import { usePosStore } from "../store/posStore"
 import { useOrderStore } from "../store/orderStore"
 type Table = any;
@@ -42,6 +42,7 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
     let elapsed = 0
     let customerName = ""
     let waiterName = ""
+    let kitchenStatus = "Not Sent"
 
     // Find in backend orders first
     const backendOrder = orders.find(o => o.tableNumber === t.label && o.status !== "Completed" && o.status !== "Cancelled")
@@ -51,6 +52,7 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
       elapsed = Math.floor((new Date().getTime() - new Date(backendOrder.timestamp).getTime()) / 60000)
       customerName = backendOrder.customerName || "Guest"
       waiterName = backendOrder.waiterName || ""
+      kitchenStatus = backendOrder.kitchenStatus === 'Pending' ? 'Not Sent' : (backendOrder.kitchenStatus || 'Not Sent')
     }
 
     if (orderForTable && orderForTable.cart.length > 0) {
@@ -63,6 +65,7 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
       elapsed = Math.floor((new Date().getTime() - new Date(orderForTable.startTime).getTime()) / 60000)
       if (orderForTable.customer) customerName = orderForTable.customer.name
       if (orderForTable.waiterName) waiterName = orderForTable.waiterName
+      kitchenStatus = orderForTable.kitchenStatus === 'Pending' ? 'Not Sent' : (orderForTable.kitchenStatus || 'Not Sent')
     }
 
     // if this is the currently active order (not yet pushed to openOrders, or currently active)
@@ -73,9 +76,10 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
       elapsed = Math.floor((new Date().getTime() - new Date(store.startTime).getTime()) / 60000)
       if (store.customer) customerName = store.customer.name
       if (store.waiterName) waiterName = store.waiterName
+      kitchenStatus = 'Not Sent'
     }
 
-    return { ...t, status, amount, elapsed, customerName, waiterName }
+    return { ...t, status, amount, elapsed, customerName, waiterName, kitchenStatus }
   })
 
   const filteredTables = enhancedTables.filter(t => t.label.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -163,36 +167,82 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
 
   const selectedTableId = filteredTables[selectedIndex]?.id
 
-  const TableGrid = ({ title, tables }: { title: string, tables: any[] }) => (
+  const handleClearTables = (zone?: string) => {
+    const tablesToClear = zone 
+      ? ALL_TABLES.filter(t => t.zone === zone).map(t => t.label) 
+      : ALL_TABLES.map(t => t.label)
+    
+    // Clear the active posStore state if the current active table is being cleared
+    const currentTable = usePosStore.getState().tableNumber
+    if (currentTable && tablesToClear.includes(currentTable)) {
+      usePosStore.getState().clearCart()
+      usePosStore.getState().setTableNumber(null)
+    }
+
+    // Clear orders locally for these tables so they show as available
+    useOrderStore.setState(state => ({
+      orders: state.orders.map(o => 
+        (o.tableNumber && tablesToClear.includes(o.tableNumber)) 
+          ? { ...o, status: 'Completed' } 
+          : o
+      )
+    }))
+  }
+
+  const TableGrid = ({ title, tables, zone }: { title: string, tables: any[], zone: string }) => (
     <div className="mb-6">
-      <h3 className="text-sm font-black text-foreground uppercase tracking-wider mb-3">{title}</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-black text-foreground uppercase tracking-wider">{title}</h3>
+        <button
+          onClick={() => handleClearTables(zone)}
+          className="text-xs font-bold text-red-500 hover:text-white hover:bg-red-500 px-3 py-1.5 rounded-lg transition-colors border border-red-500/20 shadow-sm"
+        >
+          Clear {title.split(' ')[0]}
+        </button>
+      </div>
       <div className="grid grid-cols-6 gap-3">
         {tables.map(t => (
           <button
             key={t.id}
             onClick={() => handleSelect(t)}
-            className={`relative flex flex-col p-3 rounded-xl border-2 transition-all h-24 ${getStatusColor(t.status)} ${selectedTableId === t.id
+            className={`relative flex flex-col p-3 rounded-xl border-2 transition-all h-28 overflow-hidden ${getStatusColor(t.status)} ${selectedTableId === t.id
                 ? 'ring-4 ring-blue-500 ring-offset-2 ring-offset-background scale-105 shadow-xl z-10'
                 : (activeOrderId === t.label ? 'ring-2 ring-orange-500 ring-offset-2 ring-offset-background' : '')
               }`}
           >
-            <div className="flex items-center justify-between w-full mb-auto">
-              <span className="font-black text-lg">{t.label}</span>
-              {t.status !== 'Available' && <div className="w-2 h-2 rounded-full bg-white animate-pulse" />}
+            <div className="flex items-start justify-between w-full">
+              <div className="flex flex-col items-start gap-0.5 truncate pr-2">
+                <div className="flex items-center gap-3">
+                  <span className="font-black text-xl leading-none">{t.label}</span>
+                  {t.status !== 'Available' && t.waiterName && (
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md text-orange-600 bg-orange-500/10 border border-orange-500/40 shadow-sm truncate max-w-[90px]">
+                      {t.waiterName}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {t.status !== 'Available' && <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] animate-pulse shrink-0 mt-0.5" />}
             </div>
 
             {t.status !== 'Available' ? (
-              <div className="w-full text-left mt-auto">
-                <p className="text-[10px] font-bold opacity-90 truncate">{t.customerName || 'Guest'}</p>
-                {t.waiterName && <p className="text-[10px] font-semibold text-orange-600 truncate mt-0.5">Waiter: {t.waiterName}</p>}
-                <div className="flex items-center justify-between text-[10px] font-bold mt-1 opacity-75">
-                  <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {t.elapsed}m</span>
-                  <span>AED {t.amount.toFixed(2)}</span>
+              <div className="w-full flex flex-col gap-1 mt-auto">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <User className="w-3.5 h-3.5 text-orange-500/70 shrink-0" />
+                  <span className="font-bold opacity-90 truncate">{t.customerName || 'Guest'}</span>
+                </div>
+                
+                <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-orange-500/15">
+                  <div className="flex items-center gap-1 text-[10px] font-bold opacity-80 min-w-0">
+                    <UtensilsCrossed className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{t.kitchenStatus}</span>
+                  </div>
+                  <span className="text-xs font-black shrink-0 ml-2">PKR {t.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                 </div>
               </div>
             ) : (
-              <div className="w-full text-left mt-auto opacity-50">
-                <p className="text-xs font-bold">Available</p>
+              <div className="w-full text-left mt-auto opacity-50 flex items-center gap-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <p className="text-xs font-bold uppercase tracking-wider">Available</p>
               </div>
             )}
           </button>
@@ -215,7 +265,7 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
           initial={{ scale: 0.95, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.95, opacity: 0, y: 20 }}
-          className="bg-background w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[80vh] border border-border"
+          className="bg-background w-full max-w-6xl rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[80vh] border border-border"
         >
           <div className="p-4 border-b border-border bg-card flex items-center justify-between shrink-0">
             <div>
@@ -253,15 +303,13 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
               </div>
 
               <div className="flex items-center gap-2">
-                <button className="px-4 py-2 text-xs font-bold bg-secondary hover:bg-orange-500 hover:text-white rounded-lg transition-colors border border-border hover:border-orange-500">Move Table</button>
-                <button className="px-4 py-2 text-xs font-bold bg-secondary hover:bg-orange-500 hover:text-white rounded-lg transition-colors border border-border hover:border-orange-500">Merge Tables</button>
-                <button className="px-4 py-2 text-xs font-bold bg-secondary hover:bg-orange-500 hover:text-white rounded-lg transition-colors border border-border hover:border-orange-500">Split Table</button>
+                <button onClick={() => handleClearTables()} className="px-4 py-2 text-xs font-bold bg-secondary hover:bg-orange-500 hover:text-white rounded-lg transition-colors border border-border hover:border-orange-500 shadow-sm">Clear All</button>
               </div>
             </div>
 
-            <TableGrid title="Ground Floor" tables={filteredTables.filter(t => t.zone === 'Ground')} />
-            <TableGrid title="Family Hall" tables={filteredTables.filter(t => t.zone === 'Family Hall')} />
-            <TableGrid title="Rooftop" tables={filteredTables.filter(t => t.zone === 'Rooftop')} />
+            <TableGrid title="Ground Floor" zone="Ground" tables={filteredTables.filter(t => t.zone === 'Ground')} />
+            <TableGrid title="Family Hall" zone="Family Hall" tables={filteredTables.filter(t => t.zone === 'Family Hall')} />
+            <TableGrid title="Rooftop" zone="Rooftop" tables={filteredTables.filter(t => t.zone === 'Rooftop')} />
           </div>
         </motion.div>
       </motion.div>

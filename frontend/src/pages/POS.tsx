@@ -695,6 +695,8 @@ export default function POS() {
             setTableModalOpen(false)
           } else if (waiterModalOpen) {
             setWaiterModalOpen(false)
+          } else if (riderModalOpen) {
+            setRiderModalOpen(false)
           } else if (recentOrdersModalOpen) {
             setRecentOrdersModalOpen(false)
           } else {
@@ -727,6 +729,18 @@ export default function POS() {
         if (!checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !waiterModalOpen && !recentOrdersModalOpen) {
           searchInputRef.current?.focus()
         }
+      }
+
+      if (e.ctrlKey && e.key.toLowerCase() === 'w') {
+        e.preventDefault()
+        if (!checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !recentOrdersModalOpen) {
+          if (orderType === 'Delivery') {
+            setRiderModalOpen(true)
+          } else {
+            setWaiterModalOpen(true)
+          }
+        }
+        return
       }
 
       if (e.ctrlKey && e.key === 'Enter') {
@@ -1357,10 +1371,20 @@ export default function POS() {
                 <div key={cat.id} className="mb-2">
                   <h3 
                     id={`category-${cat.name.replace(/\s+/g, '-')}`}
-                    className={`text-xl font-black mb-4 flex items-center gap-2 p-2 rounded-xl transition-all duration-300 ${activeCategory === cat.name ? 'bg-orange-500/10 text-orange-500 border border-orange-500/30 shadow-sm' : 'text-foreground border border-transparent'}`}
+                    className={`w-full text-xl font-black mb-4 flex items-center gap-3 p-3 pl-4 rounded-xl transition-all duration-300 relative overflow-hidden shadow-sm ${activeCategory === cat.name ? 'ring-2 ring-orange-500' : ''}`}
                   >
-                    {getCategoryIcon(cat.name)}
-                    {cat.name}
+                    {/* Background Layer */}
+                    <div className="absolute inset-0 bg-orange-500/20 border border-border rounded-xl pointer-events-none"></div>
+                    {/* Left accent bar */}
+                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-orange-500 rounded-l-xl pointer-events-none"></div>
+                    
+                    {/* Content */}
+                    <span className="relative z-10 flex items-center gap-3 text-foreground">
+                      <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-orange-500 flex items-center justify-center shrink-0">
+                        {getCategoryIcon(cat.name)}
+                      </div>
+                      {cat.name}
+                    </span>
                   </h3>
                   <div className={`grid gap-4 ${gridDensity === 'small' ? 'grid-cols-4 md:grid-cols-5 xl:grid-cols-6' :
                     gridDensity === 'medium' ? 'grid-cols-3 md:grid-cols-4 xl:grid-cols-5' :
@@ -1532,15 +1556,15 @@ export default function POS() {
               )}
 
               {/* Customer & Table & Waiter Management */}
-              <div className="p-2 border-b border-border bg-card grid grid-cols-3 gap-2">
+              <div className={`p-2 border-b border-border bg-card grid gap-2 ${orderType === 'Delivery' ? 'grid-cols-2' : 'grid-cols-3'}`}>
                 <div className="relative">
                   <button onClick={() => setCustomerModalOpen(true)} className="flex items-center gap-2 p-2 rounded-xl border-2 border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 hover:border-orange-500/80 shadow-md transition-all text-left w-full h-full">
                     <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
                       {(customer?.is_vip || customer?.isVip) ? <Star className="w-4 h-4 text-orange-500 fill-orange-500" /> : <User className="w-4 h-4" />}
                     </div>
                     <div className="overflow-hidden pr-4 flex-1">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">Customer</p>
-                      <p className="text-xs font-black text-foreground truncate">{customer?.name || customer?.first_name || "Select"}</p>
+                      <p className="text-sm font-black text-foreground uppercase tracking-wider flex items-center gap-1">Customer</p>
+                      <p className="text-[11px] font-semibold text-muted-foreground truncate">{customer?.name || customer?.first_name || "Select"}</p>
                     </div>
                   </button>
                   {customer && (
@@ -1553,28 +1577,30 @@ export default function POS() {
                     </button>
                   )}
                 </div>
-                <div className="relative">
-                  <button onClick={() => setTableModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border-2 border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 hover:border-orange-500/80 shadow-md transition-all w-full h-full">
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Hash className="w-3 h-3" /> Table</p>
-                    <p className="text-sm font-black text-foreground">{tableNumber || "Select"}</p>
-                  </button>
-                  {tableNumber && (
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setTableNumber(null); }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
-                      title="Clear Table"
-                    >
-                      <XCircle className="w-4 h-4" />
+                {orderType !== 'Delivery' && (
+                  <div className="relative">
+                    <button onClick={() => setTableModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border-2 border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 hover:border-orange-500/80 shadow-md transition-all w-full h-full">
+                      <p className="text-sm font-black text-foreground uppercase tracking-wider flex items-center gap-1.5"><Hash className="w-3.5 h-3.5" /> Table</p>
+                      <p className="text-[11px] font-semibold text-muted-foreground">{tableNumber || "Select"}</p>
                     </button>
-                  )}
-                </div>
+                    {tableNumber && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setTableNumber(null); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
+                        title="Clear Table"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
                   {orderType === 'Delivery' ? (
                     <div className="relative">
                       <button onClick={() => setRiderModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border-2 border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 hover:border-orange-500/80 shadow-md transition-all w-full h-full">
-                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><User className="w-3 h-3" /> Rider</p>
-                        <p className="text-sm font-black text-foreground truncate w-full text-left">{riderName ? riderName : "Select"}</p>
+                        <p className="text-sm font-black text-foreground uppercase tracking-wider flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> Rider</p>
+                        <p className="text-[11px] font-semibold text-muted-foreground truncate w-full text-left">{riderName ? riderName : "Select"}</p>
                       </button>
-                      {riderId && (
+                      {(riderId || riderName) && (
                         <button 
                           onClick={(e) => { e.stopPropagation(); setRiderId(null, null); }}
                           className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
@@ -1587,10 +1613,10 @@ export default function POS() {
                   ) : (
                     <div className="relative">
                       <button onClick={() => setWaiterModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border-2 border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 hover:border-orange-500/80 shadow-md transition-all w-full h-full">
-                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><User className="w-3 h-3" /> Waiter</p>
-                        <p className="text-sm font-black text-foreground truncate w-full text-left">{waiterName ? waiterName : "Select"}</p>
+                        <p className="text-sm font-black text-foreground uppercase tracking-wider flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> Waiter</p>
+                        <p className="text-[11px] font-semibold text-muted-foreground truncate w-full text-left">{waiterName ? waiterName : "Select"}</p>
                       </button>
-                      {waiterId && (
+                      {(waiterId || waiterName) && (
                         <button 
                           onClick={(e) => { e.stopPropagation(); setWaiterId(null, null); }}
                           className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
@@ -1762,14 +1788,14 @@ export default function POS() {
                       <button
                         onClick={handleProceedToPay}
                         disabled={cart.length === 0}
-                        className="w-full py-1.5 bg-[var(--checkout-bg)] hover:bg-[var(--checkout-hover)] text-[var(--checkout-text)] font-black text-base rounded-xl shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="w-full py-3 bg-[var(--checkout-bg)] hover:bg-[var(--checkout-hover)] text-[var(--checkout-text)] font-black text-lg rounded-xl shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
-                        PROCEED TO PAY <span className="bg-white/30 text-white text-[10px] px-1.5 py-0.5 rounded-md ml-1 font-bold">CTRL+ENTER</span>
+                        PROCEED TO PAY <span className="bg-white/30 text-white text-[11px] px-2 py-1 rounded-md ml-1 font-bold">CTRL+ENTER</span>
                       </button>
                     </div>
 
-                    <div className="relative mb-2">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                    <div className="relative mb-3 mt-1">
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground">
                         <Edit2 className="w-4 h-4" />
                       </div>
                       <input
@@ -1778,7 +1804,7 @@ export default function POS() {
                         placeholder="Add Order Notes (Ctrl+N)"
                         value={orderNotes}
                         onChange={(e) => setOrderNotes(e.target.value)}
-                        className="w-full pl-9 pr-3 py-1.5 bg-secondary/60 hover:bg-secondary border border-border/50 rounded-xl text-xs font-bold text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#fcb47c]/50 transition-colors"
+                        className="w-full pl-10 pr-4 h-10 bg-secondary/60 hover:bg-secondary border border-border/50 rounded-xl text-sm font-bold text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#fcb47c]/50 transition-colors"
                       />
                     </div>
 

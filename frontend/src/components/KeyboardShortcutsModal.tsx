@@ -44,6 +44,7 @@ const SHORTCUT_GROUPS: ShortcutCategory[] = [
       { key: "Ctrl + N", desc: "Add Order Note", detail: "Attach a special instruction or note to the entire order." },
       { key: "Ctrl + K", desc: "Toggle Kitchen Print", detail: "Toggle whether the order should be sent to the kitchen." },
       { key: "Ctrl + C", desc: "Select Customer", detail: "Opens the customer database to attach a customer to the order." },
+      { key: "Ctrl + W", desc: "Select Waiter / Rider", detail: "Opens the waiter or rider selection panel depending on the order type." },
     ]
   },
   {

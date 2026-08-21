@@ -54,13 +54,21 @@ export function RiderSelectorModal({ isOpen, onClose }: RiderSelectorModalProps)
       if (e.key === 'Escape') onClose()
       
       if (filteredRiders.length > 0) {
-        if (e.key === 'ArrowDown') {
+        if (e.key === 'ArrowRight') {
           e.preventDefault()
           setSelectedIndex(prev => Math.min(prev + 1, filteredRiders.length - 1))
         }
-        if (e.key === 'ArrowUp') {
+        if (e.key === 'ArrowLeft') {
           e.preventDefault()
           setSelectedIndex(prev => Math.max(prev - 1, 0))
+        }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          setSelectedIndex(prev => Math.min(prev + 3, filteredRiders.length - 1))
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          setSelectedIndex(prev => Math.max(prev - 3, 0))
         }
         if (e.key === 'Enter') {
           e.preventDefault()

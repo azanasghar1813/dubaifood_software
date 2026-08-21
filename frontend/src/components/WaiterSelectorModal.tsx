@@ -50,15 +50,21 @@ export function WaiterSelectorModal({ isOpen, onClose }: WaiterSelectorModalProp
     if (!isOpen) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
       if (e.key === 'Backspace' && searchQuery === '') {
         e.preventDefault()
         onClose()
         return
       }
-      if (['ArrowUp', 'ArrowDown'].includes(e.key)) {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         e.preventDefault()
-        if (e.key === 'ArrowDown') setSelectedIndex(prev => Math.min(prev + 1, filteredWaiters.length - 1))
-        if (e.key === 'ArrowUp') setSelectedIndex(prev => Math.max(prev - 1, 0))
+        if (e.key === 'ArrowRight') setSelectedIndex(prev => Math.min(prev + 1, filteredWaiters.length - 1))
+        if (e.key === 'ArrowLeft') setSelectedIndex(prev => Math.max(prev - 1, 0))
+        if (e.key === 'ArrowDown') setSelectedIndex(prev => Math.min(prev + 2, filteredWaiters.length - 1))
+        if (e.key === 'ArrowUp') setSelectedIndex(prev => Math.max(prev - 2, 0))
         return
       }
       if (e.key === 'Enter') {

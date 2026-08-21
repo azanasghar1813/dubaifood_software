@@ -8,7 +8,7 @@ import { Lock, User, ChevronDown, Loader2 } from "lucide-react"
 import { motion } from "framer-motion"
 
 export default function Login() {
-  const [users, setUsers] = useState<{ id: string, username: string, firstName: string, lastName: string }[]>([])
+  const [users, setUsers] = useState<{ id: string, username: string, firstName: string, lastName: string, role_name?: string }[]>([])
   const [selectedUsername, setSelectedUsername] = useState("")
   const [pin, setPin] = useState("")
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)

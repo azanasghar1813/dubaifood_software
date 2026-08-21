@@ -17,7 +17,7 @@ export default function TopNavbar() {
   const [isSwitchModalOpen, setIsSwitchModalOpen] = useState(false)
   
   // Switch Cashier State
-  const [cashiers, setCashiers] = useState<{ id: string, name: string, username: string }[]>([])
+  const [cashiers, setCashiers] = useState<{ id: string, name: string, username: string, role: string }[]>([])
   const [selectedCashier, setSelectedCashier] = useState<any>(null)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [pin, setPin] = useState("")
