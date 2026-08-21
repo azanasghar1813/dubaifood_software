@@ -51,3 +51,10 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 )
+
+export const hasPermission = (code: string) => {
+  const user = useAuthStore.getState().user;
+  if (!user) return false;
+  if (user.permissions.includes('*')) return true;
+  return user.permissions.includes(code);
+}

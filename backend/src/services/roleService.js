@@ -4,7 +4,11 @@ import { dbEngine } from '../database/sqlite.js';
 
 export const roleService = {
   getAllRoles: () => {
-    return roleRepository.findAll();
+    const roles = roleRepository.findAll();
+    return roles.map(role => ({
+      ...role,
+      permissions: roleRepository.getRolePermissions(role.id)
+    }));
   },
 
   getRoleById: (id) => {
@@ -58,8 +62,9 @@ export const roleService = {
     const role = roleRepository.findById(roleId);
     if (!role) throw new Error('Role not found');
 
-    if (role.is_system === 1) {
-      throw new Error('Cannot delete a core system role');
+    const protectedRoles = ['Super Admin', 'Admin', 'Owner'];
+    if (protectedRoles.includes(role.name)) {
+      throw new Error(`Cannot delete the core system role: ${role.name}`);
     }
 
     // In a real scenario, we should check if any users have this role before deleting

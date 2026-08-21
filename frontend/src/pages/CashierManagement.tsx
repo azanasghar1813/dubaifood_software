@@ -6,8 +6,9 @@ import {
   RefreshCw, Printer,
   CheckCircle2, BarChart, Activity,
   AlertCircle, Coins, Plus, ShieldAlert, Key,
-  X, Search, Keyboard
+  X, Search, Keyboard, Shield
 } from "lucide-react"
+import { useAuthStore, hasPermission } from "../store/authStore"
 
 // Constants & Types
 
@@ -60,6 +61,8 @@ interface ShiftRecord {
 }
 
 export default function CashierManagement() {
+  const { user: currentUser } = useAuthStore()
+
   // --- CORE SHIFT ACTIVE STATE ---
   const [activeShift, setActiveShift] = useState<any>(null)
   const [shiftHistory, setShiftHistory] = useState<ShiftRecord[]>([])
@@ -99,6 +102,11 @@ export default function CashierManagement() {
   // Simulated Time states
   const [currentTime, setCurrentTime] = useState(new Date())
   const [currentSeconds, setCurrentSeconds] = useState(0)
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -309,6 +317,17 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
   }
 
 
+  if (!hasPermission('VIEW_CASHIERS') && currentUser?.role !== 'Admin' && currentUser?.role !== 'Super Admin') {
+    return (
+      <div className="h-full flex items-center justify-center min-h-[calc(100vh-100px)]">
+        <div className="text-center space-y-4">
+          <Shield className="w-12 h-12 text-red-500 mx-auto" />
+          <h2 className="text-2xl font-bold">Access Denied</h2>
+          <p className="text-slate-500">You do not have permission to view Cashier Management.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto text-foreground pb-12">

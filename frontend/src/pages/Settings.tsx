@@ -1,14 +1,16 @@
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
-  Printer as PrinterIcon, Building2, Save, Trash2, Plus, Server, Edit2, X, RefreshCw
+  Printer as PrinterIcon, Building2, Save, Trash2, Plus, Server, Edit2, X, RefreshCw, Shield
 } from "lucide-react"
+import { useAuthStore, hasPermission } from "../store/authStore"
 import { configApi } from "../api/configApi"
 import { wipeOutHistory } from "../api/historyApi"
 import type { BusinessProfile, FinanceConfig, Printer, OrderConfig } from "../api/configApi"
 
 
 export default function Settings() {
+  const { user: currentUser } = useAuthStore()
   const [activeTab, setActiveTab] = useState("Business Profile")
   
   // States
@@ -58,12 +60,13 @@ export default function Settings() {
     setIsLoading(true)
     try {
       const res = await configApi.getAllConfig()
+      if (!res?.data?.data) return
       const data = res.data.data
       
-      if (data.business.profile) setProfileData(data.business.profile)
-      if (data.business.finance) setFinanceData(data.business.finance)
-      if (data.business.order) setOrderConfig(data.business.order)
-      if (data.printers) setPrinters(data.printers)
+      if (data?.business?.profile) setProfileData(data.business.profile)
+      if (data?.business?.finance) setFinanceData(data.business.finance)
+      if (data?.business?.order) setOrderConfig(data.business.order)
+      if (data?.printers) setPrinters(data.printers)
     } catch (e) {
       console.error("Failed to load config", e)
     } finally {
@@ -159,6 +162,18 @@ export default function Settings() {
     return (
       <div className="h-full flex items-center justify-center min-h-[calc(100vh-100px)]">
         <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (!hasPermission('VIEW_SETTINGS') && currentUser?.role !== 'Admin' && currentUser?.role !== 'Super Admin') {
+    return (
+      <div className="h-full flex items-center justify-center min-h-[calc(100vh-100px)]">
+        <div className="text-center space-y-4">
+          <Shield className="w-12 h-12 text-red-500 mx-auto" />
+          <h2 className="text-2xl font-bold">Access Denied</h2>
+          <p className="text-slate-500">You do not have permission to view Settings.</p>
+        </div>
       </div>
     )
   }

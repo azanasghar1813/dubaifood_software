@@ -22,6 +22,15 @@ export const employeeService = {
   getRoles: () => {
     return apiClient.get('/roles')
   },
+  createRole: (data: any) => {
+    return apiClient.post('/roles', data)
+  },
+  updateRole: (id: string, data: any) => {
+    return apiClient.put(`/roles/${id}`, data)
+  },
+  deleteRole: (id: string) => {
+    return apiClient.delete(`/roles/${id}`)
+  },
   getPermissions: () => {
     return apiClient.get('/permissions')
   }

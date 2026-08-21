@@ -9,8 +9,8 @@ const resolveCartContext = (req, res) => {
   const branchId = req.headers['x-branch-id'] || 'DEFAULT_BRANCH';
 
   if (!sessionId) {
-    if (req.user?.permissions?.includes('*')) {
-      sessionId = cashierSessionRepository.getOrCreateOpenSession(userId, 'ADMIN_BYPASS_TERMINAL');
+    if (req.user?.permissions?.includes('*') || req.user?.permissions?.includes('VIEW_POS')) {
+      sessionId = cashierSessionRepository.getOrCreateOpenSession(userId, 'AUTO_BYPASS_TERMINAL');
     } else {
       sendError(res, 400, 'Shift not opened. x-cashier-session-id header is required.');
       return null;
@@ -121,11 +121,11 @@ export const cartController = {
   },
 
   setMeta: (req, res) => {
-    const sessionId = req.headers['x-cashier-session-id'];
-    if (!sessionId) return sendError(res, 400, 'x-cashier-session-id header is required.');
+    const ctx = resolveCartContext(req, res);
+    if (!ctx) return;
 
     try {
-      const updatedCart = cartService.setCartMeta(sessionId, {
+      const updatedCart = cartService.setCartMeta(ctx.sessionId, {
         order_type: req.body.order_type,
         customer_id: req.body.customer_id,
         table_id: req.body.table_id,

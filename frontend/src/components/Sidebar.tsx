@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion"
 import { useUIStore } from "../store/uiStore"
+import { hasPermission } from "../store/authStore"
 import { NavLink } from "react-router-dom"
 import { 
   LayoutDashboard, 
@@ -22,19 +23,19 @@ import {
 } from "lucide-react"
 
 const menuItems = [
-  { path: "/dashboard", name: "Dashboard", icon: LayoutDashboard },
-  { path: "/pos", name: "POS", icon: ShoppingCart },
-  { path: "/orders", name: "Orders", icon: ClipboardList },
-  { path: "/reports", name: "Reports", icon: BarChart3 },
-  { path: "/kds", name: "Kitchen", icon: ChefHat },
-  { path: "/products", name: "Products", icon: UtensilsCrossed },
-  { path: "/categories", name: "Categories", icon: Tags },
-  { path: "/cashier", name: "Cashiers", icon: Wallet },
-  { path: "/settings", name: "Settings", icon: Building2 },
-  { path: "/backup", name: "Backup", icon: Database },
-  { path: "/sync", name: "Sync", icon: RefreshCw },
-  { path: "/permissions", name: "Users", icon: Shield },
-  { path: "/activity-logs", name: "Activity Logs", icon: History },
+  { path: "/dashboard", name: "Dashboard", icon: LayoutDashboard, permission: "VIEW_DASHBOARD" },
+  { path: "/pos", name: "POS", icon: ShoppingCart, permission: "VIEW_POS" },
+  { path: "/orders", name: "Orders", icon: ClipboardList, permission: "VIEW_ORDERS" },
+  { path: "/reports", name: "Reports", icon: BarChart3, permission: "VIEW_REPORTS" },
+  { path: "/kds", name: "Kitchen", icon: ChefHat, permission: "VIEW_KITCHEN" },
+  { path: "/products", name: "Products", icon: UtensilsCrossed, permission: "VIEW_PRODUCTS" },
+  { path: "/categories", name: "Categories", icon: Tags, permission: "VIEW_CATEGORIES" },
+  { path: "/cashier", name: "Cashiers", icon: Wallet, permission: "VIEW_CASHIERS" },
+  { path: "/settings", name: "Settings", icon: Building2, permission: "VIEW_SETTINGS" },
+  { path: "/backup", name: "Backup", icon: Database, permission: "VIEW_BACKUP" },
+  { path: "/sync", name: "Sync", icon: RefreshCw, permission: "VIEW_SYNC" },
+  { path: "/permissions", name: "Users", icon: Shield, permission: "VIEW_USERS" },
+  { path: "/activity-logs", name: "Activity Logs", icon: History, permission: "VIEW_ACTIVITY_LOGS" },
 ]
 
 export default function Sidebar() {
@@ -76,7 +77,7 @@ export default function Sidebar() {
         </div>
         
         <div className={`flex-1 overflow-y-auto py-4 flex flex-col gap-1 px-3 ${isSidebarOpen ? 'custom-scrollbar' : 'scrollbar-hide'}`}>
-          {menuItems.map((item) => (
+          {menuItems.filter(item => hasPermission(item.permission)).map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
