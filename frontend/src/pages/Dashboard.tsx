@@ -67,36 +67,36 @@ export default function Dashboard() {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   // Live Table states (derived from active orders)
-  const activeTableIds = useMemo(() => {
-    const set = new Set<string>()
+  const activeTablesMap = useMemo(() => {
+    const map = new Map<string, string>()
     orders.forEach(o => {
       if (o.status !== "Completed" && o.status !== "Cancelled" && o.tableNumber) {
-        set.add(o.tableNumber.toString())
+        map.set(o.tableNumber.toString(), o.waiterName || '')
       }
     })
-    return set
+    return map
   }, [orders])
 
   const groundFloorTables = useMemo(() => {
     return Array.from({ length: 12 }, (_, i) => {
-      const id = `G-${i + 1}`
-      return { id, status: activeTableIds.has(id) ? "Occupied" : "Available" }
+      const id = `G${i + 1}`
+      return { id, status: activeTablesMap.has(id) ? "Occupied" : "Available", waiterName: activeTablesMap.get(id) }
     })
-  }, [activeTableIds])
+  }, [activeTablesMap])
 
   const familyTables = useMemo(() => {
     return Array.from({ length: 6 }, (_, i) => {
-      const id = `F-${i + 1}`
-      return { id, status: activeTableIds.has(id) ? "Occupied" : "Available" }
+      const id = `F${i + 1}`
+      return { id, status: activeTablesMap.has(id) ? "Occupied" : "Available", waiterName: activeTablesMap.get(id) }
     })
-  }, [activeTableIds])
+  }, [activeTablesMap])
 
   const rooftopTables = useMemo(() => {
     return Array.from({ length: 8 }, (_, i) => {
-      const id = `T-${i + 1}`
-      return { id, status: activeTableIds.has(id) ? "Occupied" : "Available" }
+      const id = `T${i + 1}`
+      return { id, status: activeTablesMap.has(id) ? "Occupied" : "Available", waiterName: activeTablesMap.get(id) }
     })
-  }, [activeTableIds])
+  }, [activeTablesMap])
 
   // Notifications (Now using backend activity feed)
   const liveStats = useMemo(() => {
@@ -513,6 +513,9 @@ export default function Dashboard() {
                         }`}
                     >
                       {t.id}
+                      {t.status === "Occupied" && t.waiterName && (
+                        <div className="text-[9px] font-bold mt-1 opacity-80 truncate">{t.waiterName}</div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -531,6 +534,9 @@ export default function Dashboard() {
                         }`}
                     >
                       {t.id}
+                      {t.status === "Occupied" && t.waiterName && (
+                        <div className="text-[9px] font-bold mt-1 opacity-80 truncate">{t.waiterName}</div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -549,6 +555,9 @@ export default function Dashboard() {
                         }`}
                     >
                       {t.id}
+                      {t.status === "Occupied" && t.waiterName && (
+                        <div className="text-[9px] font-bold mt-1 opacity-80 truncate">{t.waiterName}</div>
+                      )}
                     </div>
                   ))}
                 </div>

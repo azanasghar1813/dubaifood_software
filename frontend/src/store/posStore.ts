@@ -63,6 +63,8 @@ interface POSState {
   customer: any | null
   deliveryCharges: number
   tableNumber: string | null
+  waiterId: string | null
+  waiterName: string | null
   guestCount: number
   isTaxEnabled: boolean
   orderType: string
@@ -98,6 +100,8 @@ interface POSState {
   setOrderType: (type: 'Dine In' | 'Takeaway' | 'Delivery' | 'Drive Through') => Promise<void>
   setCustomer: (customer: any | null) => void
   setTableNumber: (table: string | null) => void
+  setWaiterId: (waiter: string | null, waiterName?: string | null) => void
+  setWaiterName: (name: string | null) => void
   setGuestCount: (count: number) => void
   setDeliveryCharges: (amount: number) => void
   toggleTax: () => void
@@ -119,6 +123,8 @@ export const usePosStore = create<POSState>((set, get) => ({
   customer: null,
   deliveryCharges: 0,
   tableNumber: null,
+  waiterId: null,
+  waiterName: null,
   guestCount: 1,
   isTaxEnabled: true,
   orderType: 'Dine In',
@@ -219,6 +225,7 @@ export const usePosStore = create<POSState>((set, get) => ({
       cart: mappedItems,
       orderType: order?.orderType || order?.order_type || (backendOrder?.order_type === 'DINE_IN' ? 'Dine In' : backendOrder?.order_type === 'TAKEAWAY' ? 'Takeaway' : backendOrder?.order_type === 'DELIVERY' ? 'Delivery' : get().orderType),
       tableNumber: order?.tableNumber || order?.table_id || backendOrder?.table_id || null,
+      waiterId: order?.waiterId || order?.waiter_id || backendOrder?.waiter_id || null,
       customer: order?.customerName ? { name: order.customerName, phone: order.customerPhone || order.customer_phone } : get().customer,
       deliveryCharges: Number(order.deliveryCharges || order.delivery_charges || order.metadata?.delivery_charges || backendOrder?.delivery_fee || 0)
     })
@@ -439,6 +446,7 @@ export const usePosStore = create<POSState>((set, get) => ({
           customer_address: state.customer?.address || null,
           is_vip: !!state.customer?.is_vip || !!state.customer?.isVip,
           table_id: state.tableNumber || order.table_id || null,
+          waiter_id: state.waiterId || order.waiter_id || null,
           notes: order.notes || null,
           branch_id: order.branch_id || 'DEFAULT_BRANCH',
           business_date: order.business_date,
@@ -468,7 +476,7 @@ export const usePosStore = create<POSState>((set, get) => ({
         })
       }
       // Draft order is now completed. Fetch a new draft order and sync history.
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null })
       await get().fetchDraftOrder()
       // Immediately sync order history for instant status updates
       useOrderStore.getState().syncOrdersFromBackend()
@@ -483,10 +491,10 @@ export const usePosStore = create<POSState>((set, get) => ({
 
   clearCart: () => {
     void cartService.clearCart().then(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, deliveryCharges: 0 })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, deliveryCharges: 0 })
       void get().fetchDraftOrder()
     }).catch(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, deliveryCharges: 0 })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, deliveryCharges: 0 })
       void get().fetchDraftOrder()
     })
   },
@@ -599,6 +607,27 @@ export const usePosStore = create<POSState>((set, get) => ({
       console.error('Failed to sync table number:', e);
     }
   },
+  setWaiterId: async (waiter, newWaiterName) => {
+    const nameToUse = newWaiterName !== undefined ? newWaiterName : get().waiterName;
+    set({ waiterId: waiter, waiterName: nameToUse })
+    try {
+      const state = get();
+      if (state.editingOrderId && state.activeOrder && state.activeOrder.order_number) {
+        const res = await apiClient.put(`/orders/${state.editingOrderId}/meta`, { waiter_id: waiter, waiter_name_snapshot: nameToUse });
+        if ((res as any).success) {
+          set({ activeOrder: (res as any).data });
+        }
+      } else {
+        const res = await cartService.setMeta({ waiter_id: waiter, waiter_name_snapshot: nameToUse });
+        if ((res as any).success) {
+          set({ activeOrder: (res as any).data });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to sync waiter ID:', e);
+    }
+  },
+  setWaiterName: (name) => set({ waiterName: name }),
   setGuestCount: (count) => set({ guestCount: count }),
   setDeliveryCharges: async (deliveryCharges) => {
     set({ deliveryCharges })

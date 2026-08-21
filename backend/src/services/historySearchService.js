@@ -139,9 +139,11 @@ class HistorySearchService {
         SELECT o.id, o.order_number, o.business_date, o.order_type,
                o.lifecycle_state, o.payment_state, o.kitchen_state,
                o.grand_total, o.cashier_user_id, o.customer_id, IFNULL(dt.table_number, o.table_id) as table_id,
+               o.waiter_id, COALESCE(o.waiter_name_snapshot, w.username) AS waiter_name,
                o.created_at, o.updated_at, o.sync_status, o.notes
         FROM orders o
         LEFT JOIN dining_tables dt ON dt.id = o.table_id
+        LEFT JOIN users w ON w.id = o.waiter_id
         ${where}
         ORDER BY o.created_at DESC
         LIMIT ? OFFSET ?
@@ -186,9 +188,11 @@ class HistorySearchService {
       SELECT o.id, o.order_number, o.business_date, o.order_type,
              o.lifecycle_state, o.payment_state, o.kitchen_state,
              o.grand_total, o.cashier_user_id, o.customer_id, IFNULL(dt.table_number, o.table_id) as table_id,
+             o.waiter_id, COALESCE(o.waiter_name_snapshot, w.username) AS waiter_name,
              o.created_at, o.updated_at, o.sync_status, o.notes
       FROM orders o
       LEFT JOIN dining_tables dt ON dt.id = o.table_id
+      LEFT JOIN users w ON w.id = o.waiter_id
       ${where}
       ORDER BY o.created_at DESC
       LIMIT ? OFFSET ?
@@ -205,6 +209,7 @@ class HistorySearchService {
     if (filters.date_to)   { conditions.push('o.business_date <= ?'); params.push(filters.date_to); }
     if (filters.lifecycle_state) { conditions.push('o.lifecycle_state = ?'); params.push(filters.lifecycle_state); }
     if (filters.cashier_user_id) { conditions.push('o.cashier_user_id = ?'); params.push(filters.cashier_user_id); }
+    if (filters.waiter_id) { conditions.push('o.waiter_id = ?'); params.push(filters.waiter_id); }
     if (filters.branch_id) { conditions.push('o.branch_id = ?'); params.push(filters.branch_id); }
 
     const sql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';

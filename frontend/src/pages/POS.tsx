@@ -19,6 +19,7 @@ import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "reac
 import { menuService } from "../services/menuService"
 import { CustomerPanelModal } from "../components/CustomerPanelModal"
 import { TableSelectorModal } from "../components/TableSelectorModal"
+import { WaiterSelectorModal } from "../components/WaiterSelectorModal"
 import { ActiveOrdersSidebar } from "../components/ActiveOrdersSidebar"
 import { DealConfigurationModal } from "../components/DealConfigurationModal"
 import type { PaymentMethod } from "../store/orderStore"
@@ -117,6 +118,7 @@ export default function POS() {
   // Restaurant Management Modals
   const [customerModalOpen, setCustomerModalOpen] = useState(false)
   const [tableModalOpen, setTableModalOpen] = useState(false)
+  const [waiterModalOpen, setWaiterModalOpen] = useState(false)
   const [recentOrdersModalOpen, setRecentOrdersModalOpen] = useState(false)
 
   // Payment Selection
@@ -143,10 +145,11 @@ export default function POS() {
     getSubtotal, getTax, getServiceCharge, getGrandTotal, clearCart, getNetTotal,
     updateItemModifiers, updateItemNotes, orderType, setOrderType,
     setCustomer, gridDensity, tableNumber, setTableNumber, customer,
+    waiterId, setWaiterId, waiterName, setWaiterName,
     isTaxEnabled, toggleTax, menuContext, setMenuContext,
     editingOrderId, clearEditMode, completeOrder,
     deliveryCharges, setDeliveryCharges,
-    fetchDraftOrder, financeConfig
+    fetchDraftOrder, financeConfig, activeOrderId
   } = usePosStore()
 
   const { orderCounter } = useOrderStore()
@@ -169,6 +172,16 @@ export default function POS() {
       setCheckoutModalOpen(true)
     }
   }
+
+  // Auto-assign waiter if logged in user is a waiter
+  useEffect(() => {
+    if (user && (user.role === 'Waiter' || user.role === '4')) {
+      if (!waiterId) {
+        setWaiterId(user.id);
+        setWaiterName(user.name || (user as any).first_name || 'Waiter');
+      }
+    }
+  }, [user, waiterId, setWaiterId, setWaiterName])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -677,6 +690,8 @@ export default function POS() {
             setCustomerModalOpen(false)
           } else if (tableModalOpen) {
             setTableModalOpen(false)
+          } else if (waiterModalOpen) {
+            setWaiterModalOpen(false)
           } else if (recentOrdersModalOpen) {
             setRecentOrdersModalOpen(false)
           } else {
@@ -693,7 +708,7 @@ export default function POS() {
 
       // Tab key: toggle Cart Mode
       if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-        if (!checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !recentOrdersModalOpen) {
+        if (!checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !waiterModalOpen && !recentOrdersModalOpen) {
           e.preventDefault()
           const nextCartMode = !isCartMode
           setIsCartMode(nextCartMode)
@@ -706,7 +721,7 @@ export default function POS() {
 
       // Autofocus search on any single character key press (only in menu mode)
       if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey && !isCartMode) {
-        if (!checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !recentOrdersModalOpen) {
+        if (!checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !waiterModalOpen && !recentOrdersModalOpen) {
           searchInputRef.current?.focus()
         }
       }
@@ -1513,18 +1528,16 @@ export default function POS() {
                 </div>
               )}
 
-              {/* Customer & Table Management */}
-              <div className="p-2 border-b border-border bg-card grid grid-cols-2 gap-2">
+              {/* Customer & Table & Waiter Management */}
+              <div className="p-2 border-b border-border bg-card grid grid-cols-3 gap-2">
                 <div className="relative">
-                  <button onClick={() => setCustomerModalOpen(true)} className="flex items-center gap-2 p-2 rounded-xl border border-border bg-secondary/50 hover:bg-secondary hover:border-orange-500/50 transition-all text-left w-full">
+                  <button onClick={() => setCustomerModalOpen(true)} className="flex items-center gap-2 p-2 rounded-xl border-2 border-orange-500/20 bg-secondary/80 hover:bg-secondary hover:border-orange-500/60 shadow-sm transition-all text-left w-full h-full">
                     <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
                       {(customer?.is_vip || customer?.isVip) ? <Star className="w-4 h-4 text-orange-500 fill-orange-500" /> : <User className="w-4 h-4" />}
                     </div>
-                    <div className="overflow-hidden pr-4">
-                      <p className="text-xs font-bold text-foreground truncate">{customer?.name || customer?.first_name || "Select Customer"}</p>
-                      <p className="text-[10px] text-muted-foreground font-bold truncate flex items-center gap-1">
-                        <Phone className="w-2.5 h-2.5" /> {customer?.phone || "Ctrl+C"}
-                      </p>
+                    <div className="overflow-hidden pr-4 flex-1">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">Customer</p>
+                      <p className="text-xs font-black text-foreground truncate">{customer?.name || customer?.first_name || "Select"}</p>
                     </div>
                   </button>
                   {customer && (
@@ -1538,15 +1551,30 @@ export default function POS() {
                   )}
                 </div>
                 <div className="relative">
-                  <button onClick={() => setTableModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border border-border bg-secondary/50 hover:bg-secondary hover:border-orange-500/50 transition-all w-full">
+                  <button onClick={() => setTableModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border-2 border-orange-500/20 bg-secondary/80 hover:bg-secondary hover:border-orange-500/60 shadow-sm transition-all w-full h-full">
                     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Hash className="w-3 h-3" /> Table</p>
-                    <p className="text-sm font-black text-foreground">{tableNumber || "Ctrl+T"}</p>
+                    <p className="text-sm font-black text-foreground">{tableNumber || "Select"}</p>
                   </button>
                   {tableNumber && (
                     <button 
                       onClick={(e) => { e.stopPropagation(); setTableNumber(null); }}
                       className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
                       title="Clear Table"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <button onClick={() => setWaiterModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border-2 border-orange-500/20 bg-secondary/80 hover:bg-secondary hover:border-orange-500/60 shadow-sm transition-all w-full h-full">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><User className="w-3 h-3" /> Waiter</p>
+                    <p className="text-sm font-black text-foreground truncate w-full text-left">{waiterName ? waiterName : "Select"}</p>
+                  </button>
+                  {waiterId && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setWaiterId(null, null); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
+                      title="Clear Waiter"
                     >
                       <XCircle className="w-4 h-4" />
                     </button>
@@ -2436,7 +2464,16 @@ export default function POS() {
           }
         }}
       />
-      <TableSelectorModal isOpen={tableModalOpen} onClose={() => setTableModalOpen(false)} />
+      <TableSelectorModal
+        isOpen={tableModalOpen}
+        onClose={() => setTableModalOpen(false)}
+      />
+
+      <WaiterSelectorModal
+        isOpen={waiterModalOpen}
+        onClose={() => setWaiterModalOpen(false)}
+      />
+
       <ActiveOrdersSidebar
         isOpen={recentOrdersModalOpen}
         onClose={() => setRecentOrdersModalOpen(false)}

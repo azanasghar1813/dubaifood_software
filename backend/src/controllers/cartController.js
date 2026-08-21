@@ -128,7 +128,9 @@ export const cartController = {
       const updatedCart = cartService.setCartMeta(sessionId, {
         order_type: req.body.order_type,
         customer_id: req.body.customer_id,
-        table_id: req.body.table_id
+        table_id: req.body.table_id,
+        waiter_id: req.body.waiter_id,
+        waiter_name_snapshot: req.body.waiter_name_snapshot
       });
       sendSuccess(res, updatedCart, 'Cart metadata updated.');
     } catch (error) {

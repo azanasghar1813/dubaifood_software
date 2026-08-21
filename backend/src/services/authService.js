@@ -102,7 +102,8 @@ export const authService = {
       id: u.id,
       username: u.username,
       firstName: u.first_name,
-      lastName: u.last_name
+      lastName: u.last_name,
+      role_name: u.role_name
     }));
   }
 };

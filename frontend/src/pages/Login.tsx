@@ -116,7 +116,7 @@ export default function Login() {
                         }}
                         className={`px-4 py-3 cursor-pointer hover:bg-secondary transition-colors font-bold ${selectedUsername === user.username ? 'bg-primary/10 text-primary' : ''}`}
                       >
-                        {user.firstName} {user.lastName} <span className="text-xs text-muted-foreground ml-2">({user.username})</span>
+                        {user.firstName} {user.lastName} <span className="text-xs text-muted-foreground ml-2">({user.role_name || 'Cashier'})</span>
                       </div>
                     ))}
                     {users.length === 0 && (

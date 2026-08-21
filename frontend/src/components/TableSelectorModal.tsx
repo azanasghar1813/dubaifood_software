@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, Clock, X } from "lucide-react"
 import { usePosStore } from "../store/posStore"
+import { useOrderStore } from "../store/orderStore"
 type Table = any;
 type TableStatus = any;
 
@@ -18,6 +19,7 @@ const ALL_TABLES: any[] = [...GROUND_TABLES, ...FAMILY_TABLES, ...ROOFTOP_TABLES
 
 export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps) {
   const { openOrders, switchOrder, setTableNumber, activeOrderId } = usePosStore()
+  const { orders } = useOrderStore()
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -39,6 +41,17 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
     let amount = 0
     let elapsed = 0
     let customerName = ""
+    let waiterName = ""
+
+    // Find in backend orders first
+    const backendOrder = orders.find(o => o.tableNumber === t.label && o.status !== "Completed" && o.status !== "Cancelled")
+    if (backendOrder) {
+      status = 'Occupied'
+      amount = backendOrder.total
+      elapsed = Math.floor((new Date().getTime() - new Date(backendOrder.timestamp).getTime()) / 60000)
+      customerName = backendOrder.customerName || "Guest"
+      waiterName = backendOrder.waiterName || ""
+    }
 
     if (orderForTable && orderForTable.cart.length > 0) {
       status = 'Occupied'
@@ -49,6 +62,7 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
       amount = sub
       elapsed = Math.floor((new Date().getTime() - new Date(orderForTable.startTime).getTime()) / 60000)
       if (orderForTable.customer) customerName = orderForTable.customer.name
+      if (orderForTable.waiterName) waiterName = orderForTable.waiterName
     }
 
     // if this is the currently active order (not yet pushed to openOrders, or currently active)
@@ -58,9 +72,10 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
       amount = store.getSubtotal()
       elapsed = Math.floor((new Date().getTime() - new Date(store.startTime).getTime()) / 60000)
       if (store.customer) customerName = store.customer.name
+      if (store.waiterName) waiterName = store.waiterName
     }
 
-    return { ...t, status, amount, elapsed, customerName }
+    return { ...t, status, amount, elapsed, customerName, waiterName }
   })
 
   const filteredTables = enhancedTables.filter(t => t.label.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -138,11 +153,11 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Available': return 'bg-secondary text-muted-foreground border-transparent hover:border-orange-500'
-      case 'Occupied': return 'bg-orange-500 text-white border-transparent shadow-lg shadow-orange-500/20'
+      case 'Available': return 'bg-white text-zinc-900 border-zinc-200 hover:border-orange-500'
+      case 'Occupied': return 'bg-orange-100 text-orange-900 border-orange-200 shadow-sm'
       case 'Preparing': return 'bg-yellow-500 text-white border-transparent'
       case 'Ready': return 'bg-green-500 text-white border-transparent'
-      default: return 'bg-secondary text-muted-foreground border-transparent'
+      default: return 'bg-white text-zinc-900 border-zinc-200'
     }
   }
 
@@ -169,6 +184,7 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
             {t.status !== 'Available' ? (
               <div className="w-full text-left mt-auto">
                 <p className="text-[10px] font-bold opacity-90 truncate">{t.customerName || 'Guest'}</p>
+                {t.waiterName && <p className="text-[10px] font-semibold text-orange-600 truncate mt-0.5">Waiter: {t.waiterName}</p>}
                 <div className="flex items-center justify-between text-[10px] font-bold mt-1 opacity-75">
                   <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {t.elapsed}m</span>
                   <span>AED {t.amount.toFixed(2)}</span>
@@ -230,8 +246,8 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-4 p-3 rounded-xl bg-card border border-border">
                 <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mr-2">Status:</span>
-                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-secondary"></div><span className="text-xs font-bold">Available</span></div>
-                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-500"></div><span className="text-xs font-bold text-orange-500">Occupied</span></div>
+                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-zinc-200 border border-zinc-300"></div><span className="text-xs font-bold">Available</span></div>
+                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-200 border border-orange-300"></div><span className="text-xs font-bold text-orange-600">Occupied</span></div>
                 <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-500"></div><span className="text-xs font-bold text-yellow-500">Preparing</span></div>
                 <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500"></div><span className="text-xs font-bold text-green-500">Ready</span></div>
               </div>

@@ -166,7 +166,7 @@ class OrderCreationService {
    * 
    * @param {string} sessionId  - Cashier session/shift ID
    * @param {string} cashierUserId - Acting user ID
-   * @param {Object} options - Overrides: { order_type, customer_id, table_id, notes, branch_id, business_date }
+   * @param {Object} options - Overrides: { order_type, customer_id, table_id, waiter_id, waiter_name_snapshot, notes, branch_id, business_date }
    * @returns {Object} Hydrated Order Draft with all sub-entities
    */
   checkoutCart(sessionId, cashierUserId, options = {}) {
@@ -208,6 +208,8 @@ class OrderCreationService {
       };
       const customerId = resolveId(options.customer_id, cart.customer_id);
       const tableId = resolveId(options.table_id, cart.table_id);
+      const waiterId = resolveId(options.waiter_id, cart.waiter_id);
+      const waiterNameSnapshot = resolveId(options.waiter_name_snapshot, cart.waiter_name_snapshot);
       
       if (tableId) {
         try {
@@ -262,6 +264,8 @@ class OrderCreationService {
         shift_id: sessionId,
         customer_id: customerId,
         table_id: tableId,
+        waiter_id: waiterId,
+        waiter_name_snapshot: waiterNameSnapshot,
         order_type: orderType,
         lifecycle_state: OrderLifecycleState.ACTIVE,
         kitchen_state: 'PENDING',

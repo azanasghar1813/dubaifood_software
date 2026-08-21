@@ -42,7 +42,7 @@ export const authService = {
   /**
    * Fetch active users for the login screen dropdown.
    */
-  getUsers: async (): Promise<{ data: { id: string, username: string, firstName: string, lastName: string }[] }> => {
+  getUsers: async (): Promise<{ data: { id: string, username: string, firstName: string, lastName: string, role_name?: string }[] }> => {
     return apiClient.get('/auth/users')
   }
 }

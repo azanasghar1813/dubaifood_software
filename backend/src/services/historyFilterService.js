@@ -81,6 +81,11 @@ class HistoryFilterService {
       params.push(filters.cashier_user_id);
     }
 
+    if (filters.waiter_id) {
+      conditions.push('o.waiter_id = ?');
+      params.push(filters.waiter_id);
+    }
+
     if (filters.branch_id) {
       conditions.push('o.branch_id = ?');
       params.push(filters.branch_id);

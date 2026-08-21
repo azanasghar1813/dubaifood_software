@@ -102,9 +102,13 @@ export default function Orders() {
   const [filterType, setFilterType] = useState<string>("All")
   const [filterOrderState, setFilterOrderState] = useState<string>("All")
   const [filterPayment, setFilterPayment] = useState<string>("All")
-  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>("All")
-  const [filterCashier, setFilterCashier] = useState<string>("All")
+  const [filterUser, setFilterUser] = useState<string>("All")
   const [sortBy, setSortBy] = useState<string>("Newest")
+
+  const [allUsers, setAllUsers] = useState<any[]>([])
+  useEffect(() => {
+    apiClient.get('/users').then((res: any) => setAllUsers(res.data || res)).catch(console.error)
+  }, [])
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
@@ -182,7 +186,7 @@ export default function Orders() {
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, filterDate, customDateFrom, customDateTo, filterType, filterPayment, filterPaymentMethod, filterOrderState, filterCashier, sortBy])
+  }, [searchQuery, filterDate, customDateFrom, customDateTo, filterType, filterPayment, filterOrderState, filterUser, sortBy])
 
   // Refetch orders when backend-driven filters (Date) change
   useEffect(() => {
@@ -493,12 +497,19 @@ export default function Orders() {
 
       // Exact Filters
       const matchType = filterType === "All" || order.orderType === filterType
-      const matchOrderState = filterOrderState === "All" || order.status === filterOrderState
+      
+      let matchOrderState = true;
+      if (filterOrderState === "Red Edited") {
+        matchOrderState = !!order.isEdited && !!order.isNegativeEdit;
+      } else if (filterOrderState === "Green Edited") {
+        matchOrderState = !!order.isEdited && !order.isNegativeEdit;
+      } else {
+        matchOrderState = filterOrderState === "All" || order.status === filterOrderState;
+      }
       const matchPayment = filterPayment === "All" || order.paymentStatus === filterPayment
-      const matchPaymentMethod = filterPaymentMethod === "All" || (order.payments && order.payments.length > 0 && order.payments[0].method === filterPaymentMethod)
-      const matchCashierDrop = filterCashier === "All" || order.cashierName === filterCashier
+      const matchUserDrop = filterUser === "All" || order.cashierName === filterUser || order.waiterName === filterUser
 
-      return searchMatches && matchType && matchOrderState && matchPayment && matchPaymentMethod && matchCashierDrop
+      return searchMatches && matchType && matchOrderState && matchPayment && matchUserDrop
     })
 
     // Sort order
@@ -511,7 +522,7 @@ export default function Orders() {
     })
 
     return result
-  }, [orders, searchQuery, filterDate, filterType, filterPayment, filterPaymentMethod, filterOrderState, filterCashier, sortBy])
+  }, [orders, searchQuery, filterDate, filterType, filterPayment, filterOrderState, filterUser, sortBy])
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredAndSortedOrders.length / itemsPerPage)
@@ -579,13 +590,12 @@ export default function Orders() {
               <option value="Takeaway">Type: Takeaway</option>
               <option value="Delivery">Type: Delivery</option>
             </select>
-            <select value={filterPaymentMethod} onChange={(e) => setFilterPaymentMethod(e.target.value)} className="h-10 rounded-xl bg-secondary border border-border text-[11px] font-bold px-3 focus:outline-none shrink-0 cursor-pointer hover:bg-secondary/80">
-              <option value="All">Pay Method: All</option>
-              <option value="Cash">Method: Cash</option>
-              <option value="Debit Card">Method: Card</option>
-              <option value="JazzCash">Method: JazzCash</option>
-              <option value="EasyPaisa">Method: EasyPaisa</option>
-              <option value="Bank Transfer">Method: Bank Transfer</option>
+            <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)} className="h-10 rounded-xl bg-secondary border border-border text-[11px] font-bold px-3 focus:outline-none shrink-0 cursor-pointer hover:bg-secondary/80">
+              <option value="All">User: All</option>
+              {allUsers.map(u => {
+                const name = u.first_name + (u.last_name ? ' ' + u.last_name : '');
+                return <option key={u.id} value={name}>User: {name}</option>
+              })}
             </select>
             <select value={filterOrderState} onChange={(e) => setFilterOrderState(e.target.value)} className="h-10 rounded-xl bg-secondary border border-border text-[11px] font-bold px-3 focus:outline-none shrink-0 cursor-pointer hover:bg-secondary/80">
               <option value="All">Status: All</option>
@@ -593,6 +603,8 @@ export default function Orders() {
               <option value="Confirmed">Status: Confirmed</option>
               <option value="Completed">Status: Completed</option>
               <option value="Cancelled">Status: Cancelled</option>
+              <option value="Red Edited">Status: Red Edited</option>
+              <option value="Green Edited">Status: Green Edited</option>
             </select>
             
             <div className="h-6 w-px bg-border mx-1 shrink-0"></div>
@@ -622,7 +634,7 @@ export default function Orders() {
             </div>
 
             <button onClick={() => {
-              setFilterDate("Today"); setCustomDateFrom(""); setCustomDateTo(""); setFilterType("All"); setFilterOrderState("All"); setFilterPayment("All"); setFilterPaymentMethod("All"); setFilterCashier("All"); setSortBy("Newest"); setSearchQuery("");
+              setFilterDate("Today"); setCustomDateFrom(""); setCustomDateTo(""); setFilterType("All"); setFilterOrderState("All"); setFilterPayment("All"); setFilterUser("All"); setSortBy("Newest"); setSearchQuery("");
             }} className="h-10 px-3 rounded-xl bg-secondary border border-border text-[10px] font-black uppercase text-muted-foreground hover:bg-border transition-colors shrink-0" title="Reset Filters">
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -653,7 +665,7 @@ export default function Orders() {
                 <th className="p-4">Date & Time</th>
                 <th className="p-4">Customer</th>
                 <th className="p-4">Type</th>
-                <th className="p-4">Table/Phone</th>
+                <th className="p-4">Table/Waiter</th>
                 <th className="p-4">Items</th>
                 <th className="p-4">Total</th>
                 <th className="p-4">Badges (Pay/Status)</th>
@@ -684,7 +696,10 @@ export default function Orders() {
                   </td>
                   <td className="p-4">
                     {order.orderType === 'Dine In' ? (
-                      <div className="text-[10px] font-bold text-muted-foreground">Table: {order.tableNumber || "—"}</div>
+                      <div className="flex flex-col gap-0.5">
+                        <div className="text-[10px] font-bold text-muted-foreground">Table: {order.tableNumber || "—"}</div>
+                        <div className="text-[10px] font-bold text-muted-foreground">Waiter: {order.waiterName || order.waiterId ? (order.waiterName || order.waiterId?.substring(0,6)) : "Unassigned"}</div>
+                      </div>
                     ) : order.orderType === 'Delivery' ? (
                       <div className="text-[10px] font-bold text-muted-foreground">{order.customerPhone || "—"}</div>
                     ) : (

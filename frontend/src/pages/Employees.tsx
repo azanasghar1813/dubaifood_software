@@ -33,7 +33,23 @@ export default function Employees() {
     try {
       setIsRefreshing(true)
       const response = await employeeService.getEmployees()
-      setEmployees(response.data || response)
+      const data = response.data || response;
+      
+      const mapped = data.map((u: any) => ({
+        id: u.id,
+        name: u.first_name + (u.last_name ? ' ' + u.last_name : ''),
+        role: u.role_name || u.role || 'Unknown',
+        roleId: u.role_id,
+        phone: u.phone || '',
+        email: u.email || '',
+        shift: "Morning",
+        status: u.is_active ? "Active" : "Inactive",
+        pinStatus: "Configured",
+        joinedDate: u.joining_date || u.created_at?.split(" ")[0] || new Date().toISOString().split("T")[0],
+        isOnDuty: false,
+        performance: { orders: 0, revenue: 0, avgBill: 0, refunds: 0, cancelled: 0, serviceTime: "—" },
+      }));
+      setEmployees(mapped)
     } catch (err) {
       console.error(err)
     } finally {
@@ -157,14 +173,40 @@ export default function Employees() {
     setIsDrawerOpen(true)
   }
 
-  const handleSaveEmployee = (e: React.FormEvent) => {
+  const handleSaveEmployee = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (drawerMode === "add") {
-      setEmployees([...employees, selectedEmp])
+    try {
+      const rolesRes = await employeeService.getRoles();
+      const roles = rolesRes.data || rolesRes;
+      const roleObj = roles.find((r: any) => r.name === selectedEmp.role);
+      const roleId = roleObj ? roleObj.id : "b62206fb-c641-40c7-bfe3-70bbf4c049fa"; // Waiter fallback
+
+      const payload = {
+        username: selectedEmp.name.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random() * 1000),
+        roleId: roleId,
+        pinCode: selectedEmp.pin || "1234",
+        firstName: selectedEmp.name,
+        phone: selectedEmp.phone,
+        email: selectedEmp.email
+      };
+
+      if (drawerMode === "add") {
+        await employeeService.createEmployee(payload);
+      } else if (drawerMode === "edit") {
+        await employeeService.updateEmployee(selectedEmp.id, {
+          roleId: roleId,
+          firstName: selectedEmp.name,
+          phone: selectedEmp.phone,
+          email: selectedEmp.email
+        });
+      }
+      
+      await fetchEmployees();
       setDrawerMode("view")
-    } else if (drawerMode === "edit") {
-      setEmployees(employees.map(e => e.id === selectedEmp.id ? selectedEmp : e))
-      setDrawerMode("view")
+      alert("Employee saved successfully!");
+    } catch (error: any) {
+      console.error("Error saving employee:", error);
+      alert("Error saving employee: " + (error.response?.data?.error || error.message));
     }
   }
 

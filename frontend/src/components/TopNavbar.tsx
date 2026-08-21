@@ -125,7 +125,8 @@ export default function TopNavbar() {
         const users = (res.data as any).map((u: any) => ({
           id: u.id,
           username: u.username,
-          name: `${u.firstName || u.username} ${u.lastName || ''}`.trim()
+          role: u.role_name || u.role?.name || u.role || 'Cashier',
+          name: `${u.first_name || u.firstName || u.username} ${u.last_name || u.lastName || ''}`.trim()
         }))
         setCashiers(users)
         if (users.length > 0) setSelectedCashier(users[0])
@@ -359,7 +360,7 @@ export default function TopNavbar() {
                             }}
                             className={`px-4 py-2 text-sm cursor-pointer hover:bg-secondary transition-colors font-bold ${selectedCashier?.id === cashier.id ? 'bg-primary/10 text-primary' : ''}`}
                           >
-                            {cashier.name} ({cashier.username})
+                            {cashier.name} ({cashier.role})
                           </div>
                         ))}
                       </motion.div>

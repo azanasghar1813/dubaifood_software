@@ -82,6 +82,12 @@ export const userService = {
 
     enforceRoleHierarchy(actorId, updateData.roleId, targetUserId);
 
+    if (updateData.username && updateData.username !== user.username) {
+      if (userRepository.findByUsername(updateData.username)) {
+        throw new Error('Username already exists');
+      }
+    }
+
     userRepository.updateProfile(targetUserId, updateData);
     
     activityLogService.logActivity(actorId, 'USER_UPDATED', 'USER', targetUserId, { roleChanged: user.role_id !== updateData.roleId });

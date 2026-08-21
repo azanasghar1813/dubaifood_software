@@ -14,6 +14,7 @@ const userCreateSchema = z.object({
 });
 
 const userUpdateSchema = z.object({
+  username: z.string().min(3),
   roleId: z.string().uuid(),
   firstName: z.string().optional(),
   lastName: z.string().optional(),

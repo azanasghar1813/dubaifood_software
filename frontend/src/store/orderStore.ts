@@ -46,6 +46,8 @@ export interface TimelineEvent {
 export interface Order {
   id: string
   orderNumber: string
+  waiterId?: string
+  waiterName?: string
   cashierName: string
   customerName: string
   customerPhone?: string
@@ -194,6 +196,8 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
   return {
     id: row.id,
     orderNumber: row.order_number.replace('POS-', '').replace(new RegExp(`^\\d{8}-`), ''),
+    waiterId: row.waiter_id || undefined,
+    waiterName: row.waiter_name_snapshot || row.waiter_name || undefined,
     cashierName: formatName(row.cashier_user_id),
     customerName: row.customer_name || detail?.metadata?.customer_name || row.customer_id || 'Guest',
     customerPhone: row.customer_phone || detail?.metadata?.customer_phone || undefined,

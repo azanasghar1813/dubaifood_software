@@ -150,6 +150,7 @@ export default function UsersPermissions() {
         await employeeService.updateEmployee(selectedUser.id, {
           firstName: formData.firstName,
           lastName: formData.lastName,
+          username: formData.username,
           roleId: formData.roleId
         })
         
@@ -442,10 +443,9 @@ export default function UsersPermissions() {
                         <input 
                           type="text" 
                           required
-                          disabled={drawerMode === 'edit'}
                           value={formData.username}
                           onChange={(e) => setFormData({...formData, username: e.target.value})}
-                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all disabled:opacity-50 disabled:bg-slate-100"
+                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
                         />
                       </div>
 

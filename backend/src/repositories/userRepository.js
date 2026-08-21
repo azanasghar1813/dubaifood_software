@@ -14,8 +14,9 @@ export const userRepository = {
 
   getAllActive: () => {
     const stmt = dbEngine.db.prepare(`
-      SELECT u.id, u.username, u.first_name, u.last_name 
+      SELECT u.id, u.username, u.first_name, u.last_name, r.name as role_name 
       FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
       WHERE u.is_active = 1
       ORDER BY u.first_name ASC
     `);
@@ -62,10 +63,10 @@ export const userRepository = {
   updateProfile: (id, data) => {
     const stmt = dbEngine.db.prepare(`
       UPDATE users 
-      SET first_name = ?, last_name = ?, phone = ?, email = ?, profile_photo = ?, role_id = ?, updated_at = CURRENT_TIMESTAMP
+      SET username = ?, first_name = ?, last_name = ?, phone = ?, email = ?, profile_photo = ?, role_id = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
-    stmt.run(data.firstName, data.lastName, data.phone, data.email, data.profilePhoto, data.roleId, id);
+    stmt.run(data.username, data.firstName, data.lastName, data.phone, data.email, data.profilePhoto, data.roleId, id);
   },
 
   updateStatus: (id, isActive) => {
