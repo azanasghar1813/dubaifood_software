@@ -223,6 +223,7 @@ class ReceiptGeneratorService {
         product_name: c.product_name_snapshot || c.product_name,
         variant_name: c.variant_snapshot || c.variant_name,
         price_adj: c.price_adjustment || 0,
+        quantity: c.quantity || 1,
       })),
     }));
   }

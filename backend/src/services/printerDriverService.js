@@ -3,8 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { execSync } from 'child_process';
+import { execSync, exec } from 'child_process';
+import { promisify } from 'util';
 import { escposEncoder } from './escposEncoder.js';
+
+const execAsync = promisify(exec);
 
 /**
  * PrinterStatus — all possible physical printer states.
@@ -259,7 +262,10 @@ class PrinterDriverService {
 
     const payload = job.payload;
 
-    if (payload?.business) {
+    if (payload?.station) {
+      console.log(`[PrinterDriver][VIRTUAL] ${this._center(payload.station.station_name || 'KITCHEN', charWidth)}`);
+      console.log(`[PrinterDriver][VIRTUAL] ${separator}`);
+    } else if (payload?.business) {
       console.log(`[PrinterDriver][VIRTUAL] ${this._center(payload.business.name || 'RESTAURANT', charWidth)}`);
       if (payload.business.address) console.log(`[PrinterDriver][VIRTUAL] ${this._center(payload.business.address, charWidth)}`);
       if (payload.business.phone)   console.log(`[PrinterDriver][VIRTUAL] ${this._center('Tel: ' + payload.business.phone, charWidth)}`);
@@ -267,10 +273,11 @@ class PrinterDriverService {
       console.log(`[PrinterDriver][VIRTUAL] ${separator}`);
     }
 
-    if (payload?.order) {
-      const o = payload.order;
+    const o = payload?.order || payload?.order_header;
+    if (o) {
       console.log(`[PrinterDriver][VIRTUAL] Order: ${o.order_number}  Date: ${o.business_date}`);
-      console.log(`[PrinterDriver][VIRTUAL] Type : ${o.order_type}    Cashier: ${o.cashier_user_id}`);
+      console.log(`[PrinterDriver][VIRTUAL] Type : ${o.order_type}    Cashier: ${o.cashier_user_id || o.cashier_id}`);
+      if (o.table_id) console.log(`[PrinterDriver][VIRTUAL] Table: ${o.table_id}`);
       if (o.notes) console.log(`[PrinterDriver][VIRTUAL] Notes: ${o.notes}`);
       console.log(`[PrinterDriver][VIRTUAL] ${separator}`);
     }
@@ -287,7 +294,8 @@ class PrinterDriverService {
         }
         for (const c of item.combo_components || []) {
           const compName = c.variant_name ? `${c.product_name} [${c.variant_name}]` : c.product_name;
-          console.log(`[PrinterDriver][VIRTUAL]    Includes: 1 x ${compName}`);
+          const qtyPrefix = (c.quantity && c.quantity > 1) ? `${c.quantity} x ` : '1 x ';
+          console.log(`[PrinterDriver][VIRTUAL]    Includes: ${qtyPrefix}${compName}`);
         }
         if (item.notes) {
           console.log(`[PrinterDriver][VIRTUAL]    *** ${item.notes} ***`);
@@ -344,7 +352,9 @@ class PrinterDriverService {
     }
 
     // Encode the receipt payload into raw ESC/POS bytes
-    const buffer = escposEncoder.encode(job.payload, printer);
+    const buffer = job.job_type === 'KITCHEN_TICKET'
+      ? escposEncoder.encodeKitchenTicket(job.payload, printer)
+      : escposEncoder.encode(job.payload, printer);
 
     console.log(`[PrinterDriver][LAN] Sending ${buffer.length} bytes to ${ip}:${port} for job ${job.id}`);
 
@@ -460,7 +470,9 @@ class PrinterDriverService {
     }
 
     // Encode the receipt payload into raw ESC/POS bytes
-    const buffer = escposEncoder.encode(job.payload, printer);
+    const buffer = job.job_type === 'KITCHEN_TICKET'
+      ? escposEncoder.encodeKitchenTicket(job.payload, printer)
+      : escposEncoder.encode(job.payload, printer);
 
     console.log(`[PrinterDriver][USB] Sending ${buffer.length} bytes to "${printerName}" for job ${job.id}`);
 
@@ -513,12 +525,11 @@ ${RAW_PRINTER_CSHARP}
         [RawPrinterHelper]::SendBytesToPrinter('${escapedPrinterName}', '${escapedTempFile}')
       `;
 
-      execSync(
+      await execAsync(
         `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${psScript.replace(/"/g, '\\"')}"`,
         {
           timeout: 15000,  // 15 second timeout
-          windowsHide: true,
-          stdio: ['pipe', 'pipe', 'pipe'],
+          windowsHide: true
         }
       );
     } catch (error) {

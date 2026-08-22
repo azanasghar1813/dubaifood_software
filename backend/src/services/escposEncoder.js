@@ -187,7 +187,8 @@ class EscPosEncoder {
         // Combo components
         for (const c of item.combo_components || []) {
           const compName = c.variant_name ? `${c.product_name} [${c.variant_name}]` : c.product_name;
-          parts.push(this._encodeText(`   Incl: ${compName}`, iconvEncoding));
+          const qtyPrefix = (c.quantity && c.quantity > 1) ? `${c.quantity}x ` : '';
+          parts.push(this._encodeText(`   Incl: ${qtyPrefix}${compName}`, iconvEncoding));
           parts.push(this._lf());
         }
 
@@ -329,6 +330,83 @@ class EscPosEncoder {
     if (payload.printer?.cash_drawer) {
       const pin = printerConfig.cash_drawer_pin ?? 0;
       parts.push(this._cashDrawerKick(pin));
+    }
+
+    return Buffer.concat(parts);
+  }
+
+  /**
+   * Encode a kitchen ticket payload into raw ESC/POS bytes.
+   */
+  encodeKitchenTicket(payload, printerConfig = {}) {
+    const charWidth = printerConfig.char_width || 48;
+    const codepageId = printerConfig.codepage ?? this.defaultCodepage;
+    const iconvEncoding = CODEPAGE_MAP[codepageId] || 'cp437';
+    const parts = [];
+
+    parts.push(this._cmd(ESC, 0x40));
+    parts.push(this._cmd(ESC, 0x74, codepageId));
+
+    // Station + order header — using the ACTUAL kitchen payload shape
+    parts.push(this._align('center'));
+    parts.push(this._doubleSize(true));
+    parts.push(this._bold(true));
+    parts.push(this._encodeText(payload.station?.station_name || 'KITCHEN', iconvEncoding));
+    parts.push(this._lf());
+    parts.push(this._doubleSize(false));
+    parts.push(this._bold(false));
+
+    const oh = payload.order_header || {};
+    parts.push(this._align('left'));
+    parts.push(this._bold(true));
+    parts.push(this._encodeText(`Order: ${oh.order_number || 'N/A'}`, iconvEncoding));
+    parts.push(this._lf());
+    parts.push(this._bold(false));
+    if (oh.table_id) {
+      parts.push(this._encodeText(`Table: ${oh.table_id}`, iconvEncoding));
+      parts.push(this._lf());
+    }
+    parts.push(this._encodeText(`Type : ${oh.order_type || ''}`, iconvEncoding));
+    parts.push(this._lf());
+    if (oh.notes) {
+      parts.push(this._encodeText(`Notes: ${oh.notes}`, iconvEncoding));
+      parts.push(this._lf());
+    }
+    parts.push(this._separator(charWidth, iconvEncoding));
+
+    // Items — respecting config.show_prices
+    for (const item of payload.items || []) {
+      parts.push(this._doubleSize(!!payload.config?.large_font));
+      parts.push(this._encodeText(`${item.quantity}x ${item.product_name}`, iconvEncoding));
+      parts.push(this._doubleSize(false));
+      parts.push(this._lf());
+
+      if (item.variant?.variant_name) {
+        parts.push(this._encodeText(`   > ${item.variant.variant_name}`, iconvEncoding));
+        parts.push(this._lf());
+      }
+      for (const m of item.modifiers || []) {
+        parts.push(this._encodeText(`   + ${m.modifier_name}`, iconvEncoding));
+        parts.push(this._lf());
+      }
+      for (const a of item.addons || []) {
+        parts.push(this._encodeText(`   + ${a.addon_name}${a.quantity > 1 ? ` x${a.quantity}` : ''}`, iconvEncoding));
+        parts.push(this._lf());
+      }
+      for (const c of item.combo_components || []) {
+        const qtyPrefix = (c.quantity && c.quantity > 1) ? `${c.quantity}x ` : '';
+        parts.push(this._encodeText(`   Incl: ${qtyPrefix}${c.product_name}${c.variant_name ? ` [${c.variant_name}]` : ''}`, iconvEncoding));
+        parts.push(this._lf());
+      }
+      if (item.notes) {
+        parts.push(this._encodeText(`   *** ${item.notes} ***`, iconvEncoding));
+        parts.push(this._lf());
+      }
+    }
+
+    parts.push(this._lf()); parts.push(this._lf());
+    if (printerConfig.auto_cut !== false && printerConfig.auto_cut !== 0) {
+      parts.push(this._paperCut());
     }
 
     return Buffer.concat(parts);
@@ -572,7 +650,8 @@ class EscPosEncoder {
     // Print CODE128 barcode
     // GS k m n data...
     // m = 73 (CODE128), n = data length
-    const dataBytes = iconv.encode(data, encoding);
+    const barcodeContent = `{B${data}`;
+    const dataBytes = iconv.encode(barcodeContent, encoding);
     parts.push(this._cmd(GS, 0x6B, 73, dataBytes.length));
     parts.push(dataBytes);
 

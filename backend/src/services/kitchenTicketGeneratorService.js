@@ -172,6 +172,7 @@ class KitchenTicketGeneratorService {
       combo_components: (item.combo_components || item.comboComponents || []).map(c => ({
         product_name: c.product_name_snapshot || c.product_name,
         variant_name: c.variant_snapshot || c.variant_name,
+        quantity: c.quantity || 1,
       })),
     };
   }
