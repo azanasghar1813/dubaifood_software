@@ -57,6 +57,33 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
   }, [])
 
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>
+
+    const handleMouseMove = () => {
+      document.body.style.cursor = 'default'
+      clearTimeout(timeoutId)
+      timeoutId = setTimeout(() => {
+        document.body.style.cursor = 'none'
+      }, 5000)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mousedown', handleMouseMove)
+    window.addEventListener('wheel', handleMouseMove, { passive: true })
+    
+    // Initialize the timeout
+    handleMouseMove()
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mousedown', handleMouseMove)
+      window.removeEventListener('wheel', handleMouseMove)
+      clearTimeout(timeoutId)
+      document.body.style.cursor = 'default'
+    }
+  }, [])
+
   return (
     <div className="min-h-screen bg-background font-sans antialiased text-foreground">
       <main className="relative flex min-h-screen flex-col">

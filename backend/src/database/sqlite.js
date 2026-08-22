@@ -2,10 +2,6 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 
-/**
- * Production-grade SQLite Database Engine.
- * Implements Singleton pattern to ensure only one connection is managed.
- */
 class DatabaseEngine {
   constructor() {
     if (DatabaseEngine.instance) {
@@ -13,62 +9,75 @@ class DatabaseEngine {
     }
     this.db = null;
     this.dbPath = null;
-    // 64 MB WAL threshold
-    this.WAL_SIZE_THRESHOLD = 64 * 1024 * 1024; 
+    this.WAL_SIZE_THRESHOLD = 64 * 1024 * 1024; // 64 MB
+    this._checkpointTimer = null;
     DatabaseEngine.instance = this;
   }
 
-  /**
-   * Connects to the database and applies recommended PRAGMAs for offline-first desktop.
-   * @param {string} dbPath - Absolute path to the .db file
-   */
   connect(dbPath) {
     if (this.db) {
       return this.db;
     }
 
     this.dbPath = dbPath;
-    
-    // Ensure the directory exists before creating the file
+
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    
-    // Open connection
+
     this.db = new Database(dbPath, {
       verbose: process.env.NODE_ENV === 'development' ? console.log : null,
-      fileMustExist: false // Creates file if missing
+      fileMustExist: false
     });
 
-    // Apply strict optimizations for Desktop/Electron
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
     this.db.pragma('foreign_keys = ON');
-    this.db.pragma('busy_timeout = 5000'); // 5 seconds wait if locked
-    this.db.pragma('cache_size = -64000'); // 64MB memory cache
+    this.db.pragma('busy_timeout = 5000');
+    this.db.pragma('cache_size = -64000');
     this.db.pragma('temp_store = MEMORY');
+    // Explicit safety net: keep SQLite's own default auto-checkpoint active
+    // (this is the default already, but declared here so it's never silently
+    // disabled by a future change elsewhere in the codebase).
+    this.db.pragma('wal_autocheckpoint = 1000');
 
     return this.db;
   }
 
   /**
-   * Performs an intelligent WAL Checkpoint (TRUNCATE).
-   * Used during graceful shutdown, backups, sync, or if the WAL gets too large.
+   * Performs a WAL checkpoint and reports whether it actually completed.
+   * Returns { success, busy, pagesInWal, pagesCheckpointed } so callers can
+   * log/act on partial failures instead of assuming success.
    */
-  forceCheckpoint() {
-    if (!this.db) return;
+  forceCheckpoint(mode = 'TRUNCATE') {
+    if (!this.db) return { success: false, reason: 'NOT_CONNECTED' };
     try {
-      this.db.pragma('wal_checkpoint(TRUNCATE)');
-      console.log('✅ SQLite WAL check-pointed and truncated successfully.');
+      const result = this.db.pragma(`wal_checkpoint(${mode})`);
+      const row = Array.isArray(result) ? result[0] : result;
+      const busy = row?.busy ?? 0;
+      const log = row?.log ?? 0;
+      const checkpointed = row?.checkpointed ?? 0;
+
+      if (busy) {
+        console.warn(
+          `⚠️  WAL checkpoint (${mode}) INCOMPLETE — another reader/writer is blocking it. ` +
+          `log=${log} pages, checkpointed=${checkpointed} pages.`
+        );
+        return { success: false, busy: true, pagesInWal: log, pagesCheckpointed: checkpointed };
+      }
+
+      console.log(`✅ SQLite WAL checkpoint (${mode}) complete. ${checkpointed}/${log} pages.`);
+      return { success: true, busy: false, pagesInWal: log, pagesCheckpointed: checkpointed };
     } catch (error) {
-      console.error('❌ Failed to execute WAL checkpoint:', error.message);
+      console.error(`❌ Failed to execute WAL checkpoint (${mode}):`, error.message);
+      return { success: false, reason: error.message };
     }
   }
 
   /**
-   * Checks if the WAL file exceeds the configured threshold and truncates if necessary.
-   * Should be invoked after heavy writes or periodically by a maintenance task.
+   * Checks WAL file size and truncates only if it exceeds the threshold.
+   * Safe to call frequently (e.g. every 15 min) — it's a no-op most of the time.
    */
   autoCheckpointIfNecessary() {
     if (!this.dbPath) return;
@@ -77,8 +86,8 @@ class DatabaseEngine {
       if (fs.existsSync(walPath)) {
         const stats = fs.statSync(walPath);
         if (stats.size > this.WAL_SIZE_THRESHOLD) {
-          console.log(`⚠️ WAL size (${(stats.size/1024/1024).toFixed(2)} MB) exceeded threshold. Truncating...`);
-          this.forceCheckpoint();
+          console.log(`⚠️  WAL size (${(stats.size / 1024 / 1024).toFixed(2)} MB) exceeded threshold. Checkpointing...`);
+          this.forceCheckpoint('TRUNCATE');
         }
       }
     } catch (error) {
@@ -87,63 +96,63 @@ class DatabaseEngine {
   }
 
   /**
-   * Prepares a SQL statement.
-   * @param {string} sql 
+   * Starts a background interval that periodically checkpoints the WAL.
+   * Call once at startup; safe no-op if called twice.
    */
+  startAutoCheckpointTimer(intervalMs = 15 * 60 * 1000) {
+    if (this._checkpointTimer) return;
+    this._checkpointTimer = setInterval(() => {
+      this.autoCheckpointIfNecessary();
+    }, intervalMs);
+    // Don't let this timer keep the process alive on its own
+    this._checkpointTimer.unref?.();
+    console.log(`🕒 WAL auto-checkpoint timer started (every ${intervalMs / 60000} min).`);
+  }
+
+  stopAutoCheckpointTimer() {
+    if (this._checkpointTimer) {
+      clearInterval(this._checkpointTimer);
+      this._checkpointTimer = null;
+    }
+  }
+
   prepare(sql) {
     this._ensureConnected();
     return this.db.prepare(sql);
   }
 
-  /**
-   * Runs a SQL statement (INSERT, UPDATE, DELETE)
-   */
   run(sql, ...params) {
     return this.prepare(sql).run(...params);
   }
 
-  /**
-   * Gets a single row (SELECT)
-   */
   get(sql, ...params) {
     return this.prepare(sql).get(...params);
   }
 
-  /**
-   * Gets multiple rows (SELECT)
-   */
   all(sql, ...params) {
     return this.prepare(sql).all(...params);
   }
 
-  /**
-   * Executes a callback function inside a database transaction.
-   * Uses better-sqlite3's built-in robust transaction wrapper.
-   * @param {Function} callback 
-   */
   transaction(callback) {
     this._ensureConnected();
     const tx = this.db.transaction(callback);
-    return tx(); // Supports passing arguments if needed by modifying this signature
+    return tx();
   }
 
-  /**
-   * Safely closes the database connection.
-   */
   close() {
     if (this.db) {
+      this.stopAutoCheckpointTimer();
       console.log('Database Engine: Executing final WAL checkpoint...');
-      this.forceCheckpoint();
-      
+      const result = this.forceCheckpoint('TRUNCATE');
+      if (!result.success) {
+        console.warn('⚠️  Shutdown checkpoint did not fully complete — WAL may retain uncommitted pages on next boot.');
+      }
       this.db.close();
       this.db = null;
       console.log('✅ SQLite database connection closed safely.');
     }
   }
 
-  /**
-   * Internal guard to prevent queries before connection.
-   */
   _ensureConnected() {
     if (!this.db) {
       throw new Error('Database Engine is not connected. Call connect() first.');

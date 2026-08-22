@@ -10,7 +10,7 @@ class AvailabilityService {
     if (!entity) return false;
 
     // 1. Basic Lifecycle State Check
-    if (entity.lifecycle_state !== 'ACTIVE') {
+    if (entity.lifecycle_state !== 'ACTIVE' && entity.lifecycle_state !== 'HIDDEN') {
       return false;
     }
 

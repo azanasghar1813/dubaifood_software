@@ -1,5 +1,5 @@
 export default {
-  version: '017',
+  version: '026',
   name: 'printer_usb_port',
   disableForeignKeys: false,
 

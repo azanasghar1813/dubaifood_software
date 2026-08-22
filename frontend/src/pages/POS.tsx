@@ -835,8 +835,9 @@ export default function POS() {
       if (!isCartMode && !isTyping && !checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !recentOrdersModalOpen) {
         // Helper: get number of columns in the grid
         const getGridColumns = (): number => {
-          if (gridContainerRef.current) {
-            const style = window.getComputedStyle(gridContainerRef.current)
+          const firstGrid = document.querySelector('.grid.gap-4')
+          if (firstGrid) {
+            const style = window.getComputedStyle(firstGrid)
             const cols = style.getPropertyValue('grid-template-columns')
             if (cols && cols !== 'none') {
               return cols.trim().split(/\s+/).length
@@ -877,15 +878,71 @@ export default function POS() {
           const selectedProduct = gridProductsRef.current[gridSelectedIndex]
           if (selectedProduct) {
             if (selectedProduct.isDeal && selectedProduct.components && selectedProduct.components.length > 0) {
-              setActiveDeal(selectedProduct)
-              setDealModalOpen(true)
+              const availableProducts = products.filter(p => !p.isDeal);
+              let needsConfiguration = false;
+              const autoComboComponents: any[] = [];
+              for (const comp of selectedProduct.components) {
+                let allowedProducts = availableProducts;
+                if (comp.component_type === 'FIXED_PRODUCT') {
+                  const p = availableProducts.find(prod => prod.id === comp.product_id);
+                  allowedProducts = p ? [p] : [];
+                } else {
+                  if (comp.target_category_id) {
+                    allowedProducts = allowedProducts.filter(p => p.category_id === comp.target_category_id);
+                  }
+                  if (comp.allowed_product_ids) {
+                    const ids = comp.allowed_product_ids.split(',');
+                    allowedProducts = allowedProducts.filter(p => ids.includes(p.id));
+                  }
+                  if (allowedProducts.length === 0 && comp.name) {
+                    const compName = comp.name.toLowerCase();
+                    if (compName.includes('pizza')) {
+                      allowedProducts = availableProducts.filter(p => p.category?.toLowerCase().includes('pizza'));
+                    } else if (compName.includes('burger')) {
+                      allowedProducts = availableProducts.filter(p => p.category?.toLowerCase().includes('burger'));
+                    } else if (compName.includes('drink') || compName.includes('beverage')) {
+                      allowedProducts = availableProducts.filter(p => p.category?.toLowerCase().includes('drink') || p.category?.toLowerCase().includes('beverage'));
+                    }
+                  }
+                }
+                const isPizza = comp.name?.toLowerCase().includes('pizza');
+                if (isPizza && (allowedProducts.length > 1 || (allowedProducts.length === 1 && allowedProducts[0].variants?.length > 0 && !comp.target_variant_name))) {
+                  needsConfiguration = true;
+                  break;
+                } else {
+                  const compFallbackName = comp.name || products.find(p => p.id === comp.product_id)?.name || categories.find(cat => cat.id === comp.target_category_id)?.name || (comp.allowed_product_ids ? 'Choice of Item' : 'Item');
+                  const p = allowedProducts.length === 1 ? allowedProducts[0] : {
+                    id: 'dummy-' + comp.id,
+                    name: compFallbackName,
+                    product_name_snapshot: compFallbackName,
+                    variant_snapshot: comp.target_variant_name || '',
+                    is_dummy: true,
+                    price: 0
+                  };
+                  autoComboComponents.push({
+                    component_id: comp.id,
+                    product_id: p.id,
+                    product_name_snapshot: p.name || p.product_name_snapshot || compFallbackName,
+                    variant_snapshot: comp.target_variant_name || p.variant_snapshot || null,
+                    price_adjustment: comp.price_adjustment || 0,
+                    quantity: comp.quantity || 1
+                  });
+                }
+              }
+              if (!needsConfiguration) {
+                addToCart({ ...selectedProduct, combo_components: autoComboComponents });
+                setTimeout(() => cartTopRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+              } else {
+                setActiveDeal(selectedProduct)
+                setDealModalOpen(true)
+              }
             } else if (selectedProduct.variants && selectedProduct.variants.length > 0) {
               setActiveProductForSize(selectedProduct)
               setSizeSelectedIndex(0)
               setSizeModalOpen(true)
             } else {
               addToCart(selectedProduct)
-              scrollToTop()
+              setTimeout(() => cartTopRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
             }
           }
         }
@@ -904,7 +961,7 @@ export default function POS() {
     checkoutModalOpen, checkoutFocusZone, checkoutMethodIndex,
     checkoutQuickCashIndex, checkoutDiscountPctIndex,
     selectedPaymentMethod, discountAmount, orderType,
-    categories, activeCategory
+    categories, activeCategory, products
   ])
 
   // Keep cartSelectedIndex in bounds if cart shrinks
@@ -966,6 +1023,10 @@ export default function POS() {
     }
   }, [activeCategory])
 
+  const visibleCategories = useMemo(() => {
+    return categories.filter(c => c.menuContext === 'all' || !c.menuContext || c.menuContext === menuContext);
+  }, [categories, menuContext]);
+
   // Grid Category Filtering
   const gridFilteredProducts = products.filter(p => {
     if (p.lifecycle_state === 'HIDDEN' && !p.isDeal) return false;
@@ -981,7 +1042,21 @@ export default function POS() {
     
     return matchCategory
   }).sort((a, b) => {
-    // Sort by display_order for products, deals by code number
+    // 1. Sort by Category Render Order
+    const getCatName = (p: Product) => p.category || categories.find(c => c.id === p.category_id)?.name;
+    const catA = getCatName(a);
+    const catB = getCatName(b);
+    
+    const idxA = visibleCategories.findIndex(c => c.name === catA);
+    const idxB = visibleCategories.findIndex(c => c.name === catB);
+
+    if (idxA !== idxB) {
+      if (idxA === -1) return 1;
+      if (idxB === -1) return -1;
+      return idxA - idxB;
+    }
+
+    // 2. Sort by display_order for products, deals by code number
     if (a.isDeal && b.isDeal) {
       const aNum = parseInt((a.code || '').replace('D', '')) || 0;
       const bNum = parseInt((b.code || '').replace('D', '')) || 0;

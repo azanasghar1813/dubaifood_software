@@ -7,10 +7,6 @@ import { configService } from './services/configService.js';
 import { menuCacheService } from './services/menuCacheService.js';
 import { printEngineService } from './services/printEngineService.js';
 
-/**
- * Handle Uncaught Exceptions
- * These are programmer errors that are completely unhandled.
- */
 process.on('uncaughtException', (err) => {
   console.error('[UNCAUGHT EXCEPTION]', err.name, err.message);
   console.error(err.stack);
@@ -19,7 +15,6 @@ process.on('uncaughtException', (err) => {
   }
 });
 
-// Print Startup Summary
 const printStartupSummary = (storageResults, dbInfo, startupTimeMs) => {
   console.log('\n======================================================');
   console.log(`🚀 ${config.app.name} Backend Starting`);
@@ -85,64 +80,81 @@ const printStartupSummary = (storageResults, dbInfo, startupTimeMs) => {
   console.log('======================================================\n');
 };
 
-// Initialize environment and start server
 const startServer = async () => {
   const startTime = Date.now();
+  let server;
+
   try {
-    // 1. Initialize all local storage paths required by the app
     const storageResults = await storageManager.initializeStorage();
-    
-    // 2. Initialize the Database Engine
     const dbInfo = await initDatabase();
 
-    // 3. Initialize Configuration Cache
     configService.initialize();
-
-    // 4. Initialize Menu Engine Cache
     menuCacheService.initialize();
-
-    // 5. Start the Print Engine background processor (independent of HTTP server)
     printEngineService.start();
 
-    // 6. Start the HTTP server
-    const server = app.listen(config.server.port, () => {
+    // Start periodic WAL maintenance now that the DB connection is live.
+    // Cheap no-op checks every 15 min; only does real work if WAL > 64MB.
+    dbEngine.startAutoCheckpointTimer(15 * 60 * 1000);
+
+    server = app.listen(config.server.port, () => {
       const startupTimeMs = Date.now() - startTime;
       printStartupSummary(storageResults, dbInfo, startupTimeMs);
     });
 
-    /**
-     * Handle Unhandled Promise Rejections
-     * These are unhandled rejections from async functions.
-     */
     process.on('unhandledRejection', (err) => {
-      console.error('[UNHANDLED REJECTION]', err.name, err.message);
+      console.error('[UNHANDLED REJECTION]', err?.name, err?.message);
       if (!process.versions.electron) {
         printEngineService.stop();
         dbEngine.close();
-        server.close(() => {
-          process.exit(1);
-        });
+        server.close(() => process.exit(1));
       }
     });
 
+    let isShuttingDown = false;
     const gracefulShutdown = (signal) => {
+      if (isShuttingDown) return; // prevent double-shutdown races
+      isShuttingDown = true;
+
       console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
       printEngineService.stop();
       dbEngine.close();
+
       server.close(() => {
         console.log('HTTP server closed.');
-        if (!process.versions.electron) {
-          process.exit(0);
+        if (process.versions.electron) {
+          // Tell Electron's main process we're done, then exit this process.
+          // (send() only works if this process was spawned with an 'ipc' channel)
+          try {
+            process.send?.('shutdown-complete');
+          } catch (_) { /* no-op if channel unavailable */ }
         }
+        process.exit(0);
       });
+
+      // Absolute safety net: if server.close() hangs (e.g. a stuck keep-alive
+      // connection), force-exit after 4s so Electron's own timeout can still
+      // fall back to taskkill rather than hanging forever.
+      setTimeout(() => {
+        console.warn('[Shutdown] server.close() did not complete in time, forcing exit.');
+        process.exit(0);
+      }, 4000).unref();
     };
 
+    // POSIX-style signals (works when running standalone / on non-Windows dev)
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
+    // IPC-based shutdown — this is the reliable path when running as an
+    // Electron-spawned child process on Windows, where signal delivery
+    // to a headless child process is not guaranteed.
+    process.on('message', (msg) => {
+      if (msg === 'shutdown') {
+        gracefulShutdown('IPC-SHUTDOWN');
+      }
+    });
+
   } catch (error) {
     console.error('❌ FATAL STARTUP ERROR:', error);
-    // Ensure DB is closed if it somehow crashed after connecting
     dbEngine.close();
     if (!process.versions.electron) {
       process.exit(1);
