@@ -4,7 +4,7 @@ import { dbEngine } from '../database/sqlite.js';
 export const userRepository = {
   findAll: () => {
     const stmt = dbEngine.db.prepare(`
-      SELECT u.id, u.username, u.first_name, u.last_name, u.is_active, u.last_login, u.profile_photo, u.phone, u.email, u.joining_date, r.name as role_name, r.id as role_id 
+      SELECT u.id, u.username, u.first_name, u.last_name, u.is_active, u.show_on_login, u.last_login, u.profile_photo, u.phone, u.email, u.joining_date, r.name as role_name, r.id as role_id 
       FROM users u
       JOIN roles r ON u.role_id = r.id
       ORDER BY u.created_at DESC
@@ -17,7 +17,7 @@ export const userRepository = {
       SELECT u.id, u.username, u.first_name, u.last_name, r.name as role_name 
       FROM users u
       LEFT JOIN roles r ON u.role_id = r.id
-      WHERE u.is_active = 1
+      WHERE u.is_active = 1 AND u.show_on_login = 1
       ORDER BY u.first_name ASC
     `);
     return stmt.all();
@@ -41,8 +41,8 @@ export const userRepository = {
   create: (userData) => {
     const id = crypto.randomUUID();
     const stmt = dbEngine.db.prepare(`
-      INSERT INTO users (id, role_id, username, password_hash, pin_code, first_name, last_name, phone, email, joining_date, profile_photo)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (id, role_id, username, password_hash, pin_code, first_name, last_name, phone, email, joining_date, profile_photo, show_on_login)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       id,
@@ -55,7 +55,8 @@ export const userRepository = {
       userData.phone || null,
       userData.email || null,
       userData.joiningDate || null,
-      userData.profilePhoto || null
+      userData.profilePhoto || null,
+      userData.showOnLogin === false ? 0 : 1
     );
     return id;
   },
@@ -63,10 +64,10 @@ export const userRepository = {
   updateProfile: (id, data) => {
     const stmt = dbEngine.db.prepare(`
       UPDATE users 
-      SET username = ?, first_name = ?, last_name = ?, phone = ?, email = ?, profile_photo = ?, role_id = ?, updated_at = CURRENT_TIMESTAMP
+      SET username = ?, first_name = ?, last_name = ?, phone = ?, email = ?, profile_photo = ?, role_id = ?, show_on_login = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
-    stmt.run(data.username, data.firstName, data.lastName, data.phone, data.email, data.profilePhoto, data.roleId, id);
+    stmt.run(data.username, data.firstName, data.lastName, data.phone, data.email, data.profilePhoto, data.roleId, data.showOnLogin === false ? 0 : 1, id);
   },
 
   updateStatus: (id, isActive) => {

@@ -39,7 +39,8 @@ export default function UsersPermissions() {
     roleId: "",
     pinCode: "",
     confirmPinCode: "",
-    isActive: true
+    isActive: true,
+    showOnLogin: true
   })
   
   const [roleFormData, setRoleFormData] = useState({
@@ -110,7 +111,7 @@ export default function UsersPermissions() {
     setFormError(null)
     if (mode === "add") {
       setFormData({
-        firstName: "", lastName: "", username: "", roleId: "", pinCode: "", confirmPinCode: "", isActive: true
+        firstName: "", lastName: "", username: "", roleId: "", pinCode: "", confirmPinCode: "", isActive: true, showOnLogin: true
       })
     } else if (mode === "edit" && user) {
       setFormData({
@@ -120,7 +121,8 @@ export default function UsersPermissions() {
         roleId: user.role_id || "",
         pinCode: "",
         confirmPinCode: "",
-        isActive: user.is_active === 1
+        isActive: user.is_active === 1,
+        showOnLogin: user.show_on_login !== 0 // Default to true if undefined
       })
     } else if (mode === "reset-pin" && user) {
       setFormData({
@@ -155,14 +157,16 @@ export default function UsersPermissions() {
           lastName: formData.lastName,
           username: formData.username,
           roleId: formData.roleId,
-          pinCode: formData.pinCode
+          pinCode: formData.pinCode,
+          showOnLogin: formData.showOnLogin
         })
       } else if (drawerMode === "edit") {
         await employeeService.updateEmployee(selectedUser.id, {
           firstName: formData.firstName,
           lastName: formData.lastName,
           username: formData.username,
-          roleId: formData.roleId
+          roleId: formData.roleId,
+          showOnLogin: formData.showOnLogin
         })
         
         if (selectedUser.is_active !== (formData.isActive ? 1 : 0)) {
@@ -689,6 +693,19 @@ export default function UsersPermissions() {
                            </label>
                          </div>
                       )}
+                      
+                      <div className="flex items-center gap-3 mt-4 mb-2">
+                        <input 
+                          type="checkbox" 
+                          id="showOnLogin"
+                          checked={formData.showOnLogin}
+                          onChange={(e) => setFormData({...formData, showOnLogin: e.target.checked})}
+                          className="w-5 h-5 text-orange-500 border-slate-300 rounded focus:ring-orange-500"
+                        />
+                        <label htmlFor="showOnLogin" className="text-sm font-medium text-slate-700 cursor-pointer">
+                          Show on Login Screen
+                        </label>
+                      </div>
                     </>
                   )}
 

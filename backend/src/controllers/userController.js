@@ -10,7 +10,8 @@ const userCreateSchema = z.object({
   lastName: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
-  joiningDate: z.string().optional()
+  joiningDate: z.string().optional(),
+  showOnLogin: z.boolean().optional()
 });
 
 const userUpdateSchema = z.object({
@@ -19,7 +20,8 @@ const userUpdateSchema = z.object({
   firstName: z.string().optional(),
   lastName: z.string().optional(),
   phone: z.string().optional(),
-  email: z.string().email().optional().or(z.literal(''))
+  email: z.string().email().optional().or(z.literal('')),
+  showOnLogin: z.boolean().optional()
 });
 
 const statusSchema = z.object({
