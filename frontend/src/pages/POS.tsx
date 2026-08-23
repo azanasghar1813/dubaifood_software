@@ -139,6 +139,7 @@ export default function POS() {
   const [amountReceived, setAmountReceived] = useState<string>("")
   const [discountAmount, setDiscountAmount] = useState<string>("")
   const [isPaidPrint, setIsPaidPrint] = useState(false)
+  const [isKdsAutoSend, setIsKdsAutoSend] = useState(true)
   const [lastReceipt, setLastReceipt] = useState<any>(null)
 
   // Checkout modal keyboard navigation
@@ -1884,7 +1885,7 @@ export default function POS() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-5 gap-1.5 pb-1 flex-1">
+                    <div className="grid grid-cols-6 gap-1.5 pb-1 flex-1">
                       <button
                         onClick={() => setIsPaidPrint(!isPaidPrint)}
                         className={`p-1 font-black rounded-lg flex flex-col items-center justify-center gap-0.5 transition-colors border ${isPaidPrint
@@ -1911,18 +1912,32 @@ export default function POS() {
                           </span>
                       </button>
                       <button
-                        onClick={async () => {
-                          const discountVal = Number(discountAmount) || 0;
-                          const success = await usePosStore.getState().completeOrder([], discountVal)
-                          if (!success) {
-                            alert("Could not send this order to the kitchen. Please try again.")
-                          }
-                        }}
-                        disabled={cart.length === 0}
-                        className="p-1 bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors border border-transparent hover:border-border dark:bg-[#21242B] dark:text-[#9BA2AE]"
+                        onClick={() => setIsKdsAutoSend(!isKdsAutoSend)}
+                        className={`p-1 font-black rounded-lg flex flex-col items-center justify-center gap-0.5 transition-colors border ${isKdsAutoSend
+                          ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-300 dark:bg-[#3D85E8]/14 dark:text-[#3D85E8] dark:border-transparent dark:hover:bg-[#3D85E8]/20'
+                          : 'bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border-transparent hover:border-border dark:bg-[#21242B] dark:text-[#9BA2AE]'
+                          }`}
                       >
-                        <Monitor className="w-4 h-4 stroke-[1.5]" />
-                        <span className="text-[9px] uppercase">KDS</span>
+                        <Monitor className={`w-4 h-4 ${isKdsAutoSend ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
+                        <span className="text-[9px] uppercase text-center leading-tight font-black">
+                          Auto KDS
+                        </span>
+                      </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const { usePrinterStore } = await import("../store/printerStore")
+                            const currentOrderId = usePosStore.getState().editingOrderId || usePosStore.getState().activeOrder?.id
+                            if (currentOrderId) {
+                              await usePrinterStore.getState().printKitchen(currentOrderId, user?.id || user?.name || 'cashier')
+                            }
+                          } catch { /* fallback */ }
+                        }}
+                        disabled={cart.length === 0 || (!usePosStore.getState().editingOrderId && !usePosStore.getState().activeOrder?.id)}
+                        className="p-1 bg-white hover:bg-red-50 text-red-600 border border-red-200 hover:border-red-400 font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors shadow-sm"
+                      >
+                        <Printer className="w-4 h-4 stroke-[2]" />
+                        <span className="text-[9px] uppercase">KOT</span>
                       </button>
                       <button
                         onClick={async () => {
@@ -2379,10 +2394,22 @@ export default function POS() {
                         const hasThermal = ps.printers.some(
                           (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
                         )
-                        if (hasThermal && targetOrderId) {
-                          const result = await ps.printReceipt(targetOrderId, user?.id || user?.name || 'cashier')
-                          if (result?.job_id) {
-                            thermalPrintQueued = true
+                        if (targetOrderId) {
+                          // 1. Kitchen Sending Logic
+                          if (isKdsAutoSend) {
+                             await ps.printKitchen(targetOrderId, user?.id || user?.name || 'cashier')
+                          } else {
+                             if (window.confirm("Send this order to the Kitchen now?")) {
+                               await ps.printKitchen(targetOrderId, user?.id || user?.name || 'cashier')
+                             }
+                          }
+                          
+                          // 2. Customer Receipt Logic
+                          if (hasThermal) {
+                            const result = await ps.printReceipt(targetOrderId, user?.id || user?.name || 'cashier')
+                            if (result?.job_id) {
+                              thermalPrintQueued = true
+                            }
                           }
                         }
                       } catch { /* fallback */ }

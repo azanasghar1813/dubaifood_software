@@ -68,7 +68,7 @@ export const useKdsStore = create<KdsState>((set, get) => ({
   fetchTickets: async () => {
     try {
       const { kitchenService } = await import('../services/kitchenService')
-      const res = await kitchenService.getQueue()
+      const res = await kitchenService.getQueue({ monitorMode: true })
       if (res.success && res.data) {
         const backendTickets = (res.data as any).tickets || res.data // handle both shapes
         const mappedTickets: KitchenTicket[] = backendTickets.map((row: any) => {

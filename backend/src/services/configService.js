@@ -2,6 +2,11 @@ import { settingsRepository } from '../repositories/settingsRepository.js';
 import { printerRepository } from '../repositories/printerRepository.js';
 import { paymentMethodRepository } from '../repositories/paymentMethodRepository.js';
 import { activityLogService } from './activityLogService.js';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { SerialPort } from 'serialport';
+
+const execAsync = promisify(exec);
 
 class ConfigService {
   constructor() {
@@ -125,6 +130,47 @@ class ConfigService {
     if (!printer) throw new Error('Printer not found');
     printerRepository.delete(id);
     activityLogService.logActivity(actorId, 'PRINTER_DELETED', 'PRINTER', id, { name: printer.name });
+  }
+
+  async discoverPrinters() {
+    const discovered = [];
+
+    // 1. Discover COM ports (Bluetooth/Serial)
+    try {
+      const ports = await SerialPort.list();
+      ports.forEach(port => {
+        discovered.push({
+          name: port.path,
+          port: port.path,
+          type: 'ESCPOS_BT',
+          description: port.friendlyName || 'Bluetooth/Serial Port'
+        });
+      });
+    } catch (err) {
+      console.error('[ConfigService] Failed to list COM ports:', err.message);
+    }
+
+    // 2. Discover Windows Spooler Printers (USB/Virtual)
+    try {
+      const { stdout } = await execAsync('powershell -NoProfile -Command "Get-WmiObject -Class Win32_Printer | Select-Object Name, PortName, Network | ConvertTo-Json"', { windowsHide: true });
+      if (stdout.trim()) {
+        const printers = JSON.parse(stdout);
+        const printerList = Array.isArray(printers) ? printers : [printers];
+        
+        printerList.forEach(p => {
+          discovered.push({
+            name: p.Name,
+            port: p.PortName,
+            type: 'ESCPOS_USB',
+            description: p.Network ? 'Network Printer' : 'Local Windows Printer'
+          });
+        });
+      }
+    } catch (err) {
+      console.error('[ConfigService] Failed to list Windows printers:', err.message);
+    }
+
+    return discovered;
   }
 
   // Payment Methods

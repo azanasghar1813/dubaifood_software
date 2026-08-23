@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { execSync, exec } from 'child_process';
 import { promisify } from 'util';
 import { escposEncoder } from './escposEncoder.js';
+import { SerialPort } from 'serialport';
 
 const execAsync = promisify(exec);
 
@@ -27,11 +28,13 @@ export const PrinterStatus = Object.freeze({
  * VIRTUAL:    logs to console — no hardware required.
  * ESCPOS_USB: ESC/POS via Windows print spooler RAW datatype (winspool.drv).
  * ESCPOS_LAN: ESC/POS over TCP/IP raw socket (port 9100).
+ * ESCPOS_BT:  ESC/POS over Bluetooth / Serial COM port.
  */
 export const PrinterDriverType = Object.freeze({
   VIRTUAL:    'VIRTUAL',
   ESCPOS_USB: 'ESCPOS_USB',
   ESCPOS_LAN: 'ESCPOS_LAN',
+  ESCPOS_BT:  'ESCPOS_BT',
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -163,6 +166,10 @@ class PrinterDriverService {
           await this._executeEscPosLan(job, printer);
           break;
 
+        case PrinterDriverType.ESCPOS_BT:
+          await this._executeEscPosBt(job, printer);
+          break;
+
         default:
           // Fallback to virtual — never block printing
           await this._executeVirtual(job, printer);
@@ -214,6 +221,13 @@ class PrinterDriverService {
           console.log(`[PrinterDriver][USB] 💰 Cash drawer kick sent to ${printer.usb_port || printer.name}`);
           break;
         }
+
+        case PrinterDriverType.ESCPOS_BT: {
+          const kickBuffer = escposEncoder.encodeCashDrawerKick(pin);
+          await this._sendBt(printer, kickBuffer);
+          console.log(`[PrinterDriver][BT] 💰 Cash drawer kick sent to ${printer.connection_string}`);
+          break;
+        }
       }
 
       return { success: true, duration_ms: Date.now() - startTime };
@@ -240,6 +254,10 @@ class PrinterDriverService {
 
     if (driverType === PrinterDriverType.ESCPOS_USB) {
       return await this._pingUsb(printer, startTime);
+    }
+
+    if (driverType === PrinterDriverType.ESCPOS_BT) {
+      return await this._pingBt(printer, startTime);
     }
 
     return { reachable: true, latency_ms: Date.now() - startTime };
@@ -602,6 +620,118 @@ ${RAW_PRINTER_CSHARP}
         error: `Ping failed: ${error.message}`,
       };
     }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // ESC/POS Bluetooth / Serial Driver — via serialport to COM port
+  // ──────────────────────────────────────────────────────────────────────────
+
+  async _executeEscPosBt(job, printer) {
+    const comPort = printer?.connection_string;
+
+    if (!comPort) {
+      throw new Error(`Bluetooth/Serial printer "${printer?.name}" has no COM port configured.`);
+    }
+
+    // Encode the receipt payload into raw ESC/POS bytes
+    const buffer = job.job_type === 'KITCHEN_TICKET'
+      ? escposEncoder.encodeKitchenTicket(job.payload, printer)
+      : escposEncoder.encode(job.payload, printer);
+
+    console.log(`[PrinterDriver][BT] Sending ${buffer.length} bytes to ${comPort} for job ${job.id}`);
+
+    await this._sendBt(printer, buffer);
+
+    console.log(`[PrinterDriver][BT] ✅ Job ${job.id} sent successfully to ${comPort}`);
+  }
+
+  /**
+   * Send a raw byte buffer to a COM port.
+   * @param {Object} printer - Printer config
+   * @param {Buffer} buffer  - Raw ESC/POS bytes
+   */
+  _sendBt(printer, buffer) {
+    return new Promise((resolve, reject) => {
+      const comPort = printer?.connection_string;
+      
+      if (!comPort) {
+        return reject(new Error('No COM port configured for Bluetooth printer.'));
+      }
+
+      const port = new SerialPort({
+        path: comPort,
+        baudRate: 9600, // Standard baud rate, modern BT printers often ignore this anyway
+        autoOpen: false,
+      });
+
+      // Cleanup function to ensure we always close
+      const finish = (err) => {
+        if (port.isOpen) {
+          port.close((closeErr) => {
+            if (closeErr) console.warn(`[PrinterDriver][BT] Error closing port ${comPort}: ${closeErr.message}`);
+            if (err) reject(err);
+            else resolve();
+          });
+        } else {
+          if (err) reject(err);
+          else resolve();
+        }
+      };
+
+      port.open((err) => {
+        if (err) {
+          return finish(new Error(`Failed to open ${comPort}: ${err.message}`));
+        }
+
+        port.write(buffer, (writeErr) => {
+          if (writeErr) {
+            return finish(new Error(`Failed to write to ${comPort}: ${writeErr.message}`));
+          }
+          
+          port.drain((drainErr) => {
+            if (drainErr) {
+              return finish(new Error(`Failed to drain ${comPort}: ${drainErr.message}`));
+            }
+            finish();
+          });
+        });
+      });
+    });
+  }
+
+  /**
+   * Test Bluetooth/Serial connection by attempting to open the COM port.
+   */
+  async _pingBt(printer, startTime) {
+    const comPort = printer?.connection_string;
+    if (!comPort) {
+      return { reachable: false, latency_ms: 0, error: 'No COM port configured.' };
+    }
+
+    return new Promise((resolve) => {
+      const port = new SerialPort({
+        path: comPort,
+        baudRate: 9600,
+        autoOpen: false,
+      });
+
+      port.open((err) => {
+        if (err) {
+          resolve({
+            reachable: false,
+            latency_ms: Date.now() - startTime,
+            error: `Cannot open ${comPort}: ${err.message}`,
+          });
+        } else {
+          port.close(() => {
+            resolve({
+              reachable: true,
+              latency_ms: Date.now() - startTime,
+            });
+          });
+        }
+      });
+    });
   }
 
   // ──────────────────────────────────────────────────────────────────────────

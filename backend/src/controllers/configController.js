@@ -6,6 +6,8 @@ const kvSchema = z.record(z.string(), z.string());
 const printerSchema = z.object({
   name: z.string().min(1),
   type: z.string().min(1),
+  driver_type: z.enum(['ESCPOS_LAN', 'ESCPOS_BT', 'ESCPOS_USB', 'VIRTUAL']).default('ESCPOS_LAN'),
+  connection_string: z.string().optional().nullable(),
   ipAddress: z.string().optional().nullable(),
   port: z.number().int().optional().nullable(),
   paperWidth: z.number().int().default(80),
@@ -77,6 +79,15 @@ export const configController = {
   },
 
   // Printers CRUD
+  discoverPrinters: async (req, res) => {
+    try {
+      const printers = await configService.discoverPrinters();
+      res.status(200).json({ data: printers });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+
   getPrinters: (req, res) => {
     try {
       const printers = configService.getAllPrinters();

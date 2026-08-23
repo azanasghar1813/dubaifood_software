@@ -21,8 +21,10 @@ export const settingsSchema = `
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     type TEXT NOT NULL, -- e.g., 'RECEIPT', 'KITCHEN', 'BAR'
-    ip_address TEXT,
-    port INTEGER,
+    driver_type TEXT NOT NULL DEFAULT 'ESCPOS_LAN', -- 'ESCPOS_LAN', 'ESCPOS_BT', 'ESCPOS_USB', 'VIRTUAL'
+    connection_string TEXT, -- IP:PORT, COM port, or USB name
+    ip_address TEXT, -- legacy
+    port INTEGER,    -- legacy
     is_active INTEGER NOT NULL DEFAULT 1,
     paper_width INTEGER DEFAULT 80,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

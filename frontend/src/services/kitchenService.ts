@@ -2,9 +2,10 @@ import { apiClient } from '../api/client'
 
 
 export const kitchenService = {
-  // Get active kitchen tickets
-  getQueue: async (): Promise<{ success: boolean; data: any[] }> => {
-    return apiClient.get('/kitchen/queue')
+  getQueue: async (filters: any = {}): Promise<{ success: boolean; data: any[] }> => {
+    const params = new URLSearchParams()
+    if (filters.monitorMode) params.append('monitorMode', 'true')
+    return apiClient.get(`/kitchen/queue?${params.toString()}`)
   },
 
   // Get ticket by order ID

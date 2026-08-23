@@ -26,13 +26,15 @@ export interface OrderConfig {
 }
 
 export interface Printer {
-  id: string
-  name: string
-  type: string
-  ipAddress?: string
-  port?: number
-  paperWidth?: number
-  isActive?: boolean
+  id: string;
+  name: string;
+  type: string;
+  driver_type: 'ESCPOS_LAN' | 'ESCPOS_BT' | 'ESCPOS_USB' | 'VIRTUAL';
+  connection_string?: string | null;
+  ipAddress?: string | null; // legacy
+  port?: number | null;      // legacy
+  paperWidth: number;
+  isActive: boolean;
 }
 
 export const configApi = {
@@ -66,6 +68,10 @@ export const configApi = {
 
   deletePrinter: async (id: string) => {
     return apiClient.delete(`/config/printers/${id}`)
+  },
+
+  discoverPrinters: async () => {
+    return apiClient.get('/config/printers/discover')
   },
 
   // Update order config

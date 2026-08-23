@@ -12,7 +12,8 @@ export const kitchenController = {
         branchId: req.query.branch_id || req.query.branchId || null,
         stationId: req.query.station_id || req.query.stationId || null,
         changedSince: req.query.changed_since || req.query.changedSince || null,
-        limit: req.query.limit ? Number(req.query.limit) : 100
+        limit: req.query.limit ? Number(req.query.limit) : 100,
+        monitorMode: req.query.monitorMode === 'true'
       });
       ok(res, data);
     } catch (error) {

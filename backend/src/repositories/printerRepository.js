@@ -15,13 +15,15 @@ export const printerRepository = {
   create: (printerData) => {
     const id = crypto.randomUUID();
     const stmt = dbEngine.db.prepare(`
-      INSERT INTO printers (id, name, type, ip_address, port, paper_width, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO printers (id, name, type, driver_type, connection_string, ip_address, port, paper_width, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       id,
       printerData.name,
       printerData.type,
+      printerData.driver_type || 'ESCPOS_LAN',
+      printerData.connection_string || null,
       printerData.ipAddress || null,
       printerData.port || null,
       printerData.paperWidth || 80,
@@ -33,12 +35,14 @@ export const printerRepository = {
   update: (id, printerData) => {
     const stmt = dbEngine.db.prepare(`
       UPDATE printers 
-      SET name = ?, type = ?, ip_address = ?, port = ?, paper_width = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
+      SET name = ?, type = ?, driver_type = ?, connection_string = ?, ip_address = ?, port = ?, paper_width = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
     stmt.run(
       printerData.name,
       printerData.type,
+      printerData.driver_type || 'ESCPOS_LAN',
+      printerData.connection_string || null,
       printerData.ipAddress || null,
       printerData.port || null,
       printerData.paperWidth || 80,

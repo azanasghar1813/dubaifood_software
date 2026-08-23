@@ -5,7 +5,7 @@ import {
   Receipt, Edit,
   AlertCircle, ChevronRight,
   CheckCircle2, PlusCircle, CreditCard,
-  Utensils, Printer, Phone
+  Utensils, Printer, Phone, Loader2
 } from "lucide-react"
 import { useOrderStore, mapHistoryDetailToOrder } from "../store/orderStore"
 import type { Order, OrderStatus, KitchenStatus, PaymentStatus } from "../store/orderStore"
@@ -52,6 +52,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
   const [filter, setFilter] = useState<string>("All")
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [selectedActionIndex, setSelectedActionIndex] = useState(0)
+  const [kotStatus, setKotStatus] = useState<Record<string, 'loading' | 'success' | 'error' | undefined>>({})
   const [printOrder, setPrintOrder] = useState<Order | null>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   // Use a ref to keep latest activeOrders/selectedIndex in the keydown handler
@@ -183,6 +184,27 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
       console.error(e)
     }
     onClose()
+  }
+
+  const handleSendKot = async (e: React.MouseEvent | null, order: Order) => {
+    if (e) e.stopPropagation()
+    setKotStatus(prev => ({ ...prev, [order.id]: 'loading' }))
+    try {
+      const { usePrinterStore } = await import('../store/printerStore')
+      await usePrinterStore.getState().printKitchen(order.id, user?.id || user?.name || 'cashier')
+      syncOrdersFromBackend()
+      
+      setKotStatus(prev => ({ ...prev, [order.id]: 'success' }))
+      setTimeout(() => {
+        setKotStatus(prev => ({ ...prev, [order.id]: undefined }))
+      }, 2000)
+    } catch (e) {
+      console.error(e)
+      setKotStatus(prev => ({ ...prev, [order.id]: 'error' }))
+      setTimeout(() => {
+        setKotStatus(prev => ({ ...prev, [order.id]: undefined }))
+      }, 3000)
+    }
   }
 
   const handleMarkComplete = async (e: React.MouseEvent | null, order: Order) => {
@@ -368,10 +390,10 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                       )}
                     </div>
 
-                    <div className="flex gap-2 mt-2 pt-3 border-t border-border/50">
+                    <div className="flex flex-wrap gap-2 mt-2 pt-3 border-t border-border/50">
                       <button 
                         onClick={() => handleEdit(order)}
-                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-[11px] font-bold leading-tight transition-colors ${
+                        className={`flex-1 min-w-[70px] flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-[11px] font-bold leading-tight transition-colors ${
                           selectedIndex === index && selectedActionIndex === 0
                             ? 'bg-primary text-primary-foreground ring-2 ring-primary/50 shadow-lg shadow-primary/20'
                             : 'bg-secondary hover:bg-secondary/80 text-foreground'
@@ -384,7 +406,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                       {order.paymentStatus === 'Unpaid' && (
                         <button 
                           onClick={(e) => handleMarkComplete(e, order)}
-                          className={`flex-1 flex items-center justify-center gap-1.5 border py-2 px-1 rounded-lg text-[11px] font-bold leading-tight transition-colors ${
+                          className={`flex-1 min-w-[100px] flex items-center justify-center gap-1.5 border py-2 px-1 rounded-lg text-[11px] font-bold leading-tight transition-colors ${
                             selectedIndex === index && selectedActionIndex === 1
                               ? 'bg-emerald-500 text-white ring-2 ring-emerald-500/50 border-emerald-500 shadow-lg shadow-emerald-500/20'
                               : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border-emerald-500/20'
@@ -396,8 +418,29 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                       )}
 
                       <button 
+                        onClick={(e) => handleSendKot(e, order)}
+                        disabled={kotStatus[order.id] === 'loading'}
+                        className={`flex-1 min-w-[80px] flex items-center justify-center gap-1.5 border py-2 px-1 rounded-lg text-[11px] font-bold leading-tight transition-colors ${
+                          kotStatus[order.id] === 'success' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' 
+                          : kotStatus[order.id] === 'error' ? 'bg-red-500/10 text-red-600 border-red-500/20'
+                          : 'bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 border-orange-500/20'
+                        } disabled:opacity-70`}
+                      >
+                        {kotStatus[order.id] === 'loading' ? (
+                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : kotStatus[order.id] === 'success' ? (
+                           <CheckCircle2 className="w-3.5 h-3.5" />
+                        ) : kotStatus[order.id] === 'error' ? (
+                           <AlertCircle className="w-3.5 h-3.5" />
+                        ) : (
+                           <Printer className="w-3.5 h-3.5" />
+                        )}
+                        {kotStatus[order.id] === 'loading' ? 'Sending...' : kotStatus[order.id] === 'success' ? 'Sent!' : kotStatus[order.id] === 'error' ? 'Failed' : 'Send KOT'}
+                      </button>
+
+                      <button 
                         onClick={(e) => handlePrint(e, order)}
-                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-[11px] font-bold leading-tight transition-colors ${
+                        className={`flex-1 min-w-[70px] flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-[11px] font-bold leading-tight transition-colors ${
                           selectedIndex === index && selectedActionIndex === 2
                             ? 'bg-blue-500 text-white ring-2 ring-blue-500/50 shadow-lg shadow-blue-500/20'
                             : 'bg-secondary hover:bg-secondary/80 text-foreground'

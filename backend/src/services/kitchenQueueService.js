@@ -13,7 +13,8 @@ class KitchenQueueService {
       stationId: filters.stationId || null,
       includeCompleted: !!filters.includeCompleted,
       changedSince: filters.changedSince || null,
-      limit: Number(filters.limit) || 100
+      limit: Number(filters.limit) || 100,
+      monitorMode: !!filters.monitorMode
     });
   }
 
@@ -133,11 +134,23 @@ class KitchenQueueService {
       FROM orders o
       INNER JOIN order_items i ON i.order_id = o.id
       LEFT JOIN users u ON u.id = o.cashier_user_id
-      WHERE o.lifecycle_state IN (${activeOrderStates.map(() => '?').join(',')})
-        AND i.kitchen_state IN (${activeItemStates.map(() => '?').join(',')})
+      WHERE 1=1
     `;
 
-    params.push(...activeOrderStates, ...activeItemStates);
+    if (filters.monitorMode) {
+      const configService = require('./configService.js').configService;
+      const now = new Date();
+      const [startHour] = (configService.getBusinessDay().start_time || '06:00').split(':').map(Number);
+      if (now.getHours() < startHour) now.setDate(now.getDate() - 1);
+      const today = now.toISOString().split('T')[0];
+
+      sql += ` AND (o.business_date = ? OR i.kitchen_state = 'PENDING')`;
+      params.push(today);
+    } else {
+      sql += ` AND o.lifecycle_state IN (${activeOrderStates.map(() => '?').join(',')})`;
+      sql += ` AND i.kitchen_state IN (${activeItemStates.map(() => '?').join(',')})`;
+      params.push(...activeOrderStates, ...activeItemStates);
+    }
 
     if (filters.branchId) {
       sql += ' AND o.branch_id = ?';

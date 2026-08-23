@@ -18,6 +18,7 @@ router.put('/business/:category', configController.updateBusinessCategory);
 router.put('/application/:category', configController.updateApplicationCategory);
 
 // Printers
+router.get('/printers/discover', configController.discoverPrinters);
 router.get('/printers', configController.getPrinters);
 router.post('/printers', configController.createPrinter);
 router.put('/printers/:id', configController.updatePrinter);

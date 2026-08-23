@@ -11,7 +11,7 @@ import type { BusinessProfile, FinanceConfig, Printer, OrderConfig } from "../ap
 
 export default function Settings() {
   const { user: currentUser } = useAuthStore()
-  const [activeTab, setActiveTab] = useState("Business Profile")
+  const [activeTab, setActiveTab] = useState("Printers")
   
   // States
   const [isLoading, setIsLoading] = useState(true)
@@ -19,26 +19,13 @@ export default function Settings() {
   const [isSaved, setIsSaved] = useState(false)
 
   // Form Data
-  const [profileData, setProfileData] = useState<BusinessProfile>({
-    restaurant_name: "",
-    phone_number: "",
-    address: "",
-    trn: ""
-  })
-
-  const [financeData, setFinanceData] = useState<FinanceConfig>({
-    service_charge_rate: "0",
-    delivery_charge_rate: "0",
-    tax_inclusive: "true",
-    round_off: "true"
-  })
-
   const [orderConfig, setOrderConfig] = useState<OrderConfig>({
     order_number_reset_daily: "true"
   })
 
   // Printers Data
   const [printers, setPrinters] = useState<Printer[]>([])
+  const [discoveredPrinters, setDiscoveredPrinters] = useState<any[]>([])
   
   // Printer Drawer State
   const [isPrinterDrawerOpen, setIsPrinterDrawerOpen] = useState(false)
@@ -46,6 +33,8 @@ export default function Settings() {
   const [printerFormData, setPrinterFormData] = useState<Omit<Printer, 'id'>>({
     name: "",
     type: "RECEIPT",
+    driver_type: "ESCPOS_LAN",
+    connection_string: "",
     ipAddress: "",
     port: 9100,
     paperWidth: 80,
@@ -63,8 +52,6 @@ export default function Settings() {
       if (!res?.data?.data) return
       const data = res.data.data
       
-      if (data?.business?.profile) setProfileData(data.business.profile)
-      if (data?.business?.finance) setFinanceData(data.business.finance)
       if (data?.business?.order) setOrderConfig(data.business.order)
       if (data?.printers) setPrinters(data.printers)
     } catch (e) {
@@ -78,11 +65,7 @@ export default function Settings() {
     e.preventDefault()
     setIsSaving(true)
     try {
-      if (activeTab === "Business Profile") {
-        await configApi.updateBusinessProfile(profileData)
-      } else if (activeTab === "Finance & Charges") {
-        await configApi.updateFinanceConfig(financeData)
-      } else if (activeTab === "Data Management") {
+      if (activeTab === "Data Management") {
         await configApi.updateOrderConfig(orderConfig)
       }
       setIsSaved(true)
@@ -125,35 +108,45 @@ export default function Settings() {
     }
   }
 
-  const openAddPrinter = () => {
+  const openAddPrinter = async () => {
     setEditingPrinter(null)
     setPrinterFormData({
       name: "",
       type: "RECEIPT",
+      driver_type: "ESCPOS_LAN",
+      connection_string: "",
       ipAddress: "",
       port: 9100,
       paperWidth: 80,
       isActive: true
     })
     setIsPrinterDrawerOpen(true)
+    try {
+      const res = await configApi.discoverPrinters()
+      setDiscoveredPrinters(res.data?.data || [])
+    } catch (e) { console.error(e) }
   }
 
-  const openEditPrinter = (p: Printer) => {
+  const openEditPrinter = async (p: Printer) => {
     setEditingPrinter(p)
     setPrinterFormData({
       name: p.name,
       type: p.type,
+      driver_type: p.driver_type || "ESCPOS_LAN",
+      connection_string: p.connection_string || "",
       ipAddress: p.ipAddress || "",
       port: p.port || 9100,
       paperWidth: p.paperWidth || 80,
       isActive: p.isActive !== false
     })
     setIsPrinterDrawerOpen(true)
+    try {
+      const res = await configApi.discoverPrinters()
+      setDiscoveredPrinters(res.data?.data || [])
+    } catch (e) { console.error(e) }
   }
 
   const tabsList = [
-    { name: "Business Profile", icon: Building2 },
-    { name: "Finance & Charges", icon: Server },
     { name: "Printers", icon: PrinterIcon },
     { name: "Data Management", icon: Trash2 }
   ]
@@ -235,84 +228,7 @@ export default function Settings() {
 
             <form onSubmit={handleSaveBusiness} className="space-y-6">
               <AnimatePresence mode="wait">
-                {/* BUSINESS PROFILE */}
-                {activeTab === "Business Profile" && (
-                  <motion.div
-                    key="business"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="grid grid-cols-1 md:grid-cols-2 gap-6"
-                  >
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">Restaurant Name</label>
-                      <input 
-                        type="text" 
-                        value={profileData.restaurant_name || ""}
-                        onChange={(e) => setProfileData({...profileData, restaurant_name: e.target.value})}
-                        className="w-full h-11 px-4 bg-secondary border border-border rounded-xl text-sm font-bold focus:outline-none focus:border-primary transition-colors"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">TRN (Tax Number)</label>
-                      <input 
-                        type="text" 
-                        value={profileData.trn || ""}
-                        onChange={(e) => setProfileData({...profileData, trn: e.target.value})}
-                        className="w-full h-11 px-4 bg-secondary border border-border rounded-xl text-sm font-bold focus:outline-none focus:border-primary transition-colors"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">Phone Number</label>
-                      <input 
-                        type="text" 
-                        value={profileData.phone_number || ""}
-                        onChange={(e) => setProfileData({...profileData, phone_number: e.target.value})}
-                        className="w-full h-11 px-4 bg-secondary border border-border rounded-xl text-sm font-bold focus:outline-none focus:border-primary transition-colors"
-                      />
-                    </div>
-                    <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">Address</label>
-                      <input 
-                        type="text" 
-                        value={profileData.address || ""}
-                        onChange={(e) => setProfileData({...profileData, address: e.target.value})}
-                        className="w-full h-11 px-4 bg-secondary border border-border rounded-xl text-sm font-bold focus:outline-none focus:border-primary transition-colors"
-                      />
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* FINANCE & CHARGES */}
-                {activeTab === "Finance & Charges" && (
-                  <motion.div
-                    key="finance"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="grid grid-cols-1 md:grid-cols-2 gap-6"
-                  >
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">Service Charge (%)</label>
-                      <input 
-                        type="number" 
-                        value={financeData.service_charge_rate || "0"}
-                        onChange={(e) => setFinanceData({...financeData, service_charge_rate: e.target.value})}
-                        className="w-full h-11 px-4 bg-secondary border border-border rounded-xl text-sm font-bold focus:outline-none focus:border-primary transition-colors"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">Delivery Charge (Flat Amount)</label>
-                      <input 
-                        type="number" 
-                        value={financeData.delivery_charge_rate || "0"}
-                        onChange={(e) => setFinanceData({...financeData, delivery_charge_rate: e.target.value})}
-                        className="w-full h-11 px-4 bg-secondary border border-border rounded-xl text-sm font-bold focus:outline-none focus:border-primary transition-colors"
-                      />
-                    </div>
-                  </motion.div>
-                )}
-
+                
                 {/* DATA MANAGEMENT */}
                 {activeTab === "Data Management" && (
                   <motion.div
@@ -411,7 +327,7 @@ export default function Settings() {
                           <tr>
                             <th className="px-6 py-3">Printer Name</th>
                             <th className="px-6 py-3">Type</th>
-                            <th className="px-6 py-3">IP Address</th>
+                            <th className="px-6 py-3">Connection</th>
                             <th className="px-6 py-3">Status</th>
                             <th className="px-6 py-3 text-right">Actions</th>
                           </tr>
@@ -427,7 +343,16 @@ export default function Settings() {
                             <tr key={p.id} className="hover:bg-secondary/30 transition-colors">
                               <td className="px-6 py-4 font-black">{p.name}</td>
                               <td className="px-6 py-4 font-semibold text-muted-foreground">{p.type}</td>
-                              <td className="px-6 py-4 font-mono text-muted-foreground">{p.ipAddress || 'USB'}</td>
+                              <td className="px-6 py-4 font-mono text-muted-foreground text-xs">
+                                <div className="flex flex-col">
+                                  <span className="font-bold text-foreground">
+                                    {p.driver_type === 'ESCPOS_LAN' ? 'LAN / Wi-Fi' :
+                                     p.driver_type === 'ESCPOS_BT' ? 'Bluetooth' :
+                                     p.driver_type === 'ESCPOS_USB' ? 'USB' : 'Virtual'}
+                                  </span>
+                                  <span>{p.connection_string || p.ipAddress || 'N/A'}</span>
+                                </div>
+                              </td>
                               <td className="px-6 py-4">
                                 <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${
                                   p.isActive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
@@ -509,26 +434,63 @@ export default function Settings() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">IP Address (Optional for USB)</label>
-                    <input 
-                      type="text" 
-                      value={printerFormData.ipAddress || ""}
-                      onChange={(e) => setPrinterFormData({...printerFormData, ipAddress: e.target.value})}
-                      className="w-full h-11 px-4 bg-secondary border border-border rounded-xl text-sm font-bold focus:outline-none focus:border-primary transition-colors font-mono"
-                      placeholder="192.168.1.100"
-                    />
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">Connection Type</label>
+                    <select 
+                      value={printerFormData.driver_type || 'ESCPOS_LAN'}
+                      onChange={(e) => setPrinterFormData({...printerFormData, driver_type: e.target.value as any})}
+                      className="w-full h-11 px-4 bg-secondary border border-border rounded-xl text-sm font-bold focus:outline-none focus:border-primary transition-colors appearance-none"
+                    >
+                      <option value="ESCPOS_LAN">LAN / Wi-Fi</option>
+                      <option value="ESCPOS_BT">Bluetooth / Serial</option>
+                      <option value="ESCPOS_USB">USB / Windows Spooler</option>
+                      <option value="VIRTUAL">Virtual (Testing)</option>
+                    </select>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  {printerFormData.driver_type !== 'VIRTUAL' && (
                     <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">Port</label>
-                      <input 
-                        type="number" 
-                        value={printerFormData.port || 9100}
-                        onChange={(e) => setPrinterFormData({...printerFormData, port: Number(e.target.value)})}
-                        className="w-full h-11 px-4 bg-secondary border border-border rounded-xl text-sm font-bold focus:outline-none focus:border-primary transition-colors"
-                      />
+                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">
+                        {printerFormData.driver_type === 'ESCPOS_LAN' && 'IP Address'}
+                        {printerFormData.driver_type === 'ESCPOS_BT' && 'Bluetooth / COM Port'}
+                        {printerFormData.driver_type === 'ESCPOS_USB' && 'Windows Printer'}
+                      </label>
+                      {printerFormData.driver_type === 'ESCPOS_LAN' ? (
+                        <input 
+                          type="text" 
+                          value={printerFormData.connection_string || printerFormData.ipAddress || ""}
+                          onChange={(e) => setPrinterFormData({...printerFormData, connection_string: e.target.value, ipAddress: e.target.value})}
+                          className="w-full h-11 px-4 bg-secondary border border-border rounded-xl text-sm font-bold focus:outline-none focus:border-primary transition-colors font-mono"
+                          placeholder="192.168.1.100"
+                        />
+                      ) : (
+                        <select
+                          value={printerFormData.connection_string || ""}
+                          onChange={(e) => setPrinterFormData({...printerFormData, connection_string: e.target.value})}
+                          className="w-full h-11 px-4 bg-secondary border border-border rounded-xl text-sm font-bold focus:outline-none focus:border-primary transition-colors appearance-none font-mono"
+                        >
+                          <option value="">-- Select Detected Printer --</option>
+                          {discoveredPrinters.filter(dp => dp.type === printerFormData.driver_type).map(dp => (
+                            <option key={dp.port} value={dp.port}>
+                              {dp.name} ({dp.description})
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {printerFormData.driver_type === 'ESCPOS_LAN' && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">Port</label>
+                        <input 
+                          type="number" 
+                          value={printerFormData.port || 9100}
+                          onChange={(e) => setPrinterFormData({...printerFormData, port: Number(e.target.value)})}
+                          className="w-full h-11 px-4 bg-secondary border border-border rounded-xl text-sm font-bold focus:outline-none focus:border-primary transition-colors"
+                        />
+                      </div>
+                    )}
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">Paper Width</label>
                       <select 
