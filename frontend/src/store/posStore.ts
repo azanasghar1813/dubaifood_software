@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { cartService } from '../services/posServices/cartService'
 import { apiClient } from '../api/client'
 import { useOrderStore } from './orderStore'
@@ -116,7 +117,9 @@ interface POSState {
   switchOrder: (orderId: string) => void
 }
 
-export const usePosStore = create<POSState>((set, get) => ({
+export const usePosStore = create<POSState>()(
+  persist(
+    (set, get) => ({
   menuContext: 'Fast Food',
   gridDensity: (localStorage.getItem('pos:gridDensity') as 'small' | 'medium' | 'large') || 'medium',
   
@@ -681,4 +684,27 @@ export const usePosStore = create<POSState>((set, get) => ({
   toggleTax: () => set((state) => ({ isTaxEnabled: !state.isTaxEnabled })),
   clearEditMode: () => set({ editingOrderId: null }),
   switchOrder: (orderId) => console.log('switchOrder stub called', orderId)
-}))
+    }),
+    {
+      name: 'pos-storage',
+      partialize: (state) => ({
+        cart: state.cart,
+        menuContext: state.menuContext,
+        gridDensity: state.gridDensity,
+        customer: state.customer,
+        isVipOrder: state.isVipOrder,
+        deliveryCharges: state.deliveryCharges,
+        tableNumber: state.tableNumber,
+        waiterId: state.waiterId,
+        waiterName: state.waiterName,
+        riderId: state.riderId,
+        riderName: state.riderName,
+        guestCount: state.guestCount,
+        isTaxEnabled: state.isTaxEnabled,
+        orderType: state.orderType,
+        openOrders: state.openOrders,
+        activeOrderId: state.activeOrderId,
+      }),
+    }
+  )
+)

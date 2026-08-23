@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { authService } from '../services/authService'
 import { Loader2 } from 'lucide-react'
@@ -11,6 +12,8 @@ import { Loader2 } from 'lucide-react'
 export function AppInitializer({ children }: { children: React.ReactNode }) {
   const { token, logout, setSession, setCashierSessionId } = useAuthStore()
   const [isInitializing, setIsInitializing] = useState(true)
+  const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -54,6 +57,12 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         logout()
       } finally {
         setIsInitializing(false)
+        if (location.pathname === '/' || location.pathname === '/dashboard') {
+          const lastRoute = localStorage.getItem('df_last_route')
+          if (lastRoute && lastRoute !== '/' && lastRoute !== '/login') {
+            navigate(lastRoute, { replace: true })
+          }
+        }
       }
     }
 
