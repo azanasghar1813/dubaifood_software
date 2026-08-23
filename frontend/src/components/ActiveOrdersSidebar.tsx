@@ -225,6 +225,26 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
 
   const handlePrint = async (e: React.MouseEvent | null, order: Order) => {
     if (e) e.stopPropagation()
+    
+    try {
+      const { usePrinterStore } = await import("../store/printerStore")
+      const printerState = usePrinterStore.getState()
+      
+      const hasThermalPrinter = printerState.printers.some(
+        (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
+      )
+
+      if (hasThermalPrinter) {
+        const result = await printerState.printReceipt(order.id, user?.id || user?.name || 'cashier')
+        if (result?.job_id) {
+          console.log(`[ActiveOrdersSidebar] Thermal print job queued: ${result.job_id}`)
+          return // Success â€” don't open browser popup
+        }
+      }
+    } catch (e) {
+      console.warn('[ActiveOrdersSidebar] Backend print failed, falling back to browser preview:', e)
+    }
+
     setPrintOrder(order)
   }
 

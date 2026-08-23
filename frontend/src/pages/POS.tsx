@@ -15,6 +15,7 @@ import {
   Store, UtensilsCrossed, Truck, CircleDot,
   QrCode, Banknote, Clock, Building2, Percent, X, ShoppingCart
 } from "lucide-react"
+import ReceiptPreview from "./ReceiptPreview"
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
 import { menuService } from "../services/menuService"
 import { CustomerPanelModal } from "../components/CustomerPanelModal"
@@ -140,7 +141,8 @@ export default function POS() {
   const [discountAmount, setDiscountAmount] = useState<string>("")
   const [isPaidPrint, setIsPaidPrint] = useState(false)
   const [isKdsAutoSend, setIsKdsAutoSend] = useState(true)
-  const [lastReceipt, setLastReceipt] = useState<any>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [printOrder, setPrintOrder] = useState<any>(null)
 
   // Checkout modal keyboard navigation
   // focusZone: 'methods' | 'discount' | 'amount' | 'quickcash' | 'discountpct' | 'confirm'
@@ -164,7 +166,7 @@ export default function POS() {
     isTaxEnabled, toggleTax, menuContext, setMenuContext,
     editingOrderId, clearEditMode, completeOrder,
     deliveryCharges, setDeliveryCharges,
-    fetchDraftOrder, financeConfig, activeOrderId
+    fetchDraftOrder, financeConfig, activeOrderId, isVipOrder
   } = usePosStore()
 
   const { orderCounter } = useOrderStore()
@@ -177,6 +179,7 @@ export default function POS() {
       setCustomerModalOpen(true)
     } else {
       // Reset checkout state every time modal opens
+      (window as any)._checkoutOpenedAt = Date.now()
       setSelectedPaymentMethod(null)
       setAmountReceived('')
       setDiscountAmount('')
@@ -415,6 +418,8 @@ export default function POS() {
           e.preventDefault()
           // Ctrl+Enter always confirms immediately
           if (e.ctrlKey) {
+            // Prevent immediate confirm if we just opened the modal with Ctrl+Enter
+            if (Date.now() - ((window as any)._checkoutOpenedAt || 0) < 500) return
             document.getElementById('confirm-payment-btn')?.click()
             return
           }
@@ -586,12 +591,7 @@ export default function POS() {
 
       if (e.ctrlKey && e.key.toLowerCase() === 'v') {
         e.preventDefault()
-        const cust = usePosStore.getState().customer
-        if (cust) {
-          usePosStore.getState().setCustomer({ ...cust, is_vip: !(cust.is_vip || cust.isVip) })
-        } else {
-          usePosStore.getState().setCustomer({ name: 'Guest', is_temp: true, is_vip: true })
-        }
+        usePosStore.getState().toggleVipOrder()
       }
 
 
@@ -1585,7 +1585,7 @@ export default function POS() {
                     <h2 className="font-black tracking-wider uppercase text-muted-foreground text-[10px] mb-1 mt-1">Order #{orderCounter}</h2>
                   </div>
 
-                  {(customer?.is_vip || customer?.isVip) && (
+                  {(isVipOrder || customer?.is_vip || customer?.isVip) && (
                     <div className="flex flex-col items-center justify-center">
                       <span className="bg-gradient-to-r from-amber-200 to-yellow-500 text-yellow-950 font-black text-[11px] px-3 py-1 rounded-full uppercase tracking-widest shadow-sm border border-yellow-400/50 flex items-center gap-1">
                         <Star className="w-3 h-3 fill-yellow-950" /> VIP
@@ -1637,11 +1637,11 @@ export default function POS() {
                 <div className="relative">
                   <button onClick={() => setCustomerModalOpen(true)} className="flex items-center gap-2 p-2 rounded-xl border-2 border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 hover:border-orange-500/80 shadow-md transition-all text-left w-full h-full">
                     <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
-                      {(customer?.is_vip || customer?.isVip) ? <Star className="w-4 h-4 text-orange-500 fill-orange-500" /> : <User className="w-4 h-4" />}
+                      {(customer?.is_vip || customer?.isVip || isVipOrder) ? <Star className="w-4 h-4 text-orange-500 fill-orange-500" /> : <User className="w-4 h-4" />}
                     </div>
                     <div className="overflow-hidden pr-4 flex-1">
-                      <p className="text-sm font-black text-foreground uppercase tracking-wider flex items-center gap-1">Customer</p>
-                      <p className="text-[11px] font-semibold text-muted-foreground truncate">{customer?.name || customer?.first_name || "Select"}</p>
+                      <p className="text-sm font-black text-foreground uppercase tracking-wider flex items-center gap-1">Customer {(isVipOrder || customer?.is_vip || customer?.isVip) && <span className="text-[9px] bg-orange-500 text-white px-1 py-0.5 rounded ml-1">VIP</span>}</p>
+                      <p className="text-[11px] font-semibold text-muted-foreground truncate">{customer?.name || customer?.first_name || "Guest"}</p>
                     </div>
                   </button>
                   {customer && (
@@ -1927,13 +1927,22 @@ export default function POS() {
                         onClick={async () => {
                           try {
                             const { usePrinterStore } = await import("../store/printerStore")
-                            const currentOrderId = usePosStore.getState().editingOrderId || usePosStore.getState().activeOrder?.id
+                            let currentOrderId = usePosStore.getState().editingOrderId || usePosStore.getState().activeOrder?.id
+                            
+                            if (!currentOrderId) {
+                               const { success, orderId } = await usePosStore.getState().completeOrder([], 0)
+                               if (success && orderId) {
+                                   currentOrderId = orderId
+                               }
+                            }
+
                             if (currentOrderId) {
                               await usePrinterStore.getState().printKitchen(currentOrderId, user?.id || user?.name || 'cashier')
+                              alert("KOT Sent to Kitchen!")
                             }
                           } catch { /* fallback */ }
                         }}
-                        disabled={cart.length === 0 || (!usePosStore.getState().editingOrderId && !usePosStore.getState().activeOrder?.id)}
+                        disabled={cart.length === 0}
                         className="p-1 bg-white hover:bg-red-50 text-red-600 border border-red-200 hover:border-red-400 font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors shadow-sm"
                       >
                         <Printer className="w-4 h-4 stroke-[2]" />
@@ -1945,15 +1954,61 @@ export default function POS() {
                             const { usePrinterStore } = await import("../store/printerStore")
                             const ps = usePrinterStore.getState()
                             const hasThermal = ps.printers.some(
-                              (p) => p.driver_type && p.driver_type !== 'VIRTUAL'
+                              (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
                             )
                             const currentOrderId = usePosStore.getState().editingOrderId || usePosStore.getState().activeOrder?.id
                             if (hasThermal && currentOrderId) {
                               const result = await ps.printReceipt(currentOrderId, user?.id || user?.name || 'cashier')
-                              if (result?.job_id) return // thermal print queued
+                              if (result?.job_id) {
+                                alert("Receipt queued to Thermal Printer")
+                                return // thermal print queued
+                              }
                             }
                           } catch { /* fallback */ }
-                          window.print()
+                          
+                          const currentOrderId = usePosStore.getState().editingOrderId || usePosStore.getState().activeOrder?.id
+                          if (currentOrderId) {
+                             try {
+                               const { fetchOrderDetail } = await import('../api/historyApi')
+                               const { mapHistoryDetailToOrder } = await import('../store/orderStore')
+                               const res = await fetchOrderDetail(currentOrderId)
+                               if (res.success && res.data) {
+                                 setPrintOrder(mapHistoryDetailToOrder(res.data, res.data))
+                               }
+                             } catch(e) {}
+                          } else {
+                             const fullOrderData = {
+                               id: `draft-${Date.now()}`,
+                               orderNumber: orderCounter.toString(),
+                               orderType,
+                               tableNumber: orderType === 'Dine In' ? tableNumber : null,
+                               customerName: orderType !== 'Dine In' ? (customer?.name || 'Guest') : null,
+                               customerPhone: orderType !== 'Dine In' ? (customer?.phone || null) : null,
+                               customerAddress: orderType === 'Delivery' ? (customer?.address || null) : null,
+                               notes: orderType !== 'Dine In' ? (customer?.notes || null) : null,
+                               status: 'Draft',
+                               kitchenStatus: 'Pending',
+                               paymentStatus: 'Unpaid',
+                               total: getNetTotal(),
+                               subtotal: getSubtotal(),
+                               serviceCharge: getServiceCharge(),
+                               deliveryCharge: orderType === 'Delivery' ? (deliveryCharges || 0) : 0,
+                               discount: 0,
+                               timestamp: new Date().toISOString(),
+                               items: cart.map(item => ({
+                                 id: item.id,
+                                 name: item.name,
+                                 price: item.price,
+                                 quantity: item.quantity,
+                                 category: item.category,
+                                 selectedModifiers: item.selectedModifiers,
+                                 notes: item.notes
+                               })),
+                               cashierName: user?.name || 'Cashier',
+                               isVip: isVipOrder || customer?.is_vip || customer?.isVip
+                             }
+                             setPrintOrder(fullOrderData)
+                          }
                         }}
                         disabled={cart.length === 0}
                         className="p-1 bg-white hover:bg-orange-50 text-[#ff7b00] border border-[#ff7b00]/30 hover:border-[#ff7b00]/60 font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors shadow-sm"
@@ -2148,8 +2203,7 @@ export default function POS() {
         {checkoutModalOpen && (() => {
           const discountVal = Number(discountAmount) || 0
           const baseTotal = getNetTotal()
-          const finalTotal = Math.max(0, baseTotal - discountVal)
-          const isCash = selectedPaymentMethod === 'Cash'
+          const totalToPay = Math.max(0, baseTotal - discountVal)
           return (
             <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -2165,7 +2219,6 @@ export default function POS() {
                 {/* Header */}
                 <div className="p-4 border-b border-border bg-secondary/30 text-center">
                   <h2 className="text-xl font-black mb-0.5 text-foreground">Complete Payment</h2>
-                  <p className="text-xs text-muted-foreground font-bold uppercase tracking-wider"></p>
                 </div>
 
                 <div className="p-4 flex flex-col gap-4 overflow-y-auto custom-scrollbar">
@@ -2173,7 +2226,7 @@ export default function POS() {
                   {/* Total display */}
                   <div className="text-center">
                     <p className="text-3xl font-black text-orange-500 tracking-tighter">
-                      Rs {finalTotal.toLocaleString()}
+                      Rs {totalToPay.toLocaleString()}
                     </p>
                     {discountVal > 0 && (
                       <p className="text-xs text-muted-foreground font-bold mt-0.5">
@@ -2296,23 +2349,23 @@ export default function POS() {
                           value={amountReceived}
                           onChange={(e) => setAmountReceived(e.target.value)}
                           onFocus={() => setCheckoutFocusZone('amount')}
-                          placeholder={finalTotal.toString()}
+                          placeholder={totalToPay.toString()}
                           className={`flex-1 h-9 px-3 rounded-lg bg-background border font-black text-sm outline-none transition-all text-right ${checkoutFocusZone === 'amount' ? 'border-orange-500' : 'border-border'
                             }`}
                         />
                       </div>
 
                       {/* Change / Remaining */}
-                      {Number(amountReceived) >= finalTotal && Number(amountReceived) > 0 && (
+                      {Number(amountReceived) >= totalToPay && Number(amountReceived) > 0 && (
                         <div className="flex items-center justify-between text-emerald-500 bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
                           <span className="font-bold text-xs">Change Due:</span>
-                          <span className="font-black">Rs {(Number(amountReceived) - finalTotal).toLocaleString()}</span>
+                          <span className="font-black">Rs {(Number(amountReceived) - totalToPay).toLocaleString()}</span>
                         </div>
                       )}
-                      {Number(amountReceived) > 0 && Number(amountReceived) < finalTotal && (
+                      {Number(amountReceived) > 0 && Number(amountReceived) < totalToPay && (
                         <div className="flex items-center justify-between text-destructive bg-destructive/10 p-2 rounded-lg border border-destructive/20">
                           <span className="font-bold text-xs">Remaining:</span>
-                          <span className="font-black">Rs {(finalTotal - Number(amountReceived)).toLocaleString()}</span>
+                          <span className="font-black">Rs {(totalToPay - Number(amountReceived)).toLocaleString()}</span>
                         </div>
                       )}
 
@@ -2346,34 +2399,50 @@ export default function POS() {
                 <div className="p-4 bg-secondary/30 border-t border-border flex gap-3">
                   <button
                     id="confirm-payment-btn"
-                    disabled={false}
+                    disabled={isProcessing}
                     onClick={async () => {
-                      const amt = amountReceived ? Number(amountReceived) : finalTotal
+                      setIsProcessing(true)
+                      const amt = amountReceived ? Number(amountReceived) : totalToPay
                       const method: PaymentMethod = selectedPaymentMethod ?? 'Cash'
 
-                      // Snapshot the cart for the receipt before completeOrder clears it
-                      setLastReceipt({
-                        cart: [...cart],
-                        orderCounter,
+                      const fullOrderData = {
+                        id: activeOrderId,
+                        orderNumber: orderCounter.toString(),
                         orderType,
-                        tableNumber,
-                        customer: usePosStore.getState().customer,
-                        user,
-                        isPaidPrint,
-                        currentTime: new Date(),
-                        deliveryCharges,
-                        discountVal
-                      })
+                        tableNumber: orderType === 'Dine In' ? tableNumber : null,
+                        customerName: orderType !== 'Dine In' ? (customer?.name || 'Guest') : null,
+                        customerPhone: orderType !== 'Dine In' ? (customer?.phone || null) : null,
+                        customerAddress: orderType === 'Delivery' ? (customer?.address || null) : null,
+                        notes: orderType !== 'Dine In' ? (customer?.notes || null) : null,
+                        status: 'Completed',
+                        kitchenStatus: 'Completed',
+                        paymentStatus: 'Paid',
+                        total: totalToPay,
+                        subtotal: getSubtotal(),
+                        serviceCharge: getServiceCharge(),
+                        deliveryCharge: orderType === 'Delivery' ? (deliveryCharges || 0) : 0,
+                        discount: discountVal,
+                        timestamp: new Date().toISOString(),
+                        items: cart.map(item => ({
+                          id: item.id,
+                          name: item.name,
+                          price: item.price,
+                          quantity: item.quantity,
+                          category: item.category,
+                          selectedModifiers: item.selectedModifiers,
+                          notes: item.notes
+                        })),
+                        cashierName: user?.name || 'Cashier',
+                        isVip: isVipOrder || customer?.is_vip || customer?.isVip
+                      }
 
-                      const targetOrderId = usePosStore.getState().activeOrder?.id
-
-                      const success = await completeOrder(
+                      const { success, orderId: generatedOrderId } = await completeOrder(
                         isPaidPrint ? [{
                           id: `pay-${Date.now()}`,
                           method: method,
-                          amount: finalTotal,
+                          amount: totalToPay,
                           received: amt,
-                          change: Math.max(0, amt - finalTotal),
+                          change: Math.max(0, amt - totalToPay),
                           timestamp: new Date().toISOString(),
                           cashier: user?.name || 'Cashier',
                           status: 'Completed'
@@ -2382,10 +2451,12 @@ export default function POS() {
                       )
 
                       if (!success) {
-                        setLastReceipt(null)
+                        setIsProcessing(false)
                         alert("Could not complete this order. Your cart has been kept \u2014 please check your connection and try again.")
                         return
                       }
+                      
+                      const finalOrderId = generatedOrderId || activeOrderId
 
                       let thermalPrintQueued = false
                       try {
@@ -2394,33 +2465,43 @@ export default function POS() {
                         const hasThermal = ps.printers.some(
                           (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
                         )
-                        if (targetOrderId) {
+                        if (finalOrderId) {
                           // 1. Kitchen Sending Logic
                           if (isKdsAutoSend) {
-                             await ps.printKitchen(targetOrderId, user?.id || user?.name || 'cashier')
+                             await ps.printKitchen(finalOrderId, user?.id || user?.name || 'cashier')
                           } else {
                              if (window.confirm("Send this order to the Kitchen now?")) {
-                               await ps.printKitchen(targetOrderId, user?.id || user?.name || 'cashier')
+                               await ps.printKitchen(finalOrderId, user?.id || user?.name || 'cashier')
                              }
                           }
                           
                           // 2. Customer Receipt Logic
                           if (hasThermal) {
-                            const result = await ps.printReceipt(targetOrderId, user?.id || user?.name || 'cashier')
+                            const result = await ps.printReceipt(finalOrderId, user?.id || user?.name || 'cashier')
                             if (result?.job_id) {
                               thermalPrintQueued = true
+                              alert("Order Completed & Receipt Queued to Thermal Printer!")
                             }
                           }
                         }
                       } catch { /* fallback */ }
 
-                      if (thermalPrintQueued) {
-                        setLastReceipt(null)
-                      } else {
-                        setTimeout(() => {
-                          window.print()
-                          setLastReceipt(null)
-                        }, 100)
+                      if (!thermalPrintQueued && finalOrderId) {
+                        try {
+                          const { fetchOrderDetail } = await import('../api/historyApi')
+                          const { mapHistoryDetailToOrder } = await import('../store/orderStore')
+                          const res = await fetchOrderDetail(finalOrderId)
+                          if (res.success && res.data) {
+                            const fullOrder = mapHistoryDetailToOrder(res.data, res.data)
+                            setPrintOrder(fullOrder)
+                          } else {
+                            setPrintOrder({ ...fullOrderData, id: finalOrderId })
+                          }
+                        } catch (e) {
+                          setPrintOrder({ ...fullOrderData, id: finalOrderId })
+                        }
+                      } else if (!thermalPrintQueued) {
+                        setPrintOrder(fullOrderData)
                       }
 
                       setCheckoutModalOpen(false)
@@ -2430,6 +2511,7 @@ export default function POS() {
                       setDiscountAmount('')
                       setCheckoutFocusZone('methods')
                       setCheckoutMethodIndex(0)
+                      setIsProcessing(false)
                     }}
                     className={`w-full py-3 font-black rounded-xl text-base active:scale-95 transition-all flex items-center justify-center gap-2 relative ${checkoutFocusZone === 'confirm'
                       ? 'bg-orange-400 text-white ring-4 ring-orange-300 shadow-lg shadow-orange-500/40'
@@ -2447,219 +2529,14 @@ export default function POS() {
                   </button>
                 </div>
               </motion.div>
+              {/* ReceiptPreview Popup */}
+              {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
             </div>
           )
         })()}
       </AnimatePresence>
 
-      {/* Hidden Receipt for Printing (80mm Thermal Style) */}
-      <div className="hidden print:flex print:justify-center absolute top-0 left-0 w-full bg-white z-[9999]">
-        <div className="print-receipt bg-white text-black font-sans p-2 text-left" style={{ width: '80mm' }}>
 
-          {/* Header section with Logo */}
-          <div className="flex justify-center items-center mb-2">
-            {/* Logo */}
-            <div className="flex flex-col items-center">
-              <img src="/qr.png" alt="Dubai Food Point Logo" className="w-20 h-20 object-contain" />
-              <div className="text-center font-bold text-[15px] leading-tight mt-1">
-                Dubai Food &<br />Restaurant
-              </div>
-            </div>
-          </div>
-
-          {/* Address & Contact */}
-          <div className="text-center text-[10px] text-gray-800 leading-tight mb-3 mt-2 font-medium">
-            Opposite Akbar Plaza Near Waqas Nazir Printers Layyah<br />Road,<br />
-            Chowk Azam (Layyah)<br />
-            Contact: 0308-8020784, 0345-6420784
-          </div>
-
-          {/* VIP Badge */}
-          {(customer?.is_vip || customer?.isVip) && (
-            <div className="flex justify-center mb-3">
-              <div className="border border-black px-4 py-1 text-[11px] font-black tracking-widest uppercase flex items-center gap-2 rounded-sm shadow-sm">
-                ★ VIP ORDER ★
-              </div>
-            </div>
-          )}
-
-
-
-          <div className="w-full border-t border-gray-300 mb-3"></div>
-
-          {/* Order Details */}
-          <div className="text-[11px] flex flex-col gap-1 font-medium text-black mb-3">
-            <div className="flex"><span className="font-bold w-28">Order ID:</span> #{lastReceipt?.orderCounter || orderCounter}</div>
-            {(lastReceipt?.orderType || orderType) === 'Dine In' ? (
-              <div className="flex"><span className="font-bold w-28">Table No:</span> {lastReceipt?.tableNumber || tableNumber || 'N/A'}</div>
-            ) : (
-              <div className="flex"><span className="font-bold w-28">Customer:</span> {lastReceipt?.customer?.name || usePosStore.getState().customer?.name || 'Guest'}</div>
-            )}
-            {(lastReceipt?.orderType || orderType) !== 'Dine In' && (lastReceipt?.customer?.phone || usePosStore.getState().customer?.phone) && (
-              <div className="flex"><span className="font-bold w-28">Customer Contact:</span> {lastReceipt?.customer?.phone || usePosStore.getState().customer?.phone}</div>
-            )}
-            {(lastReceipt?.orderType || orderType) === 'Delivery' && (lastReceipt?.customer?.address || usePosStore.getState().customer?.address) && (
-              <div className="flex"><span className="font-bold w-28">Delivery To:</span> {lastReceipt?.customer?.address || usePosStore.getState().customer?.address}</div>
-            )}
-            {(lastReceipt?.orderType || orderType) !== 'Dine In' && (lastReceipt?.customer?.notes || usePosStore.getState().customer?.notes) && (
-              <div className="flex"><span className="font-bold w-28">Notes:</span> <span className="flex-1 whitespace-pre-wrap">{lastReceipt?.customer?.notes || usePosStore.getState().customer?.notes}</span></div>
-            )}
-            <div className="flex"><span className="font-bold w-28">Order Type:</span> {lastReceipt?.orderType || orderType}</div>
-            <div className="flex"><span className="font-bold w-28">Cashier:</span> {lastReceipt?.user?.name || user?.name || "Cashier"}</div>
-            <div className="flex"><span className="font-bold w-28">Status:</span> {lastReceipt ? (lastReceipt.isPaidPrint ? 'Paid' : 'Unpaid') : (isPaidPrint ? 'Paid' : 'Unpaid')}</div>
-            <div className="flex">
-              <span className="font-bold w-28">Time:</span>
-              {(lastReceipt?.currentTime || currentTime).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, {(lastReceipt?.currentTime || currentTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-            </div>
-            {(() => {
-              const printCart = lastReceipt?.cart || cart;
-              const groupedItems = printCart.reduce((acc: any, item: any) => {
-                let category = item.category || 'Restaurant';
-                const catLower = category.toLowerCase();
-                const nameLower = (item.name || '').toLowerCase();
-                if (
-                  catLower.includes('fast food') ||
-                  catLower.includes('pizza') ||
-                  catLower.includes('burger') ||
-                  catLower.includes('roll') ||
-                  catLower.includes('pasta') ||
-                  catLower.includes('appetizer') ||
-                  catLower.includes('sandwich') ||
-                  catLower.includes('shawarma') ||
-                  catLower.includes('extra toppings') ||
-                  nameLower.includes('pizza') ||
-                  nameLower.includes('burger') ||
-                  nameLower.includes('roll') ||
-                  nameLower.includes('pasta') ||
-                  nameLower.includes('appetizer') ||
-                  nameLower.includes('sandwich') ||
-                  nameLower.includes('shawarma') ||
-                  nameLower.includes('topping')
-                ) {
-                  category = 'Fast Food';
-                } else if (catLower.includes('deal') || nameLower.includes('deal')) {
-                  category = 'Deals';
-                } else {
-                  category = 'Restaurant';
-                }
-                if (!acc[category]) acc[category] = [];
-                acc[category].push(item);
-                return acc;
-              }, {} as Record<string, typeof cart>);
-
-              const categoryOrder = ["Fast Food", "Restaurant", "Deals"];
-              const sortedCategories = Object.keys(groupedItems).sort((a, b) => {
-                const idxA = categoryOrder.indexOf(a);
-                const idxB = categoryOrder.indexOf(b);
-                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-                if (idxA !== -1) return -1;
-                if (idxB !== -1) return 1;
-                return a.localeCompare(b);
-              });
-
-              return (
-                <div className="mb-4 flex flex-col">
-                  {sortedCategories.map((category) => (
-                    <div key={category} className="border-2 border-black border-b-0 last:border-b-2">
-                      <div className="text-center font-bold text-[13px] py-1 border-b border-dashed border-gray-500 uppercase">
-                        {category}
-                      </div>
-                      <div className="flex font-bold text-[11px] border-b border-gray-500 py-1 mb-1 px-1">
-                        <span className="flex-1">Item</span>
-                        <span className="w-8 text-center">Qty</span>
-                        <span className="w-16 text-right">Amount</span>
-                      </div>
-                      {groupedItems[category].map((item: any, idx: number) => {
-                        let itemTotal = item.price * item.quantity;
-                        if (item.selectedModifiers && Array.isArray(item.selectedModifiers)) {
-                          const modTotal = item.selectedModifiers.reduce((sum: number, mod: any) => sum + mod.price, 0);
-                          itemTotal = (item.price + modTotal) * item.quantity;
-                        }
-
-                        return (
-                          <div key={idx} className="border-b border-dashed border-gray-500 p-1 px-2 text-[11px] last:border-b-0">
-                            <div className="flex justify-between font-medium items-start">
-                              <span className="flex-1 pr-2 leading-tight">{item.name}</span>
-                              <span className="w-8 text-center shrink-0">{item.quantity}</span>
-                              <span className="w-16 text-right shrink-0">Rs {itemTotal.toFixed(2)}</span>
-                            </div>
-                            {item.selectedModifiers && item.selectedModifiers.length > 0 && (
-                              <div className="text-[10px] text-gray-500 leading-tight mt-0.5">
-                                {item.selectedModifiers.map((m: any) => `+${m.name}`).join(', ')}
-                              </div>
-                            )}
-                            {item.combo_components && item.combo_components.length > 0 && (
-                              <div className="text-[10px] text-gray-500 leading-tight mt-0.5 ml-2 border-l border-gray-300 pl-1">
-                                {item.combo_components.map((c: any, cidx: number) => (
-                                  <div key={cidx}>
-                                    - {c.quantity > 1 ? `${c.quantity}x ` : ''}{c.product_name_snapshot} {c.variant_snapshot && `(${c.variant_snapshot})`}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ))}
-                </div>
-              )
-            })()}
-          </div>
-
-          {/* Totals */}
-          <div className="flex flex-col items-end text-[11px] mb-2 pr-1 font-bold">
-            <div className="mb-1 text-right">Subtotal: Rs {(() => {
-              const sub = (lastReceipt?.cart || cart).reduce((sum: number, i: any) => sum + (i.price + (i.selectedModifiers || []).reduce((mSum: number, m: any) => mSum + m.price, 0)) * i.quantity, 0);
-              return sub.toFixed(2);
-            })()}</div>
-            {(lastReceipt?.orderType || orderType) === 'Dine In' && (() => {
-              const sub = (lastReceipt?.cart || cart).reduce((sum: number, i: any) => sum + (i.price + (i.selectedModifiers || []).reduce((mSum: number, m: any) => mSum + m.price, 0)) * i.quantity, 0);
-              const sc = sub * 0.07;
-              return sc > 0 ? (
-                <div className="mb-1 text-right">Service Charges: Rs {sc.toFixed(2)}</div>
-              ) : null;
-            })()}
-            {(lastReceipt?.orderType || orderType) === 'Delivery' && (lastReceipt?.deliveryCharges || deliveryCharges || 0) > 0 && (
-              <div className="mb-1 text-right">Delivery Charges: Rs {(lastReceipt?.deliveryCharges || deliveryCharges || 0).toFixed(2)}</div>
-            )}
-            {(lastReceipt?.discountVal || (discountAmount ? Number(discountAmount) : 0)) > 0 && (
-              <div className="mb-1 text-right text-emerald-600">Discount: -Rs {(lastReceipt?.discountVal || (discountAmount ? Number(discountAmount) : 0)).toFixed(2)}</div>
-            )}
-            <div className="font-black text-[13px] mt-1 underline decoration-2 underline-offset-2">
-              Total Amount: Rs {(() => {
-                const sub = (lastReceipt?.cart || cart).reduce((sum: number, i: any) => sum + (i.price + (i.selectedModifiers || []).reduce((mSum: number, m: any) => mSum + m.price, 0)) * i.quantity, 0);
-                let total = sub;
-                if ((lastReceipt?.orderType || orderType) === 'Dine In') {
-                  total += sub * 0.07;
-                }
-                if ((lastReceipt?.orderType || orderType) === 'Delivery') {
-                  total += (lastReceipt?.deliveryCharges || deliveryCharges || 0);
-                }
-                const dVal = lastReceipt?.discountVal || (discountAmount ? Number(discountAmount) : 0);
-                return Math.max(0, total - dVal).toFixed(2);
-              })()}
-            </div>
-          </div>
-
-          {/* Order Notes */}
-          {orderNotes && (
-            <div className="text-[11px] font-medium border-t border-black pt-2 mb-2 italic">
-              <span className="font-bold">Order Notes:</span> {orderNotes}
-            </div>
-          )}
-
-          {/* Footer */}
-          <div className="text-center mt-6 text-[11px] text-gray-800 flex flex-col items-center justify-center gap-2">
-            <p>Thank you for your order!</p>
-            <p>Please visit again.</p>
-            <div className="mt-2 flex flex-col items-center">
-              <img src="/logo.jpg" alt="QR Code" className="w-40 h-40 object-contain" />
-              <span className="text-[11px] font-bold mt-2">Scan to Pay</span>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Portals / Global Modals for POS */}
       <CustomerPanelModal
@@ -2755,6 +2632,9 @@ export default function POS() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* ReceiptPreview Popup */}
+      {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
     </div>
   )
 }

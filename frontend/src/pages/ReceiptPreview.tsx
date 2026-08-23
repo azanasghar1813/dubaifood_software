@@ -13,13 +13,14 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
   const settings = useSettingsStore()
 
   // â”€â”€ data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const orderNumber  = order?.orderNumber  ?? "10234"
+  const orderNumber  = order?.orderNumber || order?.id || "N/A"
   const orderType    = order?.orderType    ?? "Dine In"
   const tableNumber  = order?.tableNumber  ?? null
   const cashier      = order?.cashierName  ?? "Ahmed"
   const customerName = order?.customerName ?? null
   const customerPhone = order?.customerPhone ?? null
   const customerAddress = order?.customerAddress ?? null
+  const isVip        = (order as any)?.customer?.is_vip || (order as any)?.isVip || false
   const notes        = order?.notes        ?? null
   const paymentStatus = order?.paymentStatus ?? "Unpaid"
   const timestamp    = order ? new Date(order.timestamp) : new Date()
@@ -130,15 +131,20 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     <div style="display:flex;justify-content:center;margin-bottom:6px">
       <div style="display:flex;flex-direction:column;align-items:center">
         <img src="/qr.png" style="width:72px;height:72px;object-fit:contain" onerror="this.style.display='none'">
-        <div style="text-align:center;font-weight:700;font-size:14px;line-height:1.2;margin-top:4px">Dubai Food &amp;<br>Restaurant</div>
+        <div style="text-align:center;font-weight:700;font-size:14px;line-height:1.2;margin-top:4px">${settings.restaurantName.replace(/\n/g, '<br>')}</div>
       </div>
     </div>
     <!-- Address -->
     <div style="text-align:center;font-size:10px;color:#333;line-height:1.4;margin-bottom:10px">
-      Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,<br>
-      Chowk Azam (Layyah)<br>
-      Contact: 0308-8020784, 0345-6420784
+      ${settings.address.replace(/\n/g, '<br>')}<br>
+      Contact: ${settings.phoneNumber}
     </div>
+    <!-- VIP Badge -->
+    ${isVip ? `<div style="display:flex;justify-content:center;margin-bottom:10px">
+      <div style="border:1px solid #000;padding:2px 8px;font-size:11px;font-weight:900;letter-spacing:2px;border-radius:2px">
+        â˜… VIP ORDER â˜…
+      </div>
+    </div>` : ''}
     <!-- Divider -->
     <div style="border-top:1px solid #ccc;margin-bottom:8px"></div>
     <!-- Order Details -->
@@ -160,8 +166,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     </div>
     <!-- Footer -->
     <div style="text-align:center;margin-top:16px;font-size:11px;color:#444;display:flex;flex-direction:column;align-items:center;gap:4px">
-      <p>Thank you for your order!</p>
-      <p>Please visit again.</p>
+      <p>${settings.receiptFooter.replace(/\n/g, '<br>')}</p>
       <img src="/logo.jpg" style="width:120px;height:120px;object-fit:contain;margin-top:6px" onerror="this.style.display='none'">
       <span style="font-size:11px;font-weight:700;margin-top:4px">Scan to Pay</span>
     </div>
@@ -194,13 +199,21 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       {/* Header */}
       <div className="flex flex-col items-center mb-3">
         <img src="/qr.png" alt="Logo" className="w-16 h-16 object-contain mb-1" onError={(e: any) => e.target.style.display='none'} />
-        <div className="text-center font-bold text-sm leading-tight">Dubai Food &<br />Restaurant</div>
+        <div className="text-center font-bold text-sm leading-tight whitespace-pre-wrap">{settings.restaurantName}</div>
       </div>
-      <div className="text-center text-[10px] text-gray-600 leading-snug mb-3">
-        Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,<br />
-        Chowk Azam (Layyah)<br />
-        Contact: 0308-8020784, 0345-6420784
+      <div className="text-center text-[10px] text-gray-600 leading-snug mb-3 whitespace-pre-wrap">
+        {settings.address}<br />
+        Contact: {settings.phoneNumber}
       </div>
+      
+      {/* VIP Badge */}
+      {isVip && (
+        <div className="flex justify-center mb-3">
+          <div className="border border-black px-4 py-1 text-[11px] font-black tracking-widest uppercase flex items-center gap-2 rounded-sm shadow-sm">
+            ★ VIP ORDER ★
+          </div>
+        </div>
+      )}
       <div className="border-t border-gray-300 mb-3" />
 
       {/* Order Details */}
@@ -276,16 +289,15 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       </div>
 
       {/* Footer */}
-      <div className="text-center mt-4 text-[11px] text-gray-700 flex flex-col items-center gap-1">
-        <p>Thank you for your order!</p>
-        <p>Please visit again.</p>
-        <img src="/logo.jpg" alt="QR Code" className="w-28 h-28 object-contain mt-2" onError={(e: any) => e.target.style.display='none'} />
-        <span className="text-[11px] font-bold mt-1">Scan to Pay</span>
+      <div className="text-center mt-4 text-[11px] text-gray-500 flex flex-col items-center gap-1">
+        <p className="whitespace-pre-wrap">{settings.receiptFooter}</p>
+        <img src="/logo.jpg" alt="QR" className="w-24 h-24 object-contain mt-2" onError={(e: any) => e.target.style.display='none'} />
+        <span className="font-bold mt-1 text-black">Scan to Pay</span>
       </div>
     </div>
   )
 
-  // â”€â”€ Modal mode (when onClose is given) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ──────────────────────────────────────────────────────────────────────────────────
   if (onClose) {
     return (
       <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>

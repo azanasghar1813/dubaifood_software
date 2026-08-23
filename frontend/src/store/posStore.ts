@@ -61,6 +61,7 @@ interface POSState {
   // UI interactions
   editingOrderId: string | null
   customer: any | null
+  isVipOrder: boolean
   deliveryCharges: number
   tableNumber: string | null
   waiterId: string | null
@@ -77,7 +78,9 @@ interface POSState {
   // Async Backend Actions
   fetchDraftOrder: () => Promise<void>
   loadOrderForEdit: (order: any) => Promise<void>
-  addToCart: (product: any, quantity?: number, selectedModifiers?: any[], notes?: string) => Promise<void>
+  setCart: (cart: CartItem[]) => void
+  toggleVipOrder: () => void
+  addToCart: (product: any, quantity?: number, selectedModifiers?: any[], notes?: string, comboComponents?: any[]) => Promise<void>
   removeFromCart: (cartItemId: string, reason?: string) => Promise<void>
   updateQuantity: (cartItemId: string, quantity: number) => Promise<void>
   updateItemModifiers: (cartItemId: string, modifiers: any[]) => Promise<void>
@@ -85,7 +88,7 @@ interface POSState {
   duplicateItem: (cartItemId: string) => Promise<void>
   holdOrder: (holdName: string) => Promise<void>
   resumeOrder: (orderId: string) => Promise<void>
-  completeOrder: (payments?: any[], discountTotal?: number) => Promise<boolean>
+  completeOrder: (payments?: any[], discountTotal?: number) => Promise<{ success: boolean; orderId?: string }>
   clearCart: () => void
   
   // Legacy accessors
@@ -122,10 +125,13 @@ export const usePosStore = create<POSState>((set, get) => ({
   financeConfig: null,
   
   cart: [],
+  setCart: (cart) => set({ cart }),
   
   editingOrderId: null,
   customer: null,
   deliveryCharges: 0,
+  isVipOrder: false,
+  toggleVipOrder: () => set((state) => ({ isVipOrder: !state.isVipOrder })),
   tableNumber: null,
   waiterId: null,
   waiterName: null,
@@ -436,9 +442,9 @@ export const usePosStore = create<POSState>((set, get) => ({
     }
   },
 
-  completeOrder: async (payments: any[] = [], discountTotal: number = 0): Promise<boolean> => {
+  completeOrder: async (payments: any[] = [], discountTotal: number = 0): Promise<{ success: boolean; orderId?: string }> => {
     const state = get()
-    if (!state.activeOrder) return false
+    if (!state.activeOrder) return { success: false }
     
     set({ isLoadingOrder: true })
     try {
@@ -451,7 +457,7 @@ export const usePosStore = create<POSState>((set, get) => ({
           customer_name: state.customer?.name || null,
           customer_phone: state.customer?.phone || null,
           customer_address: state.customer?.address || null,
-          is_vip: !!state.customer?.is_vip || !!state.customer?.isVip,
+          is_vip: state.isVipOrder || !!state.customer?.is_vip || !!state.customer?.isVip || false,
           table_id: state.tableNumber || order.table_id || null,
           waiter_id: state.waiterId || order.waiter_id || null,
           rider_id: state.riderId || order.rider_id || null,
@@ -466,7 +472,7 @@ export const usePosStore = create<POSState>((set, get) => ({
 
         if (!(checkoutResult as any).success) {
           console.error('Checkout failed:', checkoutResult)
-          return false
+          return { success: false }
         }
 
         order = (checkoutResult as any).data
@@ -484,14 +490,14 @@ export const usePosStore = create<POSState>((set, get) => ({
         })
       }
       // Draft order is now completed. Fetch a new draft order and sync history.
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, isVipOrder: false })
       await get().fetchDraftOrder()
       // Immediately sync order history for instant status updates
       useOrderStore.getState().syncOrdersFromBackend()
-      return true
+      return { success: true, orderId: order.id }
     } catch (e) {
       console.error(e)
-      return false
+      return { success: false }
     } finally {
       set({ isLoadingOrder: false })
     }
@@ -499,10 +505,10 @@ export const usePosStore = create<POSState>((set, get) => ({
 
   clearCart: () => {
     void cartService.clearCart().then(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0 })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0, isVipOrder: false })
       void get().fetchDraftOrder()
     }).catch(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0 })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0, isVipOrder: false })
       void get().fetchDraftOrder()
     })
   },

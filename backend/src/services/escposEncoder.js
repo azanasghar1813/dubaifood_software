@@ -126,6 +126,16 @@ class EscPosEncoder {
       parts.push(this._separator(charWidth, iconvEncoding));
     }
 
+    // ── VIP Badge ─────────────────────────────────────────────────────────
+    if (payload.order && payload.order.is_vip) {
+      parts.push(this._align('center'));
+      parts.push(this._bold(true));
+      parts.push(this._encodeText('*** VIP ORDER ***', iconvEncoding));
+      parts.push(this._lf());
+      parts.push(this._bold(false));
+      parts.push(this._separator(charWidth, iconvEncoding));
+    }
+
     // ── Reprint label ─────────────────────────────────────────────────────
     if (payload.is_reprint || payload.footer?.show_reprint_label) {
       parts.push(this._align('center'));
