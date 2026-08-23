@@ -13,7 +13,7 @@ import {
   Tag, XOctagon, Receipt, FileText, XCircle,
   Hash, Phone, Edit, Edit2,
   Store, UtensilsCrossed, Truck, CircleDot,
-  QrCode, Banknote, Clock, Building2, Percent
+  QrCode, Banknote, Clock, Building2, Percent, X, ShoppingCart
 } from "lucide-react"
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
 import { menuService } from "../services/menuService"
@@ -100,7 +100,18 @@ export default function POS() {
   const [sizeSelectedIndex, setSizeSelectedIndex] = useState(0)
 
   const [dealModalOpen, setDealModalOpen] = useState(false)
-  const [activeDeal, setActiveDeal] = useState<any | null>(null)
+  const [activeDeal, setActiveDeal] = useState<Product | null>(null)
+  
+  // Responsive State
+  const [isDesktop, setIsDesktop] = useState(window.matchMedia('(min-width: 768px)').matches)
+  const [mobileCartOpen, setMobileCartOpen] = useState(false)
+
+  useEffect(() => {
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
+    const mq = window.matchMedia('(min-width: 768px)')
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
 
   const [gridSelectedIndex, setGridSelectedIndex] = useState(0)
   const gridProductsRef = useRef<Product[]>([])
@@ -961,7 +972,7 @@ export default function POS() {
     checkoutModalOpen, checkoutFocusZone, checkoutMethodIndex,
     checkoutQuickCashIndex, checkoutDiscountPctIndex,
     selectedPaymentMethod, discountAmount, orderType,
-    categories, activeCategory, products
+    categories, activeCategory, products, dealModalOpen
   ])
 
   // Keep cartSelectedIndex in bounds if cart shrinks
@@ -1286,8 +1297,6 @@ export default function POS() {
     }
   }
 
-
-
   if (isLoading) {
     return (
       <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
@@ -1296,18 +1305,11 @@ export default function POS() {
     )
   }
 
-  return (
-    <div className="flex flex-col h-full font-sans overflow-hidden text-foreground selection:bg-orange-500/30">
-
-      {/* Main Content Area */}
-      <PanelGroup id="pos-main-layout" orientation="horizontal" className="flex-1 overflow-hidden bg-background">
-
-        {/* Center Panel: Product Grid & Search */}
-        <Panel defaultSize="70%" minSize="40%" className="flex flex-col bg-background relative">
-
+  const renderProductGrid = () => (
+    <>
           {/* Center Header: Search & Filters */}
-          <div className="p-4 shrink-0 flex items-center justify-between gap-4">
-            <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-md" onFocus={() => setIsSearchFocused(true)} onBlur={(e) => {
+          <div className="p-4 shrink-0 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <form onSubmit={handleSearchSubmit} className="relative w-full sm:flex-1 max-w-md" onFocus={() => setIsSearchFocused(true)} onBlur={(e) => {
               if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                 setIsSearchFocused(false)
               }
@@ -1408,17 +1410,17 @@ export default function POS() {
               </AnimatePresence>
             </form>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto hide-scrollbar-mobile custom-scrollbar pb-1 sm:pb-0">
               <button
                 type="button"
                 onClick={() => setRecentOrdersModalOpen(true)}
-                className="flex items-center gap-2 bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-500/20 dark:text-orange-400 px-3 py-2 rounded-xl text-xs font-bold border border-orange-200 dark:border-orange-500/30 transition-colors shadow-sm"
+                className="shrink-0 flex items-center gap-2 bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-500/20 dark:text-orange-400 px-3 py-2 rounded-xl text-xs font-bold border border-orange-200 dark:border-orange-500/30 transition-colors shadow-sm"
               >
                 <Receipt className="w-4 h-4" />
                 Active Orders
               </button>
 
-              <div className="flex items-center gap-1 bg-card p-1 rounded-xl border border-border">
+              <div className="shrink-0 flex items-center gap-1 bg-card p-1 rounded-xl border border-border">
                 {([['Fast Food', 'F1'], ['Restaurant', 'F2'], ['Deals', 'F3']] as const).map(([context, fkey]) => (
                   <button
                     key={context}
@@ -1446,7 +1448,7 @@ export default function POS() {
                 <div key={cat.id} className="mb-2">
                   <h3 
                     id={`category-${cat.name.replace(/\s+/g, '-')}`}
-                    className={`w-full text-xl font-black mb-4 flex items-center gap-3 p-3 pl-4 rounded-xl transition-all duration-300 relative overflow-hidden shadow-sm ${activeCategory === cat.name ? 'ring-2 ring-orange-500' : ''}`}
+                    className={`w-full text-base sm:text-xl font-black mb-4 flex items-center gap-3 p-2 sm:p-3 pl-4 rounded-xl transition-all duration-300 relative overflow-hidden shadow-sm ${activeCategory === cat.name ? 'ring-2 ring-orange-500' : ''}`}
                   >
                     {/* Background Layer */}
                     <div className="absolute inset-0 bg-orange-600 border border-orange-700 rounded-xl pointer-events-none"></div>
@@ -1552,11 +1554,11 @@ export default function POS() {
               </div>
             )}
           </div>
-        </Panel>
+    </>
+  );
 
-        <PanelResizeHandle className="w-1 bg-border/50 hover:bg-orange-500/50 transition-colors cursor-col-resize z-50" />
-        {/* Right Panel: Order Ticket */}
-        <Panel defaultSize="30%" minSize="25%" maxSize="45%" className="flex flex-col z-10 shadow-xl border-l border-border bg-card">
+  const renderCartPanel = () => (
+    <>
           {rightCollapsed ? (
             <div className="flex-1 flex flex-col items-center justify-start p-2 gap-4 pt-4 border-l border-border">
               <button onClick={() => setRightCollapsed(false)} className="p-3 bg-orange-500 text-white rounded-xl shadow-lg hover:bg-orange-400">
@@ -1575,7 +1577,6 @@ export default function POS() {
                   <span className="text-[9px] text-orange-400 font-bold">↑↓ Select · ← Minus · → Plus · Backspace Remove · Tab Exit</span>
                 </div>
               )}
-              {/* Header: Order Info */}
               {/* Header: Order Info */}
               <div className="p-3 border-b border-border bg-secondary/30">
                 <div className="flex items-center justify-between mb-3">
@@ -1963,9 +1964,66 @@ export default function POS() {
               </PanelGroup>
             </div>
           )}
-        </Panel>
+    </>
+  );
 
-      </PanelGroup>
+  return (
+    <div className="flex flex-col h-full font-sans overflow-hidden text-foreground selection:bg-orange-500/30">
+
+      {/* Main Content Area */}
+      {isDesktop ? (
+        <PanelGroup id="pos-main-layout" orientation="horizontal" className="flex-1 overflow-hidden bg-background">
+          <Panel defaultSize="70%" minSize="40%" className="flex flex-col bg-background relative">
+            {renderProductGrid()}
+          </Panel>
+          <PanelResizeHandle className="w-1 bg-border/50 hover:bg-orange-500/50 transition-colors cursor-col-resize z-50" />
+          <Panel defaultSize="30%" minSize="25%" maxSize="45%" className="flex flex-col z-10 shadow-xl border-l border-border bg-card">
+            {renderCartPanel()}
+          </Panel>
+        </PanelGroup>
+      ) : (
+        <div className="flex-1 flex flex-col relative overflow-hidden bg-background">
+          <div className="flex-1 flex flex-col relative overflow-hidden pb-[80px]">
+            {renderProductGrid()}
+          </div>
+          
+          <AnimatePresence>
+            {mobileCartOpen && (
+              <motion.div 
+                initial={{ y: "100%" }} 
+                animate={{ y: 0 }} 
+                exit={{ y: "100%" }} 
+                transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+                className="absolute inset-0 z-50 flex flex-col bg-card"
+              >
+                <div className="p-2 border-b border-border flex justify-between items-center bg-secondary">
+                  <h2 className="font-black text-lg">Your Cart</h2>
+                  <button onClick={() => setMobileCartOpen(false)} className="p-2 bg-card rounded-lg hover:bg-border transition-colors">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+                {renderCartPanel()}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {!mobileCartOpen && (
+            <button 
+              onClick={() => setMobileCartOpen(true)}
+              className="absolute bottom-4 right-4 left-4 p-4 bg-orange-500 text-white rounded-2xl shadow-[0_10px_40px_-10px_rgba(249,115,22,0.8)] font-black text-lg flex justify-between items-center z-40"
+            >
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <ShoppingCart className="w-6 h-6" />
+                  <span className="absolute -top-2 -right-2 bg-white text-orange-600 w-5 h-5 flex items-center justify-center rounded-full text-xs font-black shadow-sm">{cart.length}</span>
+                </div>
+                <span>View Cart</span>
+              </div>
+              <span>Rs {getNetTotal().toLocaleString()}</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Customize Modal */}
       <AnimatePresence>

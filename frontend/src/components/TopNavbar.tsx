@@ -4,12 +4,12 @@ import { useAuthStore } from "../store/authStore"
 import { authService } from "../services/authService"
 import { usePrinterStore } from "../store/printerStore"
 import { apiClient } from "../api/client"
-import { Bell,  LogOut, Users, X, ChevronDown, Lock, User as UserIcon, Wifi, WifiOff, Printer, Clock, RefreshCw, Calendar, Search, Settings, Sun, Moon, Minus, Square, Loader2 } from "lucide-react"
+import { Bell,  LogOut, Users, X, ChevronDown, Lock, User as UserIcon, Wifi, WifiOff, Printer, Clock, RefreshCw, Calendar, Search, Settings, Sun, Moon, Minus, Square, Loader2, Menu } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 
 export default function TopNavbar() {
-  const {} = useUIStore()
+  const { toggleSidebar } = useUIStore()
   const { user, logout, setSession } = useAuthStore()
   const navigate = useNavigate()
   
@@ -151,7 +151,14 @@ export default function TopNavbar() {
         className="h-16 bg-card/80 backdrop-blur-md border-b border-border/50 flex items-center justify-between px-4 z-10 sticky top-0 shadow-sm"
         style={{ WebkitAppRegion: 'drag' } as any}
       >
-        <div className="flex items-center gap-4 flex-1" style={{ WebkitAppRegion: 'no-drag' } as any}>
+        <div className="flex items-center gap-2 sm:gap-4 flex-1" style={{ WebkitAppRegion: 'no-drag' } as any}>
+          <button 
+            onClick={toggleSidebar}
+            className="md:hidden p-2 -ml-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          
           {/* User Profile on the left side of the search bar */}
           <div className="relative" ref={profileRef}>
             <div 
@@ -213,7 +220,7 @@ export default function TopNavbar() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
+        <div className="flex items-center gap-2 sm:gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
           {/* Status Indicators */}
           <div className="hidden lg:flex items-center gap-4 px-4 py-1.5 border-r border-border/50 text-muted-foreground">
             <button 
