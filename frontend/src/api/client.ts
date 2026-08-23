@@ -5,7 +5,11 @@ import { useLoadingStore } from '../store/loadingStore'
 
 // The base URL can be configured via environment variables
 // Default to localhost:5000/api/v1 for development
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
+let baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
+
+if (typeof window !== 'undefined' && window.location.port !== '5173') {
+  baseURL = `${window.location.protocol}//${window.location.host}/api/v1`
+}
 
 export const apiClient = axios.create({
   baseURL,
