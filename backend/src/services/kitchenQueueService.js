@@ -110,6 +110,7 @@ class KitchenQueueService {
         (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'kitchen_received_at' LIMIT 1) AS kitchen_received_at,
         (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'is_vip' LIMIT 1) AS is_vip,
         o.rider_name_snapshot,
+        o.waiter_name_snapshot,
         u.username,
         u.first_name,
         u.last_name,
@@ -126,6 +127,7 @@ class KitchenQueueService {
         i.kitchen_state AS item_kitchen_state,
         i.kitchen_station_id,
         i.kitchen_station_name_snapshot,
+        CASE WHEN d.id IS NOT NULL THEN 'DEALS' ELSE UPPER(c.name) END AS category_name,
         i.estimated_prep_minutes,
         i.created_at AS item_created_at,
         i.updated_at AS item_updated_at,
@@ -137,6 +139,9 @@ class KitchenQueueService {
       FROM orders o
       INNER JOIN order_items i ON i.order_id = o.id
       LEFT JOIN users u ON u.id = o.cashier_user_id
+      LEFT JOIN products p ON p.id = i.product_id
+      LEFT JOIN categories c ON c.id = p.category_id
+      LEFT JOIN deals d ON d.id = i.product_id
       WHERE 1=1
     `;
 
@@ -199,6 +204,7 @@ class KitchenQueueService {
           priority: row.priority || 'NORMAL',
           is_vip: row.is_vip === 'true' || row.is_vip === '1',
           rider_name: row.rider_name_snapshot,
+          waiter_name: row.waiter_name_snapshot,
           created_at: row.order_created_at,
           updated_at: row.order_updated_at,
           items: []
@@ -219,6 +225,7 @@ class KitchenQueueService {
         kitchen_state: row.item_kitchen_state,
         kitchen_station_id: row.kitchen_station_id,
         kitchen_station_name_snapshot: row.kitchen_station_name_snapshot,
+        category_name: row.category_name,
         estimated_prep_minutes: row.estimated_prep_minutes,
         created_at: row.item_created_at,
         updated_at: row.item_updated_at,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { useKdsStore } from '../store/kdsStore'
+import { useKdsStore, type KitchenTicket } from '../store/kdsStore'
 import { usePrinterStore } from '../store/printerStore'
 import { 
   Search, Printer, CheckCircle2, AlertCircle, RefreshCw, Clock, Usb, Bluetooth, Network, Settings2, RefreshCcw
@@ -21,6 +21,7 @@ export const KDS: React.FC = () => {
   const [isDiscovering, setIsDiscovering] = useState(false)
   const [showPrinterHub, setShowPrinterHub] = useState(false)
   const [isRetryingAll, setIsRetryingAll] = useState(false)
+  const [previewTicket, setPreviewTicket] = useState<KitchenTicket | null>(null)
 
   // Polling & setup
   useEffect(() => {
@@ -475,7 +476,14 @@ export const KDS: React.FC = () => {
                         </div>
 
                         {/* Right: Actions */}
-                        <div className="p-4 bg-secondary/30 border-l border-border flex items-center justify-center min-w-[140px] shrink-0">
+                        <div className="p-4 bg-secondary/30 border-l border-border flex flex-col gap-2 items-center justify-center min-w-[140px] shrink-0">
+                           <button 
+                              onClick={() => setPreviewTicket(ticket)}
+                              className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded-xl font-black text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-1"
+                           >
+                              <Search className="w-3.5 h-3.5" /> Preview
+                           </button>
+
                            {ticket.displayStatus === "SENT" && (
                               <button 
                                  onClick={() => handleMarkDone(ticket.id)}
@@ -493,7 +501,7 @@ export const KDS: React.FC = () => {
                               </button>
                            )}
                            {ticket.displayStatus === "COMPLETED" && (
-                              <span className="text-xs font-bold text-muted-foreground flex flex-col items-center gap-1">
+                              <span className="text-xs font-bold text-muted-foreground flex flex-col items-center gap-1 py-2">
                                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                                  Done
                               </span>
@@ -506,6 +514,104 @@ export const KDS: React.FC = () => {
             )}
          </div>
       </div>
+
+      {/* PREVIEW MODAL */}
+      {previewTicket && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setPreviewTicket(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto text-black font-sans animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                 <h2 className="text-xl font-black uppercase text-center w-full">Receipt Preview</h2>
+              </div>
+              
+              {/* Receipt Content */}
+              <div className="text-sm border-2 border-black p-4 space-y-1 bg-white relative" style={{ fontFamily: 'monospace' }}>
+                <div className="text-2xl font-black mb-2 flex flex-col">
+                  <span>Order ID:</span>
+                  <span className="text-3xl mt-1">#{previewTicket.orderNumber}</span>
+                </div>
+                {previewTicket.isVip && (
+                  <div className="font-black text-lg text-center border-y-2 border-black py-1 my-3 bg-black text-white uppercase">
+                    *** VIP ORDER ***
+                  </div>
+                )}
+                <div className="flex justify-between border-t-2 border-black border-dashed pt-2">
+                  <span className="font-bold">Table No:</span>
+                  <span>{previewTicket.table}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-bold">Order Type:</span>
+                  <span>{previewTicket.orderType}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-bold">{previewTicket.orderType.toLowerCase().includes('delivery') ? 'Rider:' : 'Waiter:'}</span>
+                  <span>{previewTicket.orderType.toLowerCase().includes('delivery') ? (previewTicket.riderName || 'Unassigned') : ((previewTicket as any).waiterName || 'Unassigned')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-bold">Cashier:</span>
+                  <span>{previewTicket.cashier}</span>
+                </div>
+                <div className="flex justify-between pb-2 border-b-2 border-black border-dashed">
+                  <span className="font-bold">Time:</span>
+                  <span>{new Date(previewTicket.orderTime).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }).replace(',', '')}</span>
+                </div>
+
+                <div className="mt-4">
+                  {Object.entries(
+                    previewTicket.items.reduce((acc, item) => {
+                      const k = item.kitchen || 'OTHER';
+                      if (!acc[k]) acc[k] = [];
+                      acc[k].push(item);
+                      return acc;
+                    }, {} as Record<string, typeof previewTicket.items>)
+                  ).map(([kitchenName, items]) => (
+                    <div key={kitchenName} className="mb-4 border-2 border-black">
+                      <div className="text-center font-black uppercase py-1 border-b-2 border-black border-dashed">
+                        {kitchenName}
+                      </div>
+                      <div className="flex justify-between font-bold border-b-2 border-black border-dashed px-1 py-1 bg-gray-100">
+                        <span>Item</span>
+                        <span>Qty</span>
+                      </div>
+                      <div className="px-1 py-1">
+                        {items.map((item, idx) => (
+                          <div key={idx} className="flex justify-between items-start mb-2 border-b border-gray-300 border-dashed last:border-0 pb-1">
+                            <div className="flex-1 pr-2">
+                              <span className={`font-bold ${item.type === 'REMOVE' ? 'line-through' : ''}`}>
+                                {item.name}
+                              </span>
+                              {item.modifiers?.length > 0 && (
+                                <div className="text-xs text-gray-700 pl-2 mt-0.5">
+                                  {item.modifiers.map((m: any, midx: number) => (
+                                    <div key={midx}>- {m.name}</div>
+                                  ))}
+                                </div>
+                              )}
+                              {item.notes && (
+                                <div className="text-xs italic font-bold pl-2 mt-0.5">Note: {item.notes}</div>
+                              )}
+                            </div>
+                            <div className="font-black text-right min-w-[2ch]">
+                              {item.quantity}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+              </div>
+
+              <div className="mt-6 flex justify-end gap-2">
+                <button onClick={() => setPreviewTicket(null)} className="flex-1 py-3 bg-secondary hover:bg-border text-foreground font-black rounded-xl transition-colors">
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

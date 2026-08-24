@@ -41,6 +41,7 @@ export interface KitchenTicket {
   kitchen: string // "Fast Food" | "Restaurant" etc.
   isVip: boolean
   riderName: string | null
+  waiterName: string | null
 }
 
 interface KdsState {
@@ -102,6 +103,7 @@ export const useKdsStore = create<KdsState>((set, get) => ({
             status: s as KitchenStatus,
             isVip: !!row.is_vip,
             riderName: row.rider_name || null,
+            waiterName: row.waiter_name || null,
             notes: row.kitchen_notes || row.customer_notes || '',
             kitchen: 'All', // Handle multiple stations if needed
             items: row.items.map((item: any) => {
@@ -129,7 +131,7 @@ export const useKdsStore = create<KdsState>((set, get) => ({
                 quantity: item.quantity,
                 modifiers: item.modifiers?.map((m: any) => ({ name: m.modifier_name_snapshot })) || [],
                 notes: item.notes || null,
-                kitchen: item.kitchen_station_name_snapshot || 'Main Kitchen',
+                kitchen: item.category_name || item.kitchen_station_name_snapshot || 'Main Kitchen',
                 status: is as KitchenStatus,
                 type: type as 'ADD' | 'NORMAL' | 'REMOVE'
               }
