@@ -132,7 +132,8 @@ export const cartController = {
         waiter_id: req.body.waiter_id,
         waiter_name_snapshot: req.body.waiter_name_snapshot,
         rider_id: req.body.rider_id,
-        rider_name_snapshot: req.body.rider_name_snapshot
+        rider_name_snapshot: req.body.rider_name_snapshot,
+        is_vip: req.body.is_vip
       });
       sendSuccess(res, updatedCart, 'Cart metadata updated.');
     } catch (error) {

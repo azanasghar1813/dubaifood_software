@@ -16,7 +16,10 @@ import { toast } from "../store/toastStore"
 const getImageUrl = (path?: string) => {
   if (!path) return undefined;
   if (path.startsWith('http')) return path;
-  const baseUrl = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace('/api/v1', '') : 'http://localhost:5000';
+  let baseUrl = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace('/api/v1', '') : 'http://localhost:5000';
+  if (typeof window !== 'undefined' && window.location.port !== '5173') {
+    baseUrl = `${window.location.protocol}//${window.location.host}`;
+  }
   return `${baseUrl}${path}`;
 }
 

@@ -11,7 +11,7 @@ export const KDS: React.FC = () => {
   
   const [activeTab, setActiveTab] = useState<"Active" | "Sent" | "Failed" | "Completed">("Active")
   const [searchQuery, setSearchQuery] = useState("")
-  const [expandedTickets, setExpandedTickets] = useState<Record<string, boolean>>({})
+  const [sortOrder, setSortOrder] = useState<"Oldest" | "Newest">("Newest")
   
   const [tick, setTick] = useState(0)
   
@@ -103,9 +103,6 @@ export const KDS: React.FC = () => {
     fetchTickets()
   }
 
-  const toggleExpand = (id: string) => {
-     setExpandedTickets(prev => ({ ...prev, [id]: !prev[id] }))
-  }
 
   // Derived state mapping
   // "Waiting" -> PRINT_FAILED (Or waiting for printer)
@@ -119,11 +116,11 @@ export const KDS: React.FC = () => {
        else displayStatus = "SENT"
 
        return { ...t, displayStatus }
-    }).sort((a, b) => new Date(b.orderTime).getTime() - new Date(a.orderTime).getTime())
+    })
   }, [tickets, tick])
 
   const filteredTickets = useMemo(() => {
-     return mappedTickets.filter(t => {
+     const result = mappedTickets.filter(t => {
         if (activeTab === "Active" && t.displayStatus === "COMPLETED") return false
         if (activeTab === "Sent" && t.displayStatus !== "SENT") return false
         if (activeTab === "Failed" && t.displayStatus !== "PRINT_FAILED") return false
@@ -140,7 +137,15 @@ export const KDS: React.FC = () => {
         }
         return true
      })
-  }, [mappedTickets, activeTab, searchQuery])
+     
+     result.sort((a, b) => {
+        const timeA = new Date(a.orderTime).getTime()
+        const timeB = new Date(b.orderTime).getTime()
+        return sortOrder === "Newest" ? timeB - timeA : timeA - timeB
+     })
+     
+     return result
+  }, [mappedTickets, activeTab, searchQuery, sortOrder])
 
   // Actions
   const handleMarkDone = (id: string) => {
@@ -149,7 +154,6 @@ export const KDS: React.FC = () => {
 
   const handleRetryPrint = async (id: string) => {
      try {
-       const { usePrinterStore } = await import('../store/printerStore')
        await usePrinterStore.getState().printKitchen(id, 'cashier')
        // Optimistically move it back to SENT (Accepted)
        updateTicketStatus(id, "Accepted")
@@ -164,7 +168,6 @@ export const KDS: React.FC = () => {
     
     setIsRetryingAll(true)
     try {
-      const { usePrinterStore } = await import('../store/printerStore')
       for (const t of failedTickets) {
         try {
           await usePrinterStore.getState().printKitchen(t.id, 'cashier')
@@ -345,15 +348,25 @@ export const KDS: React.FC = () => {
            ))}
         </div>
 
-        <div className="relative w-full md:w-80 shrink-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search order #, table, items..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-10 pl-9 pr-4 rounded-xl bg-card border border-border text-sm font-bold outline-none focus:border-primary transition-colors"
-          />
+        <div className="relative w-full md:w-80 shrink-0 flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search order #, table, items..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-10 pl-9 pr-4 rounded-xl bg-card border border-border text-sm font-bold outline-none focus:border-primary transition-colors"
+            />
+          </div>
+          <select
+             value={sortOrder}
+             onChange={(e) => setSortOrder(e.target.value as "Oldest" | "Newest")}
+             className="h-10 px-3 rounded-xl bg-card border border-border text-sm font-bold outline-none focus:border-primary transition-colors cursor-pointer"
+          >
+             <option value="Newest">Newest First</option>
+             <option value="Oldest">Oldest First</option>
+          </select>
         </div>
       </div>
 
@@ -370,7 +383,6 @@ export const KDS: React.FC = () => {
                   const elapsedMs = Date.now() - new Date(ticket.orderTime).getTime()
                   const elapsedMins = Math.floor(elapsedMs / 60000)
                   const isDelayed = elapsedMins > 15
-                  const isExpanded = expandedTickets[ticket.id]
 
                   return (
                      <div 
@@ -392,13 +404,20 @@ export const KDS: React.FC = () => {
                               {/* Left: Identity */}
                               <div className="flex-1">
                                  <div className="flex items-center gap-3">
-                                    <h3 className="text-lg font-black tracking-tight">#{ticket.orderNumber}</h3>
-                                    <span className="text-sm font-bold text-muted-foreground">
-                                       {ticket.orderType} • {ticket.table !== 'N/A' ? `Table ${ticket.table}` : 'No Table'}
+                                    <h3 className="text-lg font-black tracking-tight">
+                                       #{ticket.orderNumber}
+                                       {ticket.isVip && (
+                                          <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-[10px] uppercase font-black bg-yellow-400 text-yellow-950">
+                                             VIP
+                                          </span>
+                                       )}
+                                    </h3>
+                                    <span className="text-sm font-bold text-muted-foreground flex items-center gap-2">
+                                       {ticket.orderType} • {ticket.orderType === 'Delivery' ? (ticket.riderName ? `Rider: ${ticket.riderName}` : 'Delivery') : (ticket.table !== 'N/A' ? `Table ${ticket.table}` : 'No Table')}
                                     </span>
                                  </div>
                                  <p className="text-xs text-muted-foreground font-semibold mt-1">
-                                    {ticket.items.length} items • Cashier: {ticket.cashier}
+                                    {ticket.items.length} items • Cashier: {ticket.cashier} • Time: {new Date(ticket.orderTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                  </p>
                               </div>
 
@@ -430,33 +449,24 @@ export const KDS: React.FC = () => {
 
                            </div>
 
-                           {/* Collapsible Details */}
-                           <div className="mt-4">
-                              <button 
-                                 onClick={() => toggleExpand(ticket.id)}
-                                 className="text-xs font-bold text-primary hover:underline mb-2"
-                              >
-                                 {isExpanded ? "Hide Details" : "Show Items"}
-                              </button>
-                              
-                              {isExpanded && (
-                                 <div className="p-3 bg-secondary/50 rounded-xl space-y-2 mt-2 font-mono text-xs">
-                                    {ticket.items.map((item, idx) => (
-                                       <div key={idx} className="flex gap-2">
-                                          <span className="font-bold opacity-70">{item.quantity}x</span>
-                                          <div>
-                                             <span className="font-bold">{item.name}</span>
-                                             {item.modifiers?.map((m, mIdx) => (
-                                                <span key={mIdx} className="text-[10px] text-muted-foreground opacity-70 block pl-2">- {m.name}</span>
-                                             ))}
-                                          </div>
+                           {/* Always Visible Items */}
+                           <div className="mt-4 border-t border-border/50 pt-3">
+                              <div className="p-3 bg-secondary/50 rounded-xl space-y-2 font-mono text-xs">
+                                 {ticket.items.map((item, idx) => (
+                                    <div key={idx} className="flex gap-2">
+                                       <span className="font-bold opacity-70">{item.quantity}x</span>
+                                       <div>
+                                          <span className="font-bold">{item.name}</span>
+                                          {item.modifiers?.map((m, mIdx) => (
+                                             <span key={mIdx} className="text-[10px] text-muted-foreground opacity-70 block pl-2">- {m.name}</span>
+                                          ))}
                                        </div>
-                                    ))}
-                                    {ticket.notes && (
-                                       <div className="text-red-500 mt-2 font-bold border-t border-red-500/20 pt-2">Note: {ticket.notes}</div>
-                                    )}
-                                 </div>
-                              )}
+                                    </div>
+                                 ))}
+                                 {ticket.notes && (
+                                    <div className="text-red-500 mt-2 font-bold border-t border-red-500/20 pt-2">Note: {ticket.notes}</div>
+                                 )}
+                              </div>
                            </div>
 
                            <div className="text-[10px] text-muted-foreground font-semibold mt-2">

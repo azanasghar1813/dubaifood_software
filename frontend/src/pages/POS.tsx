@@ -592,6 +592,7 @@ export default function POS() {
       if (e.ctrlKey && e.key.toLowerCase() === 'v') {
         e.preventDefault()
         usePosStore.getState().toggleVipOrder()
+        return
       }
 
 
@@ -1585,13 +1586,19 @@ export default function POS() {
                     <h2 className="font-black tracking-wider uppercase text-muted-foreground text-[10px] mb-1 mt-1">Order #{orderCounter}</h2>
                   </div>
 
-                  {(isVipOrder || customer?.is_vip || customer?.isVip) && (
-                    <div className="flex flex-col items-center justify-center">
-                      <span className="bg-gradient-to-r from-amber-200 to-yellow-500 text-yellow-950 font-black text-[11px] px-3 py-1 rounded-full uppercase tracking-widest shadow-sm border border-yellow-400/50 flex items-center gap-1">
-                        <Star className="w-3 h-3 fill-yellow-950" /> VIP
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex flex-col items-center justify-center">
+                    <button
+                      onClick={() => usePosStore.getState().toggleVipOrder()}
+                      className={`px-3 py-1 rounded-full font-black text-[11px] uppercase tracking-widest shadow-sm border flex items-center gap-1.5 transition-colors ${
+                        (isVipOrder || customer?.is_vip || customer?.isVip)
+                          ? "bg-gradient-to-r from-amber-200 to-yellow-500 text-yellow-950 border-yellow-400/50"
+                          : "bg-secondary/60 text-muted-foreground border-transparent hover:border-border"
+                      }`}
+                    >
+                      <Star className={`w-3 h-3 ${ (isVipOrder || customer?.is_vip || customer?.isVip) ? 'fill-yellow-950' : '' }`} />
+                      VIP {(isVipOrder || customer?.is_vip || customer?.isVip) ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
 
                   <div className="text-right">
                     <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded uppercase border ${isPaidPrint ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'

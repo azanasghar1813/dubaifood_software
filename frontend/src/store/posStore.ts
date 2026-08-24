@@ -134,7 +134,16 @@ export const usePosStore = create<POSState>()(
   customer: null,
   deliveryCharges: 0,
   isVipOrder: false,
-  toggleVipOrder: () => set((state) => ({ isVipOrder: !state.isVipOrder })),
+  toggleVipOrder: async () => {
+    const nextState = !get().isVipOrder;
+    set({ isVipOrder: nextState });
+    if (get().activeOrder && !get().editingOrderId) {
+      const res = await cartService.setMeta({ is_vip: nextState });
+      if ((res as any).success) {
+        set({ activeOrder: (res as any).data });
+      }
+    }
+  },
   tableNumber: null,
   waiterId: null,
   waiterName: null,
@@ -455,7 +464,7 @@ export const usePosStore = create<POSState>()(
 
       if (!order.order_number) {
         const checkoutResult = await cartService.checkout({
-          order_type: order.order_type || order.orderType || 'DINE_IN',
+          order_type: state.orderType === 'Delivery' ? 'DELIVERY' : state.orderType === 'Takeaway' ? 'TAKEAWAY' : 'DINE_IN',
           customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || order.customer_id || null,
           customer_name: state.customer?.name || null,
           customer_phone: state.customer?.phone || null,

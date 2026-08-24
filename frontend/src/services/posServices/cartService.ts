@@ -55,7 +55,7 @@ export const cartService = {
     return res
   },
 
-  async setMeta(metaData: { order_type?: string; customer_id?: string | null; table_id?: string | null; waiter_id?: string | null; waiter_name_snapshot?: string | null; rider_id?: string | null; rider_name_snapshot?: string | null }) {
+  async setMeta(metaData: { order_type?: string; customer_id?: string | null; table_id?: string | null; waiter_id?: string | null; waiter_name_snapshot?: string | null; rider_id?: string | null; rider_name_snapshot?: string | null; is_vip?: boolean }) {
     const res = await apiClient.patch(`${CART_BASE_URL}/meta`, metaData) as any
     return res
   },

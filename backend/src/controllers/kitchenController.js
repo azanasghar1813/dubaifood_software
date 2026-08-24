@@ -1,4 +1,5 @@
 import { kitchenService } from '../services/kitchenService.js';
+import fs from 'fs';
 
 const ok = (res, data, message = 'Success', status = 200) => res.status(status).json({ success: true, message, data });
 const fail = (res, error) => res.status(error.statusCode || 400).json({ success: false, error: error.message || 'Request failed' });
@@ -17,6 +18,8 @@ export const kitchenController = {
       });
       ok(res, data);
     } catch (error) {
+      console.error('Error in getQueue:', error);
+      try { fs.writeFileSync('getQueueError.log', error.stack || error.message); } catch(e){}
       fail(res, error);
     }
   },

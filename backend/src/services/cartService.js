@@ -360,7 +360,7 @@ class CartService {
   /**
    * Updates cart metadata (order type, customer, table).
    */
-  setCartMeta(sessionId, { order_type, customer_id, table_id, waiter_id, waiter_name_snapshot, rider_id, rider_name_snapshot } = {}) {
+  setCartMeta(sessionId, { order_type, customer_id, table_id, waiter_id, waiter_name_snapshot, rider_id, rider_name_snapshot, is_vip } = {}) {
     const cart = this.getCart(sessionId);
     if (!cart) throw new Error('No active cart found for this session.');
 
@@ -371,6 +371,7 @@ class CartService {
     if (waiter_name_snapshot !== undefined) cart.waiter_name_snapshot = waiter_name_snapshot;
     if (rider_id !== undefined) cart.rider_id = rider_id;
     if (rider_name_snapshot !== undefined) cart.rider_name_snapshot = rider_name_snapshot;
+    if (is_vip !== undefined) cart.is_vip = is_vip;
 
     cart.updated_at = new Date().toISOString();
     this._persist(cart);

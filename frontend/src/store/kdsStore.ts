@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { type Order, useOrderStore } from './orderStore'
 import { type CartItem } from './posStore'
+import { kitchenService } from '../services/kitchenService'
 
 // Fallback ID generator for non-secure contexts (e.g. local IP testing without HTTPS)
 const generateId = () => {
@@ -38,6 +39,8 @@ export interface KitchenTicket {
   items: KitchenItem[]
   notes: string
   kitchen: string // "Fast Food" | "Restaurant" etc.
+  isVip: boolean
+  riderName: string | null
 }
 
 interface KdsState {
@@ -67,7 +70,6 @@ export const useKdsStore = create<KdsState>((set, get) => ({
 
   fetchTickets: async () => {
     try {
-      const { kitchenService } = await import('../services/kitchenService')
       const res = await kitchenService.getQueue({ monitorMode: true })
       if (res.success && res.data) {
         const backendTickets = (res.data as any).tickets || res.data // handle both shapes
@@ -98,6 +100,8 @@ export const useKdsStore = create<KdsState>((set, get) => ({
             orderTime: row.created_at ? (row.created_at.includes('Z') ? row.created_at : row.created_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
             priority: p as KitchenPriority,
             status: s as KitchenStatus,
+            isVip: !!row.is_vip,
+            riderName: row.rider_name || null,
             notes: row.kitchen_notes || row.customer_notes || '',
             kitchen: 'All', // Handle multiple stations if needed
             items: row.items.map((item: any) => {
@@ -151,7 +155,6 @@ export const useKdsStore = create<KdsState>((set, get) => ({
 
     // Backend doesn't have a batch order status endpoint, so we update each item
     try {
-      const { kitchenService } = await import('../services/kitchenService')
       const ticket = get().tickets.find(t => t.id === ticketId)
       if (ticket) {
         for (const item of ticket.items) {
@@ -183,7 +186,6 @@ export const useKdsStore = create<KdsState>((set, get) => ({
     }))
 
     try {
-      const { kitchenService } = await import('../services/kitchenService')
       if (status === 'Preparing') await kitchenService.startPreparingItem(itemId)
       else if (status === 'Ready') await kitchenService.markItemReady(itemId)
       else if (status === 'Served') await kitchenService.markItemServed(itemId)

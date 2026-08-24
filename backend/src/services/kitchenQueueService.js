@@ -1,6 +1,7 @@
 import { dbEngine } from '../database/sqlite.js';
 import { kitchenStatusService } from './kitchenStatusService.js';
 import { kitchenTimerService } from './kitchenTimerService.js';
+import { configService } from './configService.js';
 
 class KitchenQueueService {
   constructor() {
@@ -107,6 +108,8 @@ class KitchenQueueService {
         COALESCE((SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'priority' LIMIT 1), 'NORMAL') AS priority,
         (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'kitchen_notes' LIMIT 1) AS kitchen_notes,
         (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'kitchen_received_at' LIMIT 1) AS kitchen_received_at,
+        (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'is_vip' LIMIT 1) AS is_vip,
+        o.rider_name_snapshot,
         u.username,
         u.first_name,
         u.last_name,
@@ -138,7 +141,6 @@ class KitchenQueueService {
     `;
 
     if (filters.monitorMode) {
-      const configService = require('./configService.js').configService;
       const now = new Date();
       const [startHour] = (configService.getBusinessDay().start_time || '06:00').split(':').map(Number);
       if (now.getHours() < startHour) now.setDate(now.getDate() - 1);
@@ -195,6 +197,8 @@ class KitchenQueueService {
           lifecycle_state: row.lifecycle_state,
           payment_state: row.payment_state,
           priority: row.priority || 'NORMAL',
+          is_vip: row.is_vip === 'true' || row.is_vip === '1',
+          rider_name: row.rider_name_snapshot,
           created_at: row.order_created_at,
           updated_at: row.order_updated_at,
           items: []

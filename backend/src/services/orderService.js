@@ -13,6 +13,7 @@ import { orderValidationService } from './orderValidationService.js';
 import { orderCacheService } from './orderCacheService.js';
 import { activityLogService } from './activityLogService.js';
 import { syncService } from './syncService.js';
+import { auditService } from './auditService.js';
 import { OrderLifecycleState } from '../constants/orderStates.js';
 import crypto from 'crypto';
 
@@ -341,8 +342,16 @@ class OrderService {
       });
 
       if (isSent && reason) {
-        const orderAuditLogService = require('./orderAuditLogService').orderAuditLogService;
-        orderAuditLogService.logChange(orderId, actorUserId, 'ITEM_VOID', item.product_name_snapshot, 'REMOVED', reason);
+        auditService.record({
+          orderId,
+          userId: actorUserId,
+          action: 'ITEM_VOID',
+          entityType: 'ORDER_ITEM',
+          entityId: itemId,
+          oldValue: { product_name: item ? item.product_name_snapshot : 'unknown' },
+          newValue: { status: 'REMOVED' },
+          reason
+        });
       }
 
       activityLogService.logActivity(actorUserId, 'ITEM_REMOVED', 'ORDER', orderId, {

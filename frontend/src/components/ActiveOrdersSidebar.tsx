@@ -394,14 +394,11 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                     </div>
 
                     <div className="flex flex-wrap gap-2 mt-2">
-                      <span className={`text-xs px-2 py-1 rounded-md border ${orderStatusColors[order.status] || ''}`}>
-                        {order.status}
+                      <span className={`text-xs font-black uppercase tracking-wider px-2 py-1 rounded-md border ${kitchenStatusColors[order.kitchenStatus] || kitchenStatusColors.Pending}`}>
+                        Kitchen: {order.kitchenStatus || 'Pending'}
                       </span>
-                      <span className={`text-xs px-2 py-1 rounded-md border ${kitchenStatusColors[order.kitchenStatus] || ''}`}>
-                        {order.kitchenStatus}
-                      </span>
-                      <span className={`text-xs px-2 py-1 rounded-md border ${paymentStatusColors[order.paymentStatus] || ''}`}>
-                        {order.paymentStatus}
+                      <span className={`text-xs font-black uppercase tracking-wider px-2 py-1 rounded-md border ${order.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>
+                        {order.status === 'Completed' ? 'Completed' : 'Not Completed'}
                       </span>
                       {order.isEdited && (
                         <span className={`text-[9px] px-1.5 py-1 rounded border uppercase font-bold flex items-center gap-0.5 ${order.isNegativeEdit ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>
