@@ -33,82 +33,56 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
   const discount     = order?.discount  ?? 0
   const total        = order?.total     ?? 0
 
-  // â”€â”€ group items by category (same logic as POS) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const groupedItems: Record<string, any[]> = {}
-  items.forEach((item: any) => {
-    let category = item.category || 'Restaurant'
-    const catLower = category.toLowerCase()
-    const nameLower = (item.name || '').toLowerCase()
-    if (
-      catLower.includes('fast food') || catLower.includes('pizza') || catLower.includes('burger') ||
-      catLower.includes('roll') || catLower.includes('pasta') || catLower.includes('appetizer') ||
-      catLower.includes('sandwich') || catLower.includes('shawarma') || catLower.includes('extra toppings') ||
-      nameLower.includes('pizza') || nameLower.includes('burger') || nameLower.includes('roll') ||
-      nameLower.includes('pasta') || nameLower.includes('appetizer') || nameLower.includes('sandwich') ||
-      nameLower.includes('shawarma') || nameLower.includes('topping')
-    ) { category = 'Fast Food' }
-    else if (catLower.includes('deal') || nameLower.includes('deal')) { category = 'Deals' }
-    else { category = 'Restaurant' }
-    if (!groupedItems[category]) groupedItems[category] = []
-    groupedItems[category].push(item)
-  })
-  const categoryOrder = ["Fast Food", "Restaurant", "Deals"]
-  const sortedCategories = Object.keys(groupedItems).sort((a, b) => {
-    const ia = categoryOrder.indexOf(a), ib = categoryOrder.indexOf(b)
-    if (ia !== -1 && ib !== -1) return ia - ib
-    if (ia !== -1) return -1
-    if (ib !== -1) return 1
-    return a.localeCompare(b)
-  })
+  const isDelivery = orderType === 'Delivery'
 
   // â”€â”€ print via isolated window (exactly matching POS layout) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const doPrint = () => {
-    const itemsHtml = sortedCategories.map(cat => {
-      const rows = groupedItems[cat].map((item: any) => {
-        let itemTotal = item.price * item.quantity
-        if (item.selectedModifiers?.length) {
-          const modTotal = item.selectedModifiers.reduce((s: number, m: any) => s + (m.price || 0), 0)
-          itemTotal = (item.price + modTotal) * item.quantity
-        }
-        const mods = item.selectedModifiers?.length
-          ? `<div style="font-size:10px;color:#666;margin-top:2px">${item.selectedModifiers.map((m: any) => '+' + m.name).join(', ')}</div>`
-          : ''
-        const combos = item.combo_components?.length
-          ? `<div style="font-size:10px;color:#666;border-left:1px solid #ccc;padding-left:4px;margin-top:2px">${item.combo_components.map((c: any) => `- ${c.quantity > 1 ? c.quantity + 'x ' : ''}${c.product_name_snapshot || ''}${c.variant_snapshot ? ' (' + c.variant_snapshot + ')' : ''}`).join('<br>')}</div>`
-          : ''
-        return `
-          <div style="border-bottom:1px dashed #999;padding:3px 4px;font-size:11px">
-            <div style="display:flex;align-items:flex-start">
-              <span style="flex:1;padding-right:4px;line-height:1.3">${item.name}</span>
-              <span style="width:28px;text-align:center;flex-shrink:0">${item.quantity}</span>
-              <span style="width:56px;text-align:right;flex-shrink:0">Rs ${itemTotal.toFixed(2)}</span>
-            </div>${mods}${combos}
-          </div>`
-      }).join('')
+    const rows = items.map((item: any) => {
+      let itemTotal = item.price * item.quantity
+      if (item.selectedModifiers?.length) {
+        const modTotal = item.selectedModifiers.reduce((s: number, m: any) => s + (m.price || 0), 0)
+        itemTotal = (item.price + modTotal) * item.quantity
+      }
+      
+      const isDeal = item.category?.toLowerCase().includes('deal') || (item.name || '').toLowerCase().includes('deal')
+      const itemNameClass = isDeal ? `font-weight:900;` : `font-weight:500;`
+
+      const mods = item.selectedModifiers?.length
+        ? `<div style="font-size:10px;font-weight:400;margin-top:2px">${item.selectedModifiers.map((m: any) => '+' + m.name).join(', ')}</div>`
+        : ''
+      const combos = item.combo_components?.length
+        ? `<div style="font-size:10px;font-weight:400;margin-top:2px">${item.combo_components.map((c: any) => `- ${c.quantity > 1 ? c.quantity + 'x ' : ''}${c.product_name_snapshot || ''}${c.variant_snapshot ? ' (' + c.variant_snapshot + ')' : ''}`).join('<br>')}</div>`
+        : ''
       return `
-        <div style="border:2px solid #000;margin-bottom:3px">
-          <div style="text-align:center;font-weight:700;font-size:12px;padding:3px;border-bottom:1px dashed #666;text-transform:uppercase">${cat}</div>
-          <div style="display:flex;font-weight:700;font-size:11px;border-bottom:1px solid #888;padding:3px 4px">
-            <span style="flex:1">Item</span><span style="width:28px;text-align:center">Qty</span><span style="width:56px;text-align:right">Amount</span>
-          </div>${rows}
-        </div>`
+        <tr style="border-bottom:2px solid #000;">
+          <td style="padding:4px;border-right:2px solid #000;text-align:center;text-transform:uppercase;">
+            <div style="${itemNameClass}">${item.name}</div>${mods}${combos}
+          </td>
+          <td style="padding:4px;border-right:2px solid #000;text-align:center;font-weight:500;font-size:13px;vertical-align:middle;">${item.quantity}</td>
+          <td style="padding:4px;text-align:center;font-weight:500;vertical-align:middle;white-space:nowrap;">Rs ${itemTotal.toFixed(2)}</td>
+        </tr>`
     }).join('')
 
+    const itemsHtml = `
+      <table style="width:100%;border-collapse:collapse;border:2px solid #000;margin-bottom:8px;font-size:11px;">
+        <thead>
+          <tr style="border-bottom:2px solid #000;">
+            <th style="padding:4px;border-right:2px solid #000;width:60%;">Item</th>
+            <th style="padding:4px;border-right:2px solid #000;width:20%;">Qty</th>
+            <th style="padding:4px;width:20%;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>`
+
     const scRow = orderType === 'Dine In' && serviceCharge > 0
-      ? `<div style="margin-bottom:3px;text-align:right">Service Charges: Rs ${serviceCharge.toFixed(2)}</div>` : ''
+      ? `<div style="display:flex;justify-content:flex-end;width:100%;margin-bottom:3px"><span style="font-weight:900;margin-right:16px;">Service Charges:</span><span>Rs ${serviceCharge.toFixed(2)}</span></div>` : ''
     const dcRow = orderType === 'Delivery' && deliveryCharge > 0
-      ? `<div style="margin-bottom:3px;text-align:right">Delivery Charges: Rs ${deliveryCharge.toFixed(2)}</div>` : ''
+      ? `<div style="display:flex;justify-content:flex-end;width:100%;margin-bottom:3px"><span style="font-weight:900;margin-right:16px;">Delivery:</span><span>Rs ${deliveryCharge.toFixed(2)}</span></div>` : ''
     const discRow = discount > 0
-      ? `<div style="margin-bottom:3px;text-align:right;color:#009900">Discount: -Rs ${discount.toFixed(2)}</div>` : ''
-    const tableOrCustomer = orderType === 'Dine In'
-      ? `<div style="display:flex"><span style="font-weight:700;width:100px">Table No:</span>${tableNumber || 'N/A'}</div>`
-      : `<div style="display:flex"><span style="font-weight:700;width:100px">Customer:</span>${customerName || 'Walk-in'}</div>`
-    const phoneRow = orderType !== 'Dine In' && customerPhone
-      ? `<div style="display:flex"><span style="font-weight:700;width:100px">Customer Contact:</span>${customerPhone}</div>` : ''
-    const addressRow = orderType === 'Delivery' && customerAddress
-      ? `<div style="display:flex"><span style="font-weight:700;width:100px">Delivery To:</span>${customerAddress}</div>` : ''
-    const notesRow = notes
-      ? `<div style="display:flex"><span style="font-weight:700;width:100px">Notes:</span><span style="flex:1">${notes}</span></div>` : ''
+      ? `<div style="display:flex;justify-content:flex-end;width:100%;margin-bottom:3px"><span style="font-weight:900;margin-right:16px;">Discount:</span><span>-Rs ${discount.toFixed(2)}</span></div>` : ''
 
     const html = `<!DOCTYPE html>
 <html>
@@ -129,46 +103,47 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
   <div class="receipt">
     <!-- Header -->
     <div style="display:flex;justify-content:center;margin-bottom:6px">
-      <div style="display:flex;flex-direction:column;align-items:center">
-        <img src="/qr.png" style="width:72px;height:72px;object-fit:contain" onerror="this.style.display='none'">
-        <div style="text-align:center;font-weight:700;font-size:14px;line-height:1.2;margin-top:4px">${settings.restaurantName.replace(/\n/g, '<br>')}</div>
-      </div>
+      <img src="/receipt_logo.png" style="width:140px;object-fit:contain;" onerror="this.style.display='none'" />
     </div>
+    
     <!-- Address -->
-    <div style="text-align:center;font-size:10px;color:#333;line-height:1.4;margin-bottom:10px">
-      ${settings.address.replace(/\n/g, '<br>')}<br>
-      Contact: ${settings.phoneNumber}
+    <div style="text-align:center;font-size:9.5px;font-weight:600;color:#000;line-height:1.2;margin-bottom:12px">
+      <div style="white-space:nowrap;">Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,</div>
+      <div>Chowk Azam (Layyah)</div>
+      <div>Contact: 0308-8020784, 0345-6420784</div>
     </div>
-    <!-- VIP Badge -->
-    ${isVip ? `<div style="display:flex;justify-content:center;margin-bottom:10px">
-      <div style="border:1px solid #000;padding:2px 8px;font-size:11px;font-weight:900;letter-spacing:2px;border-radius:2px">
-        â˜… VIP ORDER â˜…
-      </div>
-    </div>` : ''}
-    <!-- Divider -->
-    <div style="border-top:1px solid #ccc;margin-bottom:8px"></div>
+
     <!-- Order Details -->
-    <div style="font-size:11px;display:flex;flex-direction:column;gap:2px;font-weight:500;margin-bottom:10px">
-      <div style="display:flex"><span style="font-weight:700;width:100px">Order ID:</span>#${orderNumber}</div>
-      ${tableOrCustomer}${phoneRow}${addressRow}${notesRow}
-      <div style="display:flex"><span style="font-weight:700;width:100px">Order Type:</span>${orderType}</div>
-      <div style="display:flex"><span style="font-weight:700;width:100px">Cashier:</span>${cashier}</div>
-      <div style="display:flex"><span style="font-weight:700;width:100px">Status:</span>${paymentStatus}</div>
-      <div style="display:flex"><span style="font-weight:700;width:100px">Time:</span>${dateStr}, ${timeStr}</div>
+    <div style="font-size:11px;display:flex;flex-direction:column;gap:3px;margin-bottom:12px">
+      <div><span style="margin-right:4px;font-weight:900;">Order ID:</span>#${orderNumber}</div>
+      ${isDelivery && customerName ? `<div style="display:flex"><span style="margin-right:4px;font-weight:900;">Customer:</span><span>${customerName} ${customerPhone ? '- '+customerPhone : ''} ${customerAddress ? '- '+customerAddress : ''}</span></div>` : ''}
+      ${!isDelivery && tableNumber && tableNumber !== 'N/A' ? `<div><span style="margin-right:4px;font-weight:900;">Table No:</span>${tableNumber}</div>` : ''}
+      <div><span style="margin-right:4px;font-weight:900;">Order Type:</span>${orderType}</div>
+      <div><span style="margin-right:4px;font-weight:900;">Cashier:</span>${cashier}</div>
+      ${isDelivery && (order as any)?.riderName ? `<div><span style="margin-right:4px;font-weight:900;">Rider:</span>${(order as any).riderName}</div>` : ''}
+      ${!isDelivery && (order as any)?.waiterName ? `<div><span style="margin-right:4px;font-weight:900;">Waiter:</span>${(order as any).waiterName}</div>` : ''}
+      <div><span style="margin-right:4px;font-weight:900;">Status:</span>${paymentStatus}</div>
+      <div><span style="margin-right:4px;font-weight:900;">Time:</span>${dateStr}, ${timeStr}</div>
+      ${isVip ? `<div style="text-align:center;border-top:2px solid #000;border-bottom:2px solid #000;padding:2px;margin-top:6px;font-weight:900;font-size:14px;background:#000;color:#fff">*** VIP ORDER ***</div>` : ''}
     </div>
+
     <!-- Items -->
-    <div style="margin-bottom:8px">${itemsHtml}</div>
+    <div style="margin-bottom:12px">${itemsHtml}</div>
+
     <!-- Totals -->
-    <div style="font-size:11px;font-weight:700;display:flex;flex-direction:column;align-items:flex-end;padding-right:2px;margin-bottom:8px">
-      <div style="margin-bottom:3px">Subtotal: Rs ${subtotal.toFixed(2)}</div>
+    <div style="font-size:11px;display:flex;flex-direction:column;align-items:flex-end;padding-right:2px;margin-bottom:12px">
+      <div style="display:flex;justify-content:flex-end;width:100%;margin-bottom:3px"><span style="font-weight:900;margin-right:16px;">Subtotal:</span><span>Rs ${subtotal.toFixed(2)}</span></div>
       ${scRow}${dcRow}${discRow}
-      <div style="font-size:13px;font-weight:900;text-decoration:underline;text-underline-offset:2px">Total Amount: Rs ${total.toFixed(2)}</div>
+      <div style="display:flex;justify-content:flex-end;width:100%;font-size:13px;font-weight:900;text-decoration:underline;text-underline-offset:2px;margin-top:4px;padding-top:4px"><span style="margin-right:16px;">Total Amount:</span><span>Rs ${total.toFixed(2)}</span></div>
     </div>
+
     <!-- Footer -->
-    <div style="text-align:center;margin-top:16px;font-size:11px;color:#444;display:flex;flex-direction:column;align-items:center;gap:4px">
-      <p>${settings.receiptFooter.replace(/\n/g, '<br>')}</p>
-      <img src="/logo.jpg" style="width:120px;height:120px;object-fit:contain;margin-top:6px" onerror="this.style.display='none'">
-      <span style="font-size:11px;font-weight:700;margin-top:4px">Scan to Pay</span>
+    <div style="text-align:center;margin-top:16px;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:4px">
+      <p>Thank you for your order!<br>Please visit again.</p>
+      <div style="margin-top:12px;">
+        <img src="/receipt_qr.jpg" style="width:160px;height:160px;object-fit:contain" onerror="this.style.display='none'" />
+      </div>
+      <div style="font-size:12px;font-weight:800;margin-top:2px;">Scan to Pay</div>
     </div>
   </div>
 </body>
@@ -195,104 +170,113 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
 
   // â”€â”€ Preview UI (modal) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const receiptPreview = (
-    <div className="bg-white text-black font-sans p-4 rounded-lg w-full max-w-sm mx-auto border border-gray-200 shadow-sm">
+    <div className="bg-white text-black font-sans p-4 rounded-lg w-full max-w-sm mx-auto shadow-sm" style={{ width: '320px' }}>
       {/* Header */}
-      <div className="flex flex-col items-center mb-3">
-        <img src="/qr.png" alt="Logo" className="w-16 h-16 object-contain mb-1" onError={(e: any) => e.target.style.display='none'} />
-        <div className="text-center font-bold text-sm leading-tight whitespace-pre-wrap">{settings.restaurantName}</div>
-      </div>
-      <div className="text-center text-[10px] text-gray-600 leading-snug mb-3 whitespace-pre-wrap">
-        {settings.address}<br />
-        Contact: {settings.phoneNumber}
+      <div className="flex flex-col items-center justify-center mb-6">
+        <img src="/receipt_logo.png" className="w-[140px] object-contain mb-2" onError={(e: any) => e.target.style.display='none'} />
+        <div className="text-[9.5px] text-center mt-1 font-semibold leading-tight w-full">
+          <div className="whitespace-nowrap">Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,</div>
+          <div>Chowk Azam (Layyah)</div>
+          <div>Contact: 0308-8020784, 0345-6420784</div>
+        </div>
       </div>
       
-      {/* VIP Badge */}
-      {isVip && (
-        <div className="flex justify-center mb-3">
-          <div className="border border-black px-4 py-1 text-[11px] font-black tracking-widest uppercase flex items-center gap-2 rounded-sm shadow-sm">
-            ★ VIP ORDER ★
-          </div>
-        </div>
-      )}
-      <div className="border-t border-gray-300 mb-3" />
-
       {/* Order Details */}
-      <div className="text-[11px] flex flex-col gap-0.5 font-medium text-black mb-3">
-        <div className="flex"><span className="font-bold w-24">Order ID:</span>#{orderNumber}</div>
-        {orderType === 'Dine In' ? (
-          <div className="flex"><span className="font-bold w-24">Table No:</span>{tableNumber || 'N/A'}</div>
-        ) : (
-          <div className="flex"><span className="font-bold w-24">Customer:</span>{customerName || 'Walk-in'}</div>
+      <div className="text-[11px] flex flex-col gap-0.5 text-black mb-4">
+        <div><span className="mr-1 font-black">Order ID:</span>#{orderNumber}</div>
+        {isDelivery && customerName && (
+          <div className="flex gap-1">
+             <span className="shrink-0 font-black">Customer:</span>
+             <span className="break-words">{customerName} {customerPhone ? '- '+customerPhone : ''} {customerAddress ? '- '+customerAddress : ''}</span>
+          </div>
         )}
-        {orderType !== 'Dine In' && customerPhone && (
-          <div className="flex"><span className="font-bold w-24">Contact:</span>{customerPhone}</div>
+        {!isDelivery && tableNumber && tableNumber !== 'N/A' && (
+          <div><span className="mr-1 font-black">Table No:</span>{tableNumber}</div>
         )}
-        {orderType === 'Delivery' && customerAddress && (
-          <div className="flex"><span className="font-bold w-24">Delivery To:</span>{customerAddress}</div>
+        <div><span className="mr-1 font-black">Order Type:</span>{orderType}</div>
+        <div><span className="mr-1 font-black">Cashier:</span>{cashier}</div>
+        {isDelivery && (order as any)?.riderName && <div><span className="mr-1 font-black">Rider:</span>{(order as any).riderName}</div>}
+        {!isDelivery && (order as any)?.waiterName && <div><span className="mr-1 font-black">Waiter:</span>{(order as any).waiterName}</div>}
+        <div><span className="mr-1 font-black">Status:</span>{paymentStatus}</div>
+        <div><span className="mr-1 font-black">Time:</span>{dateStr}, {timeStr}</div>
+        {isVip && (
+          <div className="font-black uppercase text-sm border-y-2 border-black py-1 mt-2 text-center bg-black text-white">*** VIP ORDER ***</div>
         )}
-        {notes && <div className="flex"><span className="font-bold w-24">Notes:</span><span className="flex-1">{notes}</span></div>}
-        <div className="flex"><span className="font-bold w-24">Order Type:</span>{orderType}</div>
-        <div className="flex"><span className="font-bold w-24">Cashier:</span>{cashier}</div>
-        <div className="flex"><span className="font-bold w-24">Status:</span>{paymentStatus}</div>
-        <div className="flex"><span className="font-bold w-24">Time:</span>{dateStr}, {timeStr}</div>
       </div>
 
       {/* Items */}
-      <div className="mb-3">
-        {sortedCategories.length === 0 ? (
-          <p className="text-[11px] text-gray-400 text-center py-3">No items</p>
-        ) : sortedCategories.map(cat => (
-          <div key={cat} className="border-2 border-black mb-1">
-            <div className="text-center font-bold text-[12px] py-1 border-b border-dashed border-gray-500 uppercase">{cat}</div>
-            <div className="flex font-bold text-[11px] border-b border-gray-500 py-1 px-1">
-              <span className="flex-1">Item</span>
-              <span className="w-7 text-center">Qty</span>
-              <span className="w-14 text-right">Amount</span>
-            </div>
-            {groupedItems[cat].map((item: any, idx: number) => {
-              let itemTotal = item.price * item.quantity
-              if (item.selectedModifiers?.length) {
-                const modTotal = item.selectedModifiers.reduce((s: number, m: any) => s + (m.price || 0), 0)
-                itemTotal = (item.price + modTotal) * item.quantity
-              }
-              return (
-                <div key={idx} className="border-b border-dashed border-gray-400 p-1 px-1 text-[11px] last:border-b-0">
-                  <div className="flex justify-between items-start font-medium">
-                    <span className="flex-1 pr-1 leading-tight">{item.name}</span>
-                    <span className="w-7 text-center shrink-0">{item.quantity}</span>
-                    <span className="w-14 text-right shrink-0">Rs {itemTotal.toFixed(2)}</span>
-                  </div>
-                  {item.selectedModifiers?.length > 0 && (
-                    <div className="text-[10px] text-gray-500 mt-0.5">{item.selectedModifiers.map((m: any) => `+${m.name}`).join(', ')}</div>
-                  )}
-                  {item.combo_components?.length > 0 && (
-                    <div className="text-[10px] text-gray-500 border-l border-gray-300 pl-1 mt-0.5">
-                      {item.combo_components.map((c: any, ci: number) => (
-                        <div key={ci}>- {c.quantity > 1 ? `${c.quantity}x ` : ''}{c.product_name_snapshot}{c.variant_snapshot ? ` (${c.variant_snapshot})` : ''}</div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        ))}
-      </div>
+      <table className="w-full text-[11px] font-bold border-2 border-black mb-4 border-collapse">
+        <thead>
+          <tr className="border-b-2 border-black">
+            <th className="text-center py-1 px-1 border-r-2 border-black w-[60%]">Item</th>
+            <th className="text-center py-1 px-1 border-r-2 border-black w-[20%]">Qty</th>
+            <th className="text-center py-1 px-1 w-[20%]">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, idx) => {
+            let itemTotal = item.price * item.quantity
+            if (item.selectedModifiers?.length) {
+              const modTotal = item.selectedModifiers.reduce((s: number, m: any) => s + (m.price || 0), 0)
+              itemTotal = (item.price + modTotal) * item.quantity
+            }
+            const isDeal = item.category?.toLowerCase().includes('deal') || (item.name || '').toLowerCase().includes('deal')
+            return (
+            <tr key={idx} className="border-b-2 border-black last:border-b-0">
+              <td className={`text-center py-1 px-1 border-r-2 border-black uppercase ${isDeal ? 'font-black' : 'font-medium'}`}>
+                {item.name}
+                {item.selectedModifiers?.map((m: any) => (
+                  <div key={m.name} className="text-[10px] font-normal">+ {m.name}</div>
+                ))}
+                {(item as any).combo_components?.map((c: any, cidx: number) => (
+                  <div key={cidx} className="text-[10px] font-normal">- {c.quantity > 1 ? `${c.quantity}x ` : ''}{c.product_name_snapshot} {c.variant_snapshot && `(${c.variant_snapshot})`}</div>
+                ))}
+              </td>
+              <td className="text-center py-1 px-1 border-r-2 border-black font-medium text-xs align-middle">{item.quantity}</td>
+              <td className="text-center py-1 px-1 font-medium whitespace-nowrap align-middle">
+                Rs {itemTotal.toFixed(2)}
+              </td>
+            </tr>
+            )
+          })}
+        </tbody>
+      </table>
 
       {/* Totals */}
-      <div className="text-[11px] font-bold flex flex-col items-end pr-1 mb-3">
-        <div className="mb-1">Subtotal: Rs {subtotal.toFixed(2)}</div>
-        {orderType === 'Dine In' && serviceCharge > 0 && <div className="mb-1">Service Charges: Rs {serviceCharge.toFixed(2)}</div>}
-        {orderType === 'Delivery' && deliveryCharge > 0 && <div className="mb-1">Delivery Charges: Rs {deliveryCharge.toFixed(2)}</div>}
-        {discount > 0 && <div className="mb-1 text-green-600">Discount: -Rs {discount.toFixed(2)}</div>}
-        <div className="text-[13px] font-black underline decoration-2 underline-offset-2 mt-1">Total Amount: Rs {total.toFixed(2)}</div>
+      <div className="flex flex-col items-end text-[11px] space-y-0.5 mb-6 w-full pr-1">
+        <div className="flex justify-end w-full">
+          <span className="font-black mr-4">Subtotal:</span>
+          <span>Rs {subtotal.toFixed(2)}</span>
+        </div>
+        {discount > 0 && (
+          <div className="flex justify-end w-full">
+            <span className="font-black mr-4">Discount:</span>
+            <span>- Rs {discount.toFixed(2)}</span>
+          </div>
+        )}
+        {orderType === 'Dine In' && serviceCharge > 0 && (
+          <div className="flex justify-end w-full">
+            <span className="font-black mr-4">Service Charges:</span>
+            <span>Rs {serviceCharge.toFixed(2)}</span>
+          </div>
+        )}
+        {orderType === 'Delivery' && deliveryCharge > 0 && (
+          <div className="flex justify-end w-full">
+            <span className="font-black mr-4">Delivery:</span>
+            <span>Rs {deliveryCharge.toFixed(2)}</span>
+          </div>
+        )}
+        <div className="flex justify-end w-full font-black text-xs underline underline-offset-4 mt-1 pt-1">
+          <span className="mr-4">Total Amount:</span>
+          <span>Rs {total.toFixed(2)}</span>
+        </div>
       </div>
 
       {/* Footer */}
-      <div className="text-center mt-4 text-[11px] text-gray-500 flex flex-col items-center gap-1">
-        <p className="whitespace-pre-wrap">{settings.receiptFooter}</p>
-        <img src="/logo.jpg" alt="QR" className="w-24 h-24 object-contain mt-2" onError={(e: any) => e.target.style.display='none'} />
-        <span className="font-bold mt-1 text-black">Scan to Pay</span>
+      <div className="text-center mt-2 text-[11px] font-semibold flex flex-col items-center gap-1 mb-4">
+        <p>Thank you for your order!<br/>Please visit again.</p>
+        <img src="/receipt_qr.jpg" className="w-32 h-32 object-contain mt-4" onError={(e: any) => e.target.style.display='none'} />
+        <div className="text-[12px] font-black mt-1">Scan to Pay</div>
       </div>
     </div>
   )

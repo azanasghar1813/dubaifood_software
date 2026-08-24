@@ -29,7 +29,6 @@ const ReceiptTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
   const settings = useSettingsStore(s => (s as any).settings)
   const printSettings = usePrinterStore(s => s.settings)
   
-  // Try to parse the order ID from content
   let orderId = ''
   try {
     orderId = JSON.parse((job as any).content).orderId
@@ -40,64 +39,83 @@ const ReceiptTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
   const order = useOrderStore(s => s.orders.find(o => o.id === orderId))
   if (!order) return null
 
+  const isDelivery = order.orderType === 'Delivery'
+
   return (
-    <div className={`p-4 mx-auto text-black font-mono`} style={{ width: printSettings.receiptWidth }}>
+    <div className={`p-4 mx-auto text-black font-sans bg-white`} style={{ width: printSettings.receiptWidth }}>
       {/* Header */}
-      <div className="text-center mb-6">
-        <div className="text-2xl font-black mb-1">{settings.businessName}</div>
-        <div className="text-sm">{settings.address}</div>
-        <div className="text-sm">Tel: {settings.phone}</div>
-        {settings.trn && <div className="text-sm mt-1">TRN: {settings.trn}</div>}
+      <div className="flex flex-col items-center justify-center mb-6">
+        <div className="w-24 h-24 bg-[#222] rounded-full flex flex-col items-center justify-center mb-2 text-white border-2 border-black">
+           <div className="text-lg font-black tracking-widest leading-none mt-2">DUBAI</div>
+           <div className="text-lg font-black tracking-widest leading-none mb-1">FOOD</div>
+           <div className="text-[9px] font-bold tracking-[0.2em] border-t border-white/50 pt-1 mt-1">POINT</div>
+           <div className="text-[6px] text-gray-300 mt-1 uppercase tracking-widest">The Taste Expert</div>
+        </div>
+        <div className="text-xl font-black text-center mt-2">{settings.businessName}</div>
+        <div className="text-xs text-center mt-1 font-semibold leading-tight">
+          Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,<br/>
+          Chowk Azam (Layyah)<br/>
+          Contact: 0308-8020784, 0345-6420784
+        </div>
       </div>
 
-      <div className="border-t border-b border-black py-2 mb-4 text-sm">
-        <div className="flex justify-between">
-          <span>Order #: {order.orderNumber}</span>
-          <span>{new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>{new Date(order.timestamp).toLocaleDateString()}</span>
-          <span>Cashier: {order.cashierName}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Type: {order.orderType}</span>
-          <span>{order.customerName && order.customerName !== 'Guest' ? `Cust: ${order.customerName}` : ''}</span>
-        </div>
-        {order.customerPhone && (
-          <div className="flex justify-start text-xs mt-1">
-            <span>Phone: {order.customerPhone}</span>
+      <div className="text-sm font-bold mb-4 space-y-0.5">
+        <div><span className="mr-1">Order ID:</span>#{order.orderNumber}</div>
+        
+        {isDelivery && order.customerName && (
+          <div className="flex gap-1">
+             <span className="shrink-0">Customer:</span>
+             <span className="break-words font-semibold">{order.customerName} {order.customerPhone ? `- ${order.customerPhone}` : ''} {order.customerAddress ? `- ${order.customerAddress}` : ''}</span>
           </div>
         )}
-        {order.orderType === 'Delivery' && order.customerAddress && (
-          <div className="flex justify-start text-xs font-bold mt-1">
-            <span>Deliver To: {order.customerAddress}</span>
-          </div>
+        
+        {!isDelivery && order.tableNumber && order.tableNumber !== 'N/A' && (
+          <div><span className="mr-1">Table No:</span>{order.tableNumber}</div>
+        )}
+        
+        <div><span className="mr-1">Order Type:</span>{order.orderType}</div>
+        
+        <div><span className="mr-1">Cashier:</span>{order.cashierName || 'admin'}</div>
+        
+        {isDelivery && order.riderName && (
+          <div><span className="mr-1">Rider:</span>{order.riderName}</div>
+        )}
+        {!isDelivery && order.waiterName && (
+          <div><span className="mr-1">Waiter:</span>{order.waiterName}</div>
+        )}
+        
+        <div><span className="mr-1">Status:</span>{order.paymentStatus}</div>
+        
+        <div><span className="mr-1">Time:</span>{new Date(order.timestamp).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }).replace(',', '')}</div>
+        
+        {order.isVip && (
+          <div className="font-black uppercase text-lg border-y-2 border-black py-1 mt-3 mb-2 text-center bg-black text-white">*** VIP ORDER ***</div>
         )}
       </div>
 
-      {/* Items */}
-      <table className="w-full text-sm mb-4">
+      {/* Items Table */}
+      <table className="w-full text-sm font-bold border-2 border-black mb-4 border-collapse">
         <thead>
-          <tr className="border-b border-black">
-            <th className="text-left py-1">Item</th>
-            <th className="text-center py-1">Qty</th>
-            <th className="text-right py-1">Amount</th>
+          <tr className="border-b-2 border-black">
+            <th className="text-center py-1 px-1 border-r-2 border-black w-[60%]">Item</th>
+            <th className="text-center py-1 px-1 border-r-2 border-black w-[20%]">Qty</th>
+            <th className="text-center py-1 px-1 w-[20%]">Total</th>
           </tr>
         </thead>
         <tbody>
           {order.items.map((item, idx) => (
-            <tr key={idx} className="align-top">
-              <td className="py-1">
-                <div className="font-bold">{item.name}</div>
+            <tr key={idx} className="border-b-2 border-black last:border-b-0">
+              <td className="text-center py-1 px-1 border-r-2 border-black uppercase font-black">
+                {item.name}
                 {item.selectedModifiers?.map((m: any) => (
-                  <div key={m.name} className="text-xs pl-2">+ {m.name}</div>
+                  <div key={m.name} className="text-xs font-normal">+ {m.name}</div>
                 ))}
-                {(item as any).combo_components?.map((c: any, idx: number) => (
-                  <div key={idx} className="text-xs pl-2">- {c.quantity > 1 ? `${c.quantity}x ` : ''}{c.product_name_snapshot} {c.variant_snapshot && `(${c.variant_snapshot})`}</div>
+                {(item as any).combo_components?.map((c: any, cidx: number) => (
+                  <div key={cidx} className="text-xs font-normal">- {c.quantity > 1 ? `${c.quantity}x ` : ''}{c.product_name_snapshot} {c.variant_snapshot && `(${c.variant_snapshot})`}</div>
                 ))}
               </td>
-              <td className="text-center py-1">{item.quantity}</td>
-              <td className="text-right py-1">
+              <td className="text-center py-1 px-1 border-r-2 border-black font-black text-base align-middle">{item.quantity}</td>
+              <td className="text-center py-1 px-1 font-black whitespace-nowrap align-middle">
                 {settings.currencySymbol} {(item.price * item.quantity).toFixed(2)}
               </td>
             </tr>
@@ -106,33 +124,48 @@ const ReceiptTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
       </table>
 
       {/* Totals */}
-      <div className="border-t border-black pt-2 text-sm space-y-1 mb-6">
-        <div className="flex justify-between">
-          <span>Subtotal</span>
+      <div className="flex flex-col items-end text-sm font-bold space-y-0.5 mb-8 w-full pr-1">
+        <div className="flex justify-between w-[200px]">
+          <span>Subtotal:</span>
           <span>{settings.currencySymbol} {order.subtotal.toFixed(2)}</span>
         </div>
         {order.discount > 0 && (
-          <div className="flex justify-between">
-            <span>Discount</span>
+          <div className="flex justify-between w-[200px]">
+            <span>Discount:</span>
             <span>- {settings.currencySymbol} {order.discount.toFixed(2)}</span>
           </div>
         )}
-        <div className="flex justify-between">
-          <span>Tax</span>
+        <div className="flex justify-between w-[200px]">
+          <span>Tax:</span>
           <span>{settings.currencySymbol} {order.tax.toFixed(2)}</span>
         </div>
-        <div className="flex justify-between font-black text-base mt-2 pt-2 border-t border-black">
-          <span>GRAND TOTAL</span>
+        {order.serviceCharge > 0 && (
+          <div className="flex justify-between w-[200px]">
+            <span>Service Charges:</span>
+            <span>{settings.currencySymbol} {order.serviceCharge.toFixed(2)}</span>
+          </div>
+        )}
+        {order.deliveryCharge > 0 && (
+          <div className="flex justify-between w-[200px]">
+            <span>Delivery:</span>
+            <span>{settings.currencySymbol} {order.deliveryCharge.toFixed(2)}</span>
+          </div>
+        )}
+        <div className="flex justify-between w-[200px] font-black text-base underline underline-offset-4 mt-1 pt-1">
+          <span>Total Amount:</span>
           <span>{settings.currencySymbol} {order.total.toFixed(2)}</span>
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="flex flex-col items-center justify-center space-y-4 mb-8">
-        <QRCodeSVG value={`https://verify.dubaifood.com/order/${order.id}`} size={100} />
-        <div className="text-center text-sm">
-          {printSettings.receiptFooter}
-        </div>
+      {/* Footer text */}
+      <div className="text-center text-sm font-semibold mb-6">
+        Thank you for your order!<br/>
+        Please visit again.
+      </div>
+
+      {/* QR Code */}
+      <div className="flex justify-center mb-6">
+        <QRCodeSVG value={`https://verify.dubaifood.com/order/${order.id}`} size={120} />
       </div>
       
       {/* Cut placeholder */}
