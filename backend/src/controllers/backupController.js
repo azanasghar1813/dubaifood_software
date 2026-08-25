@@ -1,8 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import AdmZip from 'adm-zip';
 import config from '../config/index.js';
 import { dbEngine } from '../database/sqlite.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const AdmZip = require('adm-zip');
 
 export const restoreBackup = async (req, res) => {
   try {

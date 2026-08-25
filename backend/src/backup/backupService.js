@@ -1,10 +1,13 @@
 import fs from 'fs';
 import path from 'path';
-import archiver from 'archiver';
-import cron from 'node-cron';
 import crypto from 'crypto';
 import config from '../config/index.js';
 import { dbEngine } from '../database/sqlite.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const archiver = require('archiver');
+const cron = require('node-cron');
 
 class BackupService {
   constructor() {
