@@ -3,15 +3,17 @@ import { handleApiError } from './errorHandler'
 import { useAuthStore } from '../store/authStore'
 import { useLoadingStore } from '../store/loadingStore'
 
-// 1. If Vercel/Cloud injected an API URL, use it (Online Mode)
+// 1. If Vercel/Cloud injected a remote API URL (like Render), use it (Online Mode).
 let baseURL = import.meta.env.VITE_API_URL;
 
-// 2. Otherwise, dynamically use the current host (Offline LAN Mode)
-if (!baseURL) {
+// 2. If it's undefined, or if the baked-in URL is a local/LAN IP (which might have the wrong port like 5000 instead of 5055),
+// we force dynamic routing to match the exact host and port serving the frontend.
+if (!baseURL || baseURL.includes('localhost') || baseURL.includes('192.168.') || baseURL.includes('127.0.0.1') || baseURL.includes('10.')) {
   if (typeof window !== 'undefined' && window.location.port !== '5173') {
+    // This will correctly point to localhost:5055 in Electron, or 192.168.x.x:5055 on Tablets
     baseURL = `${window.location.protocol}//${window.location.host}/api/v1`;
   } else {
-    baseURL = 'http://localhost:5000/api/v1'; // Dev fallback
+    baseURL = 'http://localhost:5000/api/v1'; // Dev Vite fallback
   }
 }
 
