@@ -6,6 +6,8 @@ import { dbEngine } from './database/sqlite.js';
 import { configService } from './services/configService.js';
 import { menuCacheService } from './services/menuCacheService.js';
 import { printEngineService } from './services/printEngineService.js';
+import { syncWorker } from './sync/syncWorker.js';
+import { backupService } from './backup/backupService.js';
 
 process.on('uncaughtException', (err) => {
   console.error('[UNCAUGHT EXCEPTION]', err.name, err.message);
@@ -91,6 +93,8 @@ const startServer = async () => {
     configService.initialize();
     menuCacheService.initialize();
     printEngineService.start();
+    syncWorker.start();
+    backupService.startScheduler();
 
     // Start periodic WAL maintenance now that the DB connection is live.
     // Cheap no-op checks every 15 min; only does real work if WAL > 64MB.
@@ -116,6 +120,7 @@ const startServer = async () => {
       isShuttingDown = true;
 
       console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
+      syncWorker.stop();
       printEngineService.stop();
       dbEngine.close();
 

@@ -42,6 +42,12 @@ const config = {
   },
   // 4. Dynamically generate and expose absolute paths
   paths: generatePaths(env.STORAGE_ROOT),
+  
+  // 5. Sync API configuration
+  sync: {
+    apiUrl: env.SYNC_API_URL,
+    deviceSecret: env.DEVICE_SECRET
+  }
 };
 
 export default config;

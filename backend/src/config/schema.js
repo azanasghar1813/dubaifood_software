@@ -21,4 +21,8 @@ export const envSchema = z.object({
   
   // Logging
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly']).default('info'),
+
+  // Sync API
+  SYNC_API_URL: z.string().url().default('http://localhost:3000/api/v1'),
+  DEVICE_SECRET: z.string().min(16).default('development-device-secret-do-not-use-in-prod'),
 });
