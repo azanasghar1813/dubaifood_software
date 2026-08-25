@@ -3,12 +3,16 @@ import { handleApiError } from './errorHandler'
 import { useAuthStore } from '../store/authStore'
 import { useLoadingStore } from '../store/loadingStore'
 
-// The base URL can be configured via environment variables
-// Default to localhost:5000/api/v1 for development
-let baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'
+// 1. If Vercel/Cloud injected an API URL, use it (Online Mode)
+let baseURL = import.meta.env.VITE_API_URL;
 
-if (typeof window !== 'undefined' && window.location.port !== '5173') {
-  baseURL = `${window.location.protocol}//${window.location.host}/api/v1`
+// 2. Otherwise, dynamically use the current host (Offline LAN Mode)
+if (!baseURL) {
+  if (typeof window !== 'undefined' && window.location.port !== '5173') {
+    baseURL = `${window.location.protocol}//${window.location.host}/api/v1`;
+  } else {
+    baseURL = 'http://localhost:5000/api/v1'; // Dev fallback
+  }
 }
 
 export const apiClient = axios.create({
