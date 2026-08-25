@@ -1,0 +1,45 @@
+name: Build and Release EXE
+
+on:
+  push:
+    branches:
+      - main # Triggers on every commit pushed to main
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    permissions:
+      contents: write # Needed to create a release in GitHub
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: npm install
+        
+      - name: Install Frontend Dependencies
+        run: npm install --prefix frontend
+        
+      - name: Install Backend Dependencies
+        run: npm install --prefix backend
+
+      - name: Build the EXE
+        run: npm run build:exe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload EXE as GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Release
+          files: dist-electron-5/*.exe
+          generate_release_notes: true
+

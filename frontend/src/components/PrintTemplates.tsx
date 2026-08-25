@@ -145,10 +145,10 @@ const ReceiptTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
             <span>{settings.currencySymbol} {order.serviceCharge.toFixed(2)}</span>
           </div>
         )}
-        {order.deliveryCharge > 0 && (
+        {(order.deliveryCharge ?? 0) > 0 && (
           <div className="flex justify-between w-[200px]">
             <span>Delivery:</span>
-            <span>{settings.currencySymbol} {order.deliveryCharge.toFixed(2)}</span>
+            <span>{settings.currencySymbol} {(order.deliveryCharge ?? 0).toFixed(2)}</span>
           </div>
         )}
         <div className="flex justify-between w-[200px] font-black text-base underline underline-offset-4 mt-1 pt-1">

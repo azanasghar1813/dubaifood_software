@@ -29,7 +29,8 @@ const envPath = app.isPackaged
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
 }
-const BACKEND_PORT = process.env.PORT || 5000;
+const BACKEND_PORT = app.isPackaged ? 5055 : (process.env.PORT || 5000);
+
 
 let mainWindow;
 let splashWindow;
@@ -115,8 +116,10 @@ const startBackendProcess = async () => {
     : path.join(__dirname, 'backend', 'src', 'server.js');
 
   const backendEnv = { ...process.env };
+  backendEnv.PORT = BACKEND_PORT;
   if (app.isPackaged) {
     backendEnv.STORAGE_ROOT = path.join(app.getPath('userData'), 'storage');
+    backendEnv.NODE_ENV = 'production';
   }
 
   backendProcess = spawn(nodeExe, [serverScript], {

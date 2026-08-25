@@ -238,7 +238,10 @@ export default function POS() {
           const primaryImage = p.images?.find((img: any) => img.is_primary === 1)?.image_path || p.images?.[0]?.image_path || null;
           let imagePath = p.image || primaryImage;
           if (imagePath && !imagePath.startsWith('http')) {
-            const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1').replace('/api/v1', '');
+            let baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1').replace('/api/v1', '');
+            if (typeof window !== 'undefined' && window.location.port !== '5173') {
+              baseUrl = `${window.location.protocol}//${window.location.host}`;
+            }
             imagePath = `${baseUrl}${imagePath}`;
           }
 

@@ -319,7 +319,7 @@ export const useOrderStore = create<OrderState>((set, get) => ({
 
       let maxBusinessDate = ''
       detailedOrders.forEach(o => {
-        if (!maxBusinessDate || o.businessDate > maxBusinessDate) {
+        if (o.businessDate && (!maxBusinessDate || o.businessDate > maxBusinessDate)) {
           maxBusinessDate = o.businessDate
         }
       })
