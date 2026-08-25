@@ -13,7 +13,7 @@ import {
   Tag, XOctagon, Receipt, FileText, XCircle,
   Hash, Phone, Edit, Edit2,
   Store, UtensilsCrossed, Truck, CircleDot,
-  QrCode, Banknote, Clock, Building2, Percent, X, ShoppingCart
+  QrCode, Banknote, Clock, Building2, Percent, X, ShoppingCart, Keyboard
 } from "lucide-react"
 import ReceiptPreview from "./ReceiptPreview"
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
@@ -66,6 +66,7 @@ const getCategoryStyles = (category: string) => {
 
 export default function POS() {
   const [activeCategory, setActiveCategory] = useState("All")
+  const [forceKeyboardOpen, setForceKeyboardOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
   const [isSearchFocused, setIsSearchFocused] = useState(false)
@@ -105,12 +106,20 @@ export default function POS() {
   
   // Responsive State
   const [isDesktop, setIsDesktop] = useState(window.matchMedia('(min-width: 768px)').matches)
+  const [isTouchDevice, setIsTouchDevice] = useState(false)
   const [mobileCartOpen, setMobileCartOpen] = useState(false)
 
   useEffect(() => {
     const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
     const mq = window.matchMedia('(min-width: 768px)')
     mq.addEventListener('change', handler)
+    
+    setIsTouchDevice(
+      'ontouchstart' in window || 
+      navigator.maxTouchPoints > 0 || 
+      window.matchMedia('(pointer: coarse)').matches
+    )
+    
     return () => mq.removeEventListener('change', handler)
   }, [])
 
@@ -166,7 +175,7 @@ export default function POS() {
     isTaxEnabled, toggleTax, menuContext, setMenuContext,
     editingOrderId, clearEditMode, completeOrder,
     deliveryCharges, setDeliveryCharges,
-    fetchDraftOrder, financeConfig, activeOrderId, isVipOrder
+    fetchDraftOrder, financeConfig, activeOrderId, activeOrder, isVipOrder
   } = usePosStore()
 
   const { orderCounter } = useOrderStore()
@@ -1320,8 +1329,10 @@ export default function POS() {
               <input
                 ref={searchInputRef}
                 type="text"
+                readOnly={isTouchDevice && !forceKeyboardOpen}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onBlur={() => setTimeout(() => setForceKeyboardOpen(false), 200)}
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
                     if (searchQuery) {
@@ -1583,7 +1594,7 @@ export default function POS() {
               <div className="p-3 border-b border-border bg-secondary/30">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <h2 className="font-black tracking-wider uppercase text-muted-foreground text-[10px] mb-1 mt-1">Order #{orderCounter}</h2>
+                    <h2 className="font-black tracking-wider uppercase text-muted-foreground text-[10px] mb-1 mt-1">Order #{activeOrder?.order_number || orderCounter}</h2>
                   </div>
 
                   <div className="flex flex-col items-center justify-center">
@@ -1986,7 +1997,7 @@ export default function POS() {
                           } else {
                              const fullOrderData = {
                                id: `draft-${Date.now()}`,
-                               orderNumber: orderCounter.toString(),
+                               orderNumber: activeOrder?.order_number || orderCounter.toString(),
                                orderType,
                                tableNumber: orderType === 'Dine In' ? tableNumber : null,
                                customerName: orderType !== 'Dine In' ? (customer?.name || 'Guest') : null,
@@ -2414,7 +2425,7 @@ export default function POS() {
 
                       const fullOrderData = {
                         id: activeOrderId,
-                        orderNumber: orderCounter.toString(),
+                        orderNumber: activeOrder?.order_number || orderCounter.toString(),
                         orderType,
                         tableNumber: orderType === 'Dine In' ? tableNumber : null,
                         customerName: orderType !== 'Dine In' ? (customer?.name || 'Guest') : null,
@@ -2642,6 +2653,30 @@ export default function POS() {
 
       {/* ReceiptPreview Popup */}
       {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
+
+      {isTouchDevice && (
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (forceKeyboardOpen) {
+              if (searchInputRef.current) {
+                searchInputRef.current.blur();
+              }
+              setForceKeyboardOpen(false);
+            } else {
+              if (searchInputRef.current) {
+                searchInputRef.current.readOnly = false;
+                searchInputRef.current.focus();
+              }
+              setForceKeyboardOpen(true);
+            }
+          }}
+          className="fixed bottom-24 right-4 z-[100] bg-orange-500 text-white p-4 rounded-full shadow-[0_4px_20px_rgba(249,115,22,0.6)] flex items-center justify-center hover:bg-orange-600 active:scale-95 transition-all"
+        >
+          <Keyboard className="w-6 h-6" />
+        </button>
+      )}
     </div>
   )
 }

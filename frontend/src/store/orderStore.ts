@@ -142,7 +142,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     cartItemId: item.id || `${row.id}-item-${index}`,
     id: item.product_id || item.id || `${row.id}-product-${index}`,
     variant_id: item.variant_id || null,
-    name: item.variant_name ? `${item.product_name_snapshot || item.product_name || item.name || 'Item'} (${item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Item'),
+    name: (item.variant?.variant_name_snapshot || item.variant_name) ? `${item.product_name_snapshot || item.product_name || item.name || 'Item'} (${item.variant?.variant_name_snapshot || item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Item'),
     price: Number(item.final_unit_price ?? item.unit_price ?? item.price ?? 0),
     quantity: Number(item.quantity ?? 1),
     subtotal: Number(item.subtotal ?? (Number(item.final_unit_price ?? item.unit_price ?? item.price ?? 0) * Number(item.quantity ?? 1))),
@@ -317,7 +317,16 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         detailedOrders.push(...chunkResults)
       }
 
-      const highestOrderNumber = detailedOrders.reduce((max, order) => {
+      let maxBusinessDate = ''
+      detailedOrders.forEach(o => {
+        if (!maxBusinessDate || o.businessDate > maxBusinessDate) {
+          maxBusinessDate = o.businessDate
+        }
+      })
+
+      const latestOrders = detailedOrders.filter(o => o.businessDate === maxBusinessDate)
+
+      const highestOrderNumber = latestOrders.reduce((max, order) => {
         const parsed = Number(order.orderNumber)
         return Number.isFinite(parsed) ? Math.max(max, parsed) : max
       }, 0)
