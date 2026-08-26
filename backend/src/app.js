@@ -26,7 +26,15 @@ app.use(globalLimiter);
 // --- GLOBAL MIDDLEWARE ---
 
 // Security Headers
-app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(helmet({ 
+  crossOriginResourcePolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "upgrade-insecure-requests": null
+    }
+  }
+}));
 
 // Cross-Origin Resource Sharing
 app.use(cors({

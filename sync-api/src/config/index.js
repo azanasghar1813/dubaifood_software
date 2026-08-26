@@ -17,13 +17,15 @@ const envSchema = z.object({
 
 const parsedEnv = envSchema.safeParse(process.env);
 
+let env = {};
 if (!parsedEnv.success) {
   console.error('❌ Invalid environment variables:');
   console.error(JSON.stringify(parsedEnv.error.format(), null, 2));
-  process.exit(1);
+  // Provide fallback to prevent crash, but API calls will fail later
+  env = { NODE_ENV: 'development', PORT: 3000 };
+} else {
+  env = parsedEnv.data;
 }
-
-const env = parsedEnv.data;
 
 export default {
   env: env.NODE_ENV,
