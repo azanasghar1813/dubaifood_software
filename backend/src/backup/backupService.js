@@ -6,8 +6,8 @@ import { dbEngine } from '../database/sqlite.js';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const archiver = require('archiver');
 const cron = require('node-cron');
+import { ZipArchive } from 'archiver';
 
 class BackupService {
   constructor() {
@@ -42,7 +42,7 @@ class BackupService {
         dbEngine.db.pragma('wal_checkpoint(TRUNCATE)');
 
         const output = fs.createWriteStream(backupFilePath);
-        const archive = archiver('zip', { zlib: { level: 9 } });
+        const archive = new ZipArchive({ zlib: { level: 9 } });
 
         output.on('close', () => {
           const sizeBytes = archive.pointer();

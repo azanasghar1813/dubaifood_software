@@ -132,7 +132,7 @@ export const pullSyncEvents = async (req, res) => {
     const { last_sync_timestamp } = req.query;
     const since = last_sync_timestamp ? new Date(parseInt(last_sync_timestamp)).toISOString() : new Date(0).toISOString();
 
-    // Pull updated master data for waiter tablets and web POS (limit to 1000 to prevent crashing)
+    // Pull all updated data for all relevant tables
     const { data: products, error: productError } = await supabase
       .from('products')
       .select('*')
@@ -149,15 +149,37 @@ export const pullSyncEvents = async (req, res) => {
       
     if (categoryError) throw categoryError;
 
-    // Pull ONLINE orders that are PENDING for the local POS to download and process
-    const { data: onlineOrders, error: orderError } = await supabase
+    const { data: orders, error: orderError } = await supabase
       .from('orders')
       .select('*')
-      .eq('source', 'ONLINE')
-      .eq('status', 'PENDING')
-      .limit(100);
+      .gt('updated_at', since)
+      .limit(1000);
 
     if (orderError) throw orderError;
+
+    const { data: order_items, error: orderItemError } = await supabase
+      .from('order_items')
+      .select('*')
+      .gt('updated_at', since)
+      .limit(1000);
+
+    if (orderItemError) throw orderItemError;
+    
+    const { data: customers, error: customerError } = await supabase
+      .from('customers')
+      .select('*')
+      .gt('updated_at', since)
+      .limit(1000);
+
+    if (customerError) throw customerError;
+    
+    const { data: users, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .gt('updated_at', since)
+      .limit(1000);
+
+    if (userError) throw userError;
 
     // Return the batched updates
     return res.status(200).json({
@@ -165,7 +187,10 @@ export const pullSyncEvents = async (req, res) => {
       data: {
         products,
         categories,
-        orders: onlineOrders
+        orders,
+        order_items,
+        customers,
+        users
       }
     });
   } catch (error) {

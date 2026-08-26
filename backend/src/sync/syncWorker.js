@@ -105,9 +105,64 @@ class SyncWorker {
 
         console.log(`[SyncWorker] Sync complete. Success: ${data.successful.length}, Failed: ${data.failed.length}, Conflicts: ${data.conflicts.length}`);
         
-        // Reset delay on success, but immediately pull next batch if queue is full
-        this.currentDelayMs = pendingEvents.length === 50 ? 0 : this.baseDelayMs;
+        // Reset delay on success if queue is full
+        if (pendingEvents.length === 50) {
+           this.currentDelayMs = 0;
+        } else {
+           this.currentDelayMs = this.baseDelayMs;
+        }
       }
+
+      // --- PULL LOGIC BEGIN ---
+      let lastSyncRecord = dbEngine.prepare("SELECT value FROM application_settings WHERE key = 'last_sync_timestamp'").get();
+      let lastSyncTimestamp = lastSyncRecord ? parseInt(lastSyncRecord.value, 10) : 0;
+
+      const pullResponse = await fetch(`${config.sync.apiUrl}/sync/pull?last_sync_timestamp=${lastSyncTimestamp}`, {
+        headers: { 'x-device-secret': config.sync.deviceSecret }
+      });
+
+      if (!pullResponse.ok) {
+         throw new Error(`Cloud API Pull responded with status: ${pullResponse.status}`);
+      }
+
+      const pullData = await pullResponse.json();
+      const { products, categories, orders, order_items, customers, users } = pullData.data;
+
+      // Only perform transaction if there is data to process
+      const totalItems = (products?.length || 0) + (categories?.length || 0) + (orders?.length || 0) + 
+                         (order_items?.length || 0) + (customers?.length || 0) + (users?.length || 0);
+
+      if (totalItems > 0) {
+        dbEngine.transaction(() => {
+          const upsertData = (tableName, items) => {
+            if (!items || items.length === 0) return;
+            const keys = Object.keys(items[0]);
+            const placeholders = keys.map(() => '?').join(', ');
+            const updateSet = keys.filter(k => k !== 'id').map(k => `${k} = excluded.${k}`).join(', ');
+            const stmt = dbEngine.prepare(`INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${updateSet}`);
+            for (const item of items) {
+              stmt.run(...keys.map(k => item[k] === undefined ? null : item[k]));
+            }
+          };
+
+          // Upsert dependencies first
+          upsertData('categories', categories);
+          upsertData('products', products);
+          upsertData('users', users);
+          upsertData('customers', customers);
+          
+          // Upsert orders and items
+          upsertData('orders', orders);
+          upsertData('order_items', order_items);
+        });
+        
+        console.log(`[SyncWorker] Pull complete. Processed ${totalItems} items from cloud.`);
+      }
+
+      // Update timestamp unconditionally if pull succeeded
+      dbEngine.prepare("INSERT INTO application_settings (key, value, description) VALUES ('last_sync_timestamp', ?, 'Last successful cloud pull timestamp') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(pullData.timestamp.toString());
+      // --- PULL LOGIC END ---
+
     } catch (error) {
       console.error('[SyncWorker] Sync failed (Offline or API Error):', error.message);
       // Exponential backoff
