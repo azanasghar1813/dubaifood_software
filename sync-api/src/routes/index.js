@@ -3,6 +3,7 @@ import multer from 'multer';
 import { requireDeviceAuth } from '../middleware/auth.js';
 import { pushSyncEvents, pullSyncEvents } from '../controllers/syncController.js';
 import { uploadImage } from '../controllers/imageController.js';
+import publicRoutes from './publicRoutes.js';
 
 const router = express.Router();
 
@@ -13,6 +14,9 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Mount public customer routes
+router.use('/public', publicRoutes);
 
 // All sync routes require valid device authentication
 router.use('/sync', requireDeviceAuth);

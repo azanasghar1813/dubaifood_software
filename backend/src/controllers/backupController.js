@@ -3,9 +3,72 @@ import path from 'path';
 import config from '../config/index.js';
 import { dbEngine } from '../database/sqlite.js';
 import { createRequire } from 'module';
+import { backupService } from '../backup/backupService.js';
 
 const require = createRequire(import.meta.url);
 const AdmZip = require('adm-zip');
+
+export const listBackups = async (req, res) => {
+  try {
+    const backups = dbEngine.prepare(`
+      SELECT id, file_path, size_bytes, status, created_at 
+      FROM backup_history 
+      ORDER BY created_at DESC
+    `).all();
+
+    const formatted = backups.map(b => ({
+      id: b.id,
+      filename: path.basename(b.file_path),
+      size: (b.size_bytes / (1024 * 1024)).toFixed(2) + ' MB',
+      status: b.status,
+      date: new Date(b.created_at).toLocaleString(),
+      type: 'Local'
+    }));
+
+    res.status(200).json(formatted);
+  } catch (error) {
+    console.error('[BackupController] List failed:', error);
+    res.status(500).json({ error: 'Failed to list backups' });
+  }
+};
+
+export const createBackup = async (req, res) => {
+  try {
+    const result = await backupService.createBackup('Manual backup via API');
+    res.status(200).json({
+      message: 'Backup created successfully',
+      backup: {
+        id: result.id,
+        filename: path.basename(result.file),
+        size: (result.size / (1024 * 1024)).toFixed(2) + ' MB'
+      }
+    });
+  } catch (error) {
+    console.error('[BackupController] Create failed:', error);
+    res.status(500).json({ error: 'Failed to create backup: ' + error.message });
+  }
+};
+
+export const deleteBackup = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const backup = dbEngine.prepare(`SELECT * FROM backup_history WHERE id = ?`).get(id);
+    
+    if (!backup) {
+      return res.status(404).json({ error: 'Backup not found' });
+    }
+
+    if (fs.existsSync(backup.file_path)) {
+      fs.unlinkSync(backup.file_path);
+    }
+    
+    dbEngine.prepare(`DELETE FROM backup_history WHERE id = ?`).run(id);
+    res.status(200).json({ message: 'Backup deleted successfully' });
+  } catch (error) {
+    console.error('[BackupController] Delete failed:', error);
+    res.status(500).json({ error: 'Failed to delete backup' });
+  }
+};
 
 export const restoreBackup = async (req, res) => {
   try {
@@ -40,9 +103,6 @@ export const restoreBackup = async (req, res) => {
     // Step 2: Extract over existing paths
     console.log('[BackupController] Extracting backup...');
     
-    // We want to extract 'database/pos.db' directly into config.paths.database.file 
-    // Wait, AdmZip extracts preserving the folder structure. 
-    // We'll extract everything to a temp folder, then move the db file.
     const tempExtractDir = path.join(config.paths.root, 'temp_restore');
     if (!fs.existsSync(tempExtractDir)) {
       fs.mkdirSync(tempExtractDir);
@@ -53,7 +113,6 @@ export const restoreBackup = async (req, res) => {
     // Step 3: Replace DB
     const extractedDbPath = path.join(tempExtractDir, 'database', 'pos.db');
     if (fs.existsSync(extractedDbPath)) {
-      // Overwrite current DB
       fs.copyFileSync(extractedDbPath, config.paths.database.file);
       console.log('[BackupController] Database replaced successfully.');
     }
@@ -62,7 +121,6 @@ export const restoreBackup = async (req, res) => {
     const extractedImagesPath = path.join(tempExtractDir, 'images');
     const targetImagesPath = path.join(config.paths.root, 'images');
     if (fs.existsSync(extractedImagesPath)) {
-      // Simple copy over
       fs.cpSync(extractedImagesPath, targetImagesPath, { recursive: true, force: true });
       console.log('[BackupController] Images restored successfully.');
     }
@@ -76,7 +134,6 @@ export const restoreBackup = async (req, res) => {
     // Step 4: Restart Backend
     console.log('[BackupController] Triggering backend restart...');
     setTimeout(() => {
-      // Electron listens to process exit and automatically restarts the backend process
       process.exit(0); 
     }, 1000);
 

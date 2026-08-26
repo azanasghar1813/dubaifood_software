@@ -41,7 +41,6 @@
   "build": {
     "appId": "com.dubaifood.restaurantpos",
     "productName": "Restaurant POS",
-    "icon": "build/icon.png",
     "asarUnpack": [
       "backend/**/*",
       "frontend/dist/**/*",

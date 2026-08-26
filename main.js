@@ -29,7 +29,7 @@ const envPath = app.isPackaged
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
 }
-const BACKEND_PORT = app.isPackaged ? 5055 : (process.env.PORT || 5000);
+const BACKEND_PORT = process.env.PORT || 5000;
 
 
 let mainWindow;

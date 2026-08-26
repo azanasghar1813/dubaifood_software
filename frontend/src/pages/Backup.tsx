@@ -1,27 +1,41 @@
 import { useState, useEffect } from "react"
-import { AnimatePresence } from "framer-motion"
+import { AnimatePresence, motion } from "framer-motion"
 import { 
-  Database, RefreshCw, Trash2
+  Database, RefreshCw, Trash2, HardDrive, Clock
 } from "lucide-react"
+import { backupApi, BackupRecord } from "../api/backupApi"
+import toast from "react-hot-toast"
 
 export default function Backup() {
-  const [backups, setBackups] = useState([
-    { id: "BKP-001", filename: "db_snapshot_2026-07-28_1700.sqlite", createdBy: "Ahmed Raza", size: "12.4 MB", type: "Local", status: "Verified", date: "Today, 05:00 PM" },
-    { id: "BKP-002", filename: "db_snapshot_2026-07-28_0600.sqlite", createdBy: "System Auto", size: "12.2 MB", type: "Cloud Mirror", status: "Verified", date: "Today, 06:00 AM" },
-    { id: "BKP-003", filename: "db_snapshot_2026-07-27_0600.sqlite", createdBy: "System Auto", size: "11.8 MB", type: "Cloud Mirror", status: "Verified", date: "Yesterday, 06:00 AM" },
-    { id: "BKP-004", filename: "db_snapshot_2026-07-26_0600.sqlite", createdBy: "System Auto", size: "11.5 MB", type: "Local & Cloud", status: "Verified", date: "26 Jul 2026, 06:00 AM" }
-  ])
-
+  const [backups, setBackups] = useState<BackupRecord[]>([])
+  
   // Local configs
   const [autoBackup, setAutoBackup] = useState(true)
   const [retentionCount, setRetentionCount] = useState(30)
   const [isBackingUp, setIsBackingUp] = useState(false)
   const [isRestoring, setIsRestoring] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+
+  const fetchBackups = async () => {
+    try {
+      setIsLoading(true);
+      const data = await backupApi.getBackups();
+      setBackups(data);
+    } catch (err) {
+      toast.error("Failed to load backups");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchBackups();
+  }, [])
 
   const storageSummary = {
-    dbSize: "12.4 MB",
-    diskFree: "45.2 GB",
-    lastBackup: "Today, 05:00 PM",
+    dbSize: backups[0]?.size || "0 MB",
+    diskFree: "Sufficient",
+    lastBackup: backups[0]?.date || "Never",
     totalFiles: backups.length
   }
 
@@ -37,7 +51,7 @@ export default function Backup() {
       // F5 Refresh list
       if (e.key === "F5") {
         e.preventDefault()
-        handleVerifyIntegrity()
+        fetchBackups()
       }
     }
 
@@ -45,53 +59,43 @@ export default function Backup() {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [backups])
 
-  const handleCreateBackup = () => {
+  const handleCreateBackup = async () => {
     if (isBackingUp) return
     setIsBackingUp(true)
-    setTimeout(() => {
+    const tId = toast.loading("Creating database backup...")
+    try {
+      await backupApi.createBackup();
+      toast.success("Backup generated successfully", { id: tId });
+      fetchBackups();
+    } catch (err) {
+      toast.error("Failed to create backup", { id: tId });
+    } finally {
       setIsBackingUp(false)
-      const newBkp = {
-        id: `BKP-0${backups.length + 1}`,
-        filename: `db_snapshot_${new Date().toISOString().split("T")[0]}_manual.sqlite`,
-        createdBy: "Ahmed Raza",
-        size: "12.5 MB",
-        type: "Local",
-        status: "Verified",
-        date: "Just Now"
-      }
-      setBackups([newBkp, ...backups])
-      alert("Local SQLite database backup generated successfully.")
-    }, 1500)
-  }
-
-  const handleRestore = (filename: string) => {
-    if (confirm(`CAUTION: Restoring "${filename}" will overwrite all current session tables and cache states. Proceed?`)) {
-      setIsRestoring(true)
-      setTimeout(() => {
-        setIsRestoring(false)
-        alert("Database snapshot restored and indices verified successfully. Session reloaded.")
-      }, 2000)
     }
   }
 
-  const handleDeleteBackup = (id: string) => {
+  const handleDeleteBackup = async (id: string) => {
     if (confirm("Permanently delete this backup archive from storage?")) {
-      setBackups(backups.filter(b => b.id !== id))
+      const tId = toast.loading("Deleting backup...")
+      try {
+        await backupApi.deleteBackup(id);
+        toast.success("Backup deleted", { id: tId });
+        setBackups(backups.filter(b => b.id !== id));
+      } catch (err) {
+        toast.error("Failed to delete backup", { id: tId });
+      }
     }
-  }
-
-  const handleVerifyIntegrity = () => {
-    alert("Running database tables structural and key index integrity check... Status: Healthy.")
   }
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto text-foreground pb-12">
+    <div className="space-y-6 max-w-[1600px] mx-auto text-foreground pb-12 animate-in fade-in zoom-in-95 duration-500">
       
       {/* ====================================================
           HEADER
           ==================================================== */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between p-6 bg-card border border-border rounded-3xl gap-4 shadow-sm">
-        <div>
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between p-6 bg-card border border-border rounded-3xl gap-4 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+        <div className="relative z-10">
           <h1 className="text-xl md:text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
             Backup & Restore Center
             <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">Enterprise Storage</span>
@@ -101,20 +105,20 @@ export default function Backup() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap relative z-10">
           <button 
-            onClick={handleVerifyIntegrity}
+            onClick={fetchBackups}
             className="flex items-center gap-1.5 px-3 py-2 bg-secondary border border-border rounded-xl text-xs font-black text-foreground hover:bg-secondary/80 transition-colors"
           >
-            <RefreshCw className="w-4 h-4" /> Integrity check [F5]
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh [F5]
           </button>
           
           <button 
             onClick={handleCreateBackup}
             disabled={isBackingUp}
-            className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-xl text-xs font-black hover:bg-primary/95 shadow-md shadow-primary/10 disabled:opacity-50 transition-all active:scale-95"
+            className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-xl text-xs font-black hover:bg-primary/95 shadow-md shadow-primary/20 disabled:opacity-50 transition-all active:scale-95"
           >
-            <Database className="w-4 h-4" />
+            <Database className={`w-4 h-4 ${isBackingUp ? 'animate-pulse' : ''}`} />
             {isBackingUp ? "Backing up..." : "Create Backup [Ctrl+B]"}
           </button>
         </div>
@@ -125,17 +129,20 @@ export default function Backup() {
           ==================================================== */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Active Database Size", val: storageSummary.dbSize, sub: "SQLite local file store", color: "text-blue-500" },
-          { label: "Storage Disk Space", val: storageSummary.diskFree, sub: "Free storage space", color: "text-emerald-500" },
-          { label: "Last Auto-Backup", val: storageSummary.lastBackup, sub: "Completed successfully", color: "text-emerald-500" },
-          { label: "Configured Archives", val: `${storageSummary.totalFiles} Backups`, sub: "Retention target: 30 files", color: "text-amber-500" }
+          { label: "Active Database Size", val: storageSummary.dbSize, sub: "SQLite local file store", color: "text-blue-500", icon: Database },
+          { label: "Storage Disk Space", val: storageSummary.diskFree, sub: "Free storage space", color: "text-emerald-500", icon: HardDrive },
+          { label: "Last Backup", val: storageSummary.lastBackup, sub: "Completed successfully", color: "text-emerald-500", icon: Clock },
+          { label: "Configured Archives", val: `${storageSummary.totalFiles} Backups`, sub: "Retention target: 30 files", color: "text-amber-500", icon: Database }
         ].map((card, i) => (
-          <div key={i} className="p-4 bg-card border border-border/50 rounded-2xl flex flex-col justify-between shadow-sm">
-            <div>
+          <div key={i} className="p-4 bg-card border border-border/50 rounded-2xl flex items-center justify-between shadow-sm relative overflow-hidden group">
+            <div className="absolute right-[-20px] top-[-20px] opacity-5 group-hover:scale-110 transition-transform duration-500">
+              <card.icon className="w-24 h-24" />
+            </div>
+            <div className="relative z-10">
               <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">{card.label}</span>
               <h4 className="text-xl font-black mt-2 text-foreground">{card.val}</h4>
+              <span className={`text-[8px] font-bold mt-2 block ${card.color}`}>{card.sub}</span>
             </div>
-            <span className={`text-[8px] font-bold mt-2 ${card.color}`}>{card.sub}</span>
           </div>
         ))}
       </div>
@@ -156,43 +163,50 @@ export default function Backup() {
                 <thead className="bg-secondary/30 text-muted-foreground text-xs uppercase font-bold border-b border-border">
                   <tr>
                     <th className="px-6 py-4">Filename</th>
-                    <th className="px-6 py-4">Created By</th>
+                    <th className="px-6 py-4">Date</th>
                     <th className="px-6 py-4">Archive Size</th>
-                    <th className="px-6 py-4">Storage Destination</th>
-                    <th className="px-6 py-4 text-center">Security Status</th>
-                    <th className="px-6 py-4 text-right">Recover</th>
+                    <th className="px-6 py-4 text-center">Status</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {backups.map((bkp) => (
-                    <tr key={bkp.id} className="hover:bg-secondary/20 transition-colors">
-                      <td className="px-6 py-4 font-black text-foreground text-xs">{bkp.filename}</td>
-                      <td className="px-6 py-4 text-xs font-semibold text-muted-foreground">{bkp.createdBy}</td>
-                      <td className="px-6 py-4 text-xs font-bold">{bkp.size}</td>
-                      <td className="px-6 py-4 text-xs font-semibold text-muted-foreground">{bkp.type}</td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider border bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
-                          {bkp.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-1.5">
-                          <button 
-                            onClick={() => handleRestore(bkp.filename)}
-                            className="px-3 py-1.5 bg-primary text-white hover:bg-primary/95 text-[10px] uppercase font-black rounded-lg transition-all"
-                          >
-                            Restore
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteBackup(bkp.id)}
-                            className="p-2 bg-secondary text-red-500 hover:bg-red-500 hover:text-white border border-border rounded-xl transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-muted-foreground font-bold text-xs">Loading backups...</td>
                     </tr>
-                  ))}
+                  ) : backups.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-muted-foreground font-bold text-xs">No backups found</td>
+                    </tr>
+                  ) : (
+                    backups.map((bkp) => (
+                      <tr key={bkp.id} className="hover:bg-secondary/20 transition-colors">
+                        <td className="px-6 py-4 font-black text-foreground text-xs">
+                          {bkp.filename}
+                          <span className="block text-[9px] text-muted-foreground font-semibold mt-0.5">{bkp.type}</span>
+                        </td>
+                        <td className="px-6 py-4 text-xs font-semibold text-muted-foreground">{bkp.date}</td>
+                        <td className="px-6 py-4 text-xs font-bold">{bkp.size}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider border ${
+                            bkp.status === 'SUCCESS' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'
+                          }`}>
+                            {bkp.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex justify-end gap-1.5">
+                            <button 
+                              onClick={() => handleDeleteBackup(bkp.id)}
+                              className="p-2 bg-secondary text-red-500 hover:bg-red-500 hover:text-white border border-border rounded-xl transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -208,18 +222,18 @@ export default function Backup() {
             <h3 className="text-base font-black uppercase tracking-wider text-foreground">Backup Schedule</h3>
             
             <div className="space-y-4 text-xs font-bold">
-              <div className="flex justify-between items-center p-2 bg-secondary/40 border border-border rounded-xl">
+              <div className="flex justify-between items-center p-3 bg-secondary/40 border border-border rounded-xl">
                 <span className="text-muted-foreground">Auto-Backup on Session Close</span>
-                <input type="checkbox" checked={autoBackup} onChange={e=>setAutoBackup(e.target.checked)} className="w-4 h-4 rounded cursor-pointer" />
+                <input type="checkbox" checked={autoBackup} onChange={e=>setAutoBackup(e.target.checked)} className="w-4 h-4 rounded cursor-pointer accent-primary" />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] uppercase font-black text-muted-foreground">Archive Retention Count</label>
+                <label className="text-[10px] uppercase font-black text-muted-foreground ml-1">Archive Retention Count</label>
                 <input 
                   type="number"
                   value={retentionCount}
                   onChange={e=>setRetentionCount(parseInt(e.target.value) || 30)}
-                  className="w-full h-9 rounded-lg bg-secondary border border-border px-2 focus:outline-none"
+                  className="w-full h-10 rounded-xl bg-secondary/50 border border-border px-3 focus:outline-none focus:border-primary transition-colors font-black"
                 />
               </div>
             </div>
@@ -230,11 +244,11 @@ export default function Backup() {
             <h3 className="text-base font-black uppercase tracking-wider text-foreground">Cloud Backups</h3>
             
             <div className="space-y-3 text-xs font-bold text-muted-foreground">
-              <div className="flex justify-between items-center p-2 bg-secondary/40 border border-border rounded-xl">
-                <span>Google Cloud Storage Mirror</span>
-                <span className="text-emerald-500 text-[10px] uppercase">Active</span>
+              <div className="flex justify-between items-center p-3 bg-secondary/40 border border-border rounded-xl border-emerald-500/20">
+                <span className="text-emerald-500">Google Cloud Storage Mirror</span>
+                <span className="text-emerald-500 text-[10px] uppercase font-black px-2 py-0.5 bg-emerald-500/10 rounded-full">Active</span>
               </div>
-              <div className="flex justify-between items-center p-2 bg-secondary/40 border border-border rounded-xl">
+              <div className="flex justify-between items-center p-3 bg-secondary/40 border border-border rounded-xl opacity-50">
                 <span>Amazon AWS S3 Glacier</span>
                 <span className="text-zinc-400 text-[10px] uppercase">Disabled</span>
               </div>
@@ -248,13 +262,18 @@ export default function Backup() {
       {/* Restore loading overlay */}
       <AnimatePresence>
         {isRestoring && (
-          <div className="fixed inset-0 z-[300] bg-background/90 backdrop-blur-md flex flex-col items-center justify-center text-center">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] bg-background/90 backdrop-blur-md flex flex-col items-center justify-center text-center"
+          >
             <RefreshCw className="w-12 h-12 text-primary animate-spin mb-4" />
             <h3 className="text-xl font-black text-foreground">Restoring Database Snapshot...</h3>
             <p className="text-xs text-muted-foreground mt-2 max-w-xs">
               Overwriting current transactions table and clearing object cache. Verifying index constraints. Do not turn off POS terminal.
             </p>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 

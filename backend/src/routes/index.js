@@ -21,6 +21,7 @@ import reportRoutes from './reportRoutes.js';
 import shiftRoutes from './shiftRoutes.js';
 import tableRoutes from './tableRoutes.js';
 import backupRoutes from './backupRoutes.js';
+import syncRoutes from './syncRoutes.js';
 
 const router = Router();
 
@@ -47,5 +48,6 @@ router.use('/activity-logs', activityLogRoutes);
 router.use('/reports', reportRoutes);
 router.use('/shifts', shiftRoutes);
 router.use('/backup', backupRoutes);
+router.use('/sync', syncRoutes);
 
 export default router;

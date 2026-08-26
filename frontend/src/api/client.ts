@@ -44,6 +44,26 @@ apiClient.interceptors.request.use(
     if (cashierSessionId && config.headers) {
       config.headers['x-cashier-session-id'] = cashierSessionId
     }
+
+    // 3. Attach Device Identity Headers
+    if (config.headers) {
+      let terminalId = localStorage.getItem('terminal_id');
+      if (!terminalId) {
+        terminalId = 'TERM-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+        localStorage.setItem('terminal_id', terminalId);
+      }
+      
+      let deviceName = localStorage.getItem('device_name');
+      if (!deviceName) {
+        const isElectron = /electron/i.test(navigator.userAgent);
+        const platform = isElectron ? 'Server PC' : (navigator.maxTouchPoints > 0 ? 'Tablet' : 'Browser');
+        deviceName = `${platform} - ${terminalId.substring(5)}`;
+        localStorage.setItem('device_name', deviceName);
+      }
+
+      config.headers['x-terminal-id'] = terminalId;
+      config.headers['x-device-name'] = deviceName;
+    }
     
     return config
   },

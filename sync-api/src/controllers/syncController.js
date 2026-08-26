@@ -115,8 +115,6 @@ export const pullSyncEvents = async (req, res) => {
     const since = last_sync_timestamp ? new Date(parseInt(last_sync_timestamp)).toISOString() : new Date(0).toISOString();
 
     // Pull updated master data for waiter tablets and web POS
-    // Note: In a full enterprise scenario, you would fetch from multiple tables or a dedicated sync log table.
-    // For Phase 4 demonstration, we fetch products modified since the last sync.
     const { data: products, error: productError } = await supabase
       .from('products')
       .select('*')
@@ -131,12 +129,22 @@ export const pullSyncEvents = async (req, res) => {
       
     if (categoryError) throw categoryError;
 
+    // Pull ONLINE orders that are PENDING for the local POS to download and process
+    const { data: onlineOrders, error: orderError } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('source', 'ONLINE')
+      .eq('status', 'PENDING');
+
+    if (orderError) throw orderError;
+
     // Return the batched updates
     return res.status(200).json({
       timestamp: Date.now(),
       data: {
         products,
-        categories
+        categories,
+        orders: onlineOrders
       }
     });
   } catch (error) {

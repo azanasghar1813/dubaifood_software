@@ -1,155 +1,104 @@
 import { useState, useEffect, useRef } from "react"
 import { 
-  RefreshCw, AlertTriangle, History, Trash2, Plus
+  RefreshCw, AlertTriangle, History, Trash2, Plus, MonitorSmartphone, Wifi, Database
 } from "lucide-react"
+import { syncApi, SyncStatus, ActiveDevice } from "../api/syncApi"
+import toast from "react-hot-toast"
+import { AnimatePresence, motion } from "framer-motion"
 
 export default function Synchronization() {
-  // Sync Center States
   const [isSyncing, setIsSyncing] = useState(false)
   const [autoSync, setAutoSync] = useState(true)
   const [syncInterval, setSyncInterval] = useState("30 Seconds")
-  const [isPaused] = useState(false)
-  const [] = useState("")
-  const [] = useState("All")
+  const [isLoading, setIsLoading] = useState(true)
   
-  // Register new device form
-  const [newDeviceName, setNewDeviceName] = useState("")
-  const [newDeviceIp, setNewDeviceIp] = useState("")
-  const [newDeviceRole] = useState("Counter PC")
-
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  // Network State Simulator
   const [networkQuality] = useState<"Excellent" | "Good" | "Poor" | "Offline">("Excellent")
   const [latency, setLatency] = useState(24)
 
-  const [devices, setDevices] = useState([
-    { id: "DEV-A1", name: "Counter PC 1 (Billing)", ip: "192.168.1.10", role: "Cashier Terminal", status: "Online", lastSeen: "Just Now" },
-    { id: "DEV-A2", name: "Counter PC 2 (Takeaway)", ip: "192.168.1.11", role: "Cashier Terminal", status: "Online", lastSeen: "2 mins ago" },
-    { id: "DEV-K1", name: "Fast Food Kitchen KDS", ip: "192.168.1.50", role: "Kitchen Display", status: "Online", lastSeen: "Just Now" },
-    { id: "DEV-K2", name: "Restaurant Kitchen KDS", ip: "192.168.1.51", role: "Kitchen Display", status: "Offline", lastSeen: "1 hr ago" },
-    { id: "DEV-M1", name: "Manager Office Laptop", ip: "192.168.1.100", role: "Backoffice Admin", status: "Online", lastSeen: "5 mins ago" }
-  ])
-
-  const [pendingChanges, setPendingChanges] = useState({
-    orders: 4,
-    products: 0,
-    customers: 2,
-    reports: 1,
-    settings: 0,
-    cashiers: 1
-  })
+  const [status, setStatus] = useState<SyncStatus>({ pending: 0, failed: 0, synced: 0, isRunning: false, nextRunDelay: 0 })
+  const [devices, setDevices] = useState<ActiveDevice[]>([])
 
   const [syncHistory, setSyncHistory] = useState([
     { id: "H-9921", date: "Today", time: "05:00 PM", device: "Counter PC 1", uploaded: 12, downloaded: 4, duration: "1.2s", status: "Successful" },
-    { id: "H-9920", date: "Today", time: "04:30 PM", device: "Manager PC", uploaded: 0, downloaded: 18, duration: "2.4s", status: "Successful" },
-    { id: "H-9919", date: "Today", time: "04:00 PM", device: "Counter PC 2", uploaded: 6, downloaded: 2, duration: "0.8s", status: "Successful" },
-    { id: "H-9918", date: "Today", time: "03:30 PM", device: "Fast Food Kitchen", uploaded: 0, downloaded: 0, duration: "0.5s", status: "Successful" },
-    { id: "H-9917", date: "Today", time: "03:00 PM", device: "Counter PC 1", uploaded: 15, downloaded: 6, duration: "1.9s", status: "Failed" }
   ])
 
-  const [conflicts, setConflicts] = useState([
-    { id: "C-101", type: "Order Edited on 2 registers", item: "Order #ORD-8012", localTime: "04:55 PM", cloudTime: "04:54 PM", description: "Counter PC 1 modified payment type to Card while Counter PC 2 marked it as Unpaid cash." }
-  ])
+  const [conflicts, setConflicts] = useState<any[]>([])
 
-  // Keyboard Shortcuts Listener
+  const fetchSyncData = async () => {
+    try {
+      setIsLoading(true);
+      const [statusData, devicesData] = await Promise.all([
+        syncApi.getStatus(),
+        syncApi.getActiveDevices()
+      ]);
+      setStatus(statusData);
+      setDevices(devicesData);
+    } catch (err) {
+      toast.error("Failed to fetch sync status");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchSyncData();
+    // Poll every 5 seconds for live devices
+    const interval = setInterval(fetchSyncData, 5000);
+    return () => clearInterval(interval);
+  }, [])
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // F5 Refresh
       if (e.key === "F5") {
         e.preventDefault()
         handleAutoDetect()
       }
-
-      // Ctrl + S: Trigger Sync Now
       if (e.ctrlKey && e.key === "s") {
         e.preventDefault()
         triggerSync()
       }
-
-      // Ctrl + F: Search Focus
-      if (e.ctrlKey && e.key === "f") {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-      }
     }
-
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [pendingChanges])
+  }, [])
 
   const handleAutoDetect = () => {
     setLatency(Math.floor(Math.random() * 30) + 10)
-    alert("Refreshing local server and testing cloud ping latency...")
+    fetchSyncData();
+    toast.success("Refreshing device mesh and cloud latency...");
   }
 
-  const triggerSync = () => {
+  const triggerSync = async () => {
     if (isSyncing || networkQuality === "Offline") return
     setIsSyncing(true)
-
-    // Simulate Sync upload and download completion
-    setTimeout(() => {
+    const tId = toast.loading("Pushing offline data to cloud...")
+    try {
+      await syncApi.triggerSync();
+      toast.success("Sync triggered successfully", { id: tId });
+      fetchSyncData();
+    } catch (err) {
+      toast.error("Cloud sync failed", { id: tId });
+    } finally {
       setIsSyncing(false)
-      const count = pendingChanges.orders + pendingChanges.customers + pendingChanges.reports + pendingChanges.cashiers
-      setPendingChanges({
-        orders: 0,
-        products: 0,
-        customers: 0,
-        reports: 0,
-        settings: 0,
-        cashiers: 0
-      })
-      setSyncHistory(prev => [
-        {
-          id: `H-${Math.floor(Math.random() * 9000) + 1000}`,
-          date: "Today",
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          device: "Local Station PC 1",
-          uploaded: count,
-          downloaded: 3,
-          duration: "1.4s",
-          status: "Successful"
-        },
-        ...prev
-      ])
-    }, 2000)
-  }
-
-  const handleRegisterDevice = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newDeviceName || !newDeviceIp) return
-    const newDev = {
-      id: `DEV-X${devices.length + 1}`,
-      name: newDeviceName,
-      ip: newDeviceIp,
-      role: newDeviceRole,
-      status: "Online",
-      lastSeen: "Just Now"
-    }
-    setDevices([...devices, newDev])
-    setNewDeviceName("")
-    setNewDeviceIp("")
-  }
-
-  const handleRemoveDevice = (id: string) => {
-    if (confirm("Disconnect and remove this terminal ID?")) {
-      setDevices(devices.filter(d => d.id !== id))
     }
   }
 
   const handleResolveConflict = (conflictId: string, resolution: "local" | "cloud" | "merge") => {
     setConflicts(conflicts.filter(c => c.id !== conflictId))
-    alert(`Conflict resolved: Retaining data from "${resolution}" database.`)
+    toast.success(`Conflict resolved using "${resolution}" strategy.`);
   }
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto text-foreground pb-12">
+    <div className="space-y-6 max-w-[1600px] mx-auto text-foreground pb-12 animate-in fade-in zoom-in-95 duration-500">
       
       {/* ====================================================
           HEADER
           ==================================================== */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between p-6 bg-card border border-border rounded-3xl gap-4 shadow-sm">
-        <div>
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between p-6 bg-card border border-border rounded-3xl gap-4 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 -translate-x-1/2 pointer-events-none" />
+        <div className="relative z-10">
           <h1 className="text-xl md:text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
             Synchronization Command Center
             <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">Offline-First</span>
@@ -159,11 +108,11 @@ export default function Synchronization() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap relative z-10">
           <button 
             onClick={triggerSync}
             disabled={isSyncing || networkQuality === "Offline"}
-            className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-xl text-xs font-black hover:bg-primary/95 shadow-md shadow-primary/10 disabled:opacity-50 transition-all active:scale-95"
+            className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-xl text-xs font-black hover:bg-primary/95 shadow-md shadow-primary/20 disabled:opacity-50 transition-all active:scale-95"
           >
             <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
             {isSyncing ? "Syncing data..." : "Sync Now [Ctrl+S]"}
@@ -176,19 +125,20 @@ export default function Synchronization() {
           ==================================================== */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
         {[
-          { label: "Internet", val: networkQuality, sub: `Latency: ${latency} ms`, color: networkQuality === "Offline" ? "text-red-500" : "text-emerald-500" },
-          { label: "Cloud Sync Gateway", val: isPaused ? "Paused" : "Connected", sub: "Cloud DB Mirror Active", color: isPaused ? "text-amber-500" : "text-emerald-500" },
-          { label: "SQLite DB Status", val: "Healthy", sub: "Integrity check pass", color: "text-emerald-500" },
-          { label: "Pending Upload Queue", val: `${pendingChanges.orders} Orders`, sub: `${pendingChanges.customers + pendingChanges.reports + pendingChanges.cashiers} meta records waiting`, color: "text-amber-500" },
-          { label: "Last Auto-Sync", val: "2 mins ago", sub: "Successfully uploaded", color: "text-zinc-400" },
-          { label: "Auto Sync Status", val: autoSync ? `Every ${syncInterval}` : "Disabled", sub: "Periodic sync task", color: autoSync ? "text-emerald-500" : "text-zinc-500" }
+          { label: "Internet", val: networkQuality, sub: `Latency: ${latency} ms`, color: networkQuality === "Offline" ? "text-red-500" : "text-emerald-500", icon: Wifi },
+          { label: "Cloud Sync Gateway", val: status.isRunning ? "Syncing..." : "Idle", sub: "Cloud DB Mirror Active", color: "text-emerald-500", icon: Database },
+          { label: "Pending Upload Queue", val: `${status.pending} Items`, sub: `${status.failed} failed items`, color: status.pending > 0 ? "text-amber-500" : "text-emerald-500", icon: History },
+          { label: "Auto Sync Status", val: autoSync ? `Every ${syncInterval}` : "Disabled", sub: "Periodic sync task", color: autoSync ? "text-emerald-500" : "text-zinc-500", icon: RefreshCw }
         ].map((card, i) => (
-          <div key={i} className="p-4 bg-card border border-border/50 rounded-2xl flex flex-col justify-between shadow-sm">
-            <div>
+          <div key={i} className="p-4 bg-card border border-border/50 rounded-2xl flex items-center justify-between shadow-sm relative overflow-hidden group">
+            <div className="absolute right-[-15px] top-[-15px] opacity-5 group-hover:scale-110 transition-transform duration-500">
+              <card.icon className="w-20 h-20" />
+            </div>
+            <div className="relative z-10">
               <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">{card.label}</span>
               <h4 className="text-base font-black mt-2 text-foreground">{card.val}</h4>
+              <span className={`text-[8px] font-bold mt-2 block ${card.color}`}>{card.sub}</span>
             </div>
-            <span className={`text-[8px] font-bold mt-2 ${card.color}`}>{card.sub}</span>
           </div>
         ))}
       </div>
@@ -205,105 +155,62 @@ export default function Synchronization() {
           <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4">
             <h3 className="text-base font-black uppercase tracking-wider text-foreground">Pending Offline Queue</h3>
             
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { label: "Orders Waiting", val: pendingChanges.orders, color: "text-orange-500" },
-                { label: "Products Waiting", val: pendingChanges.products, color: "text-zinc-500" },
-                { label: "Customers Waiting", val: pendingChanges.customers, color: "text-blue-500" },
-                { label: "Reports Waiting", val: pendingChanges.reports, color: "text-amber-500" },
-                { label: "Settings Waiting", val: pendingChanges.settings, color: "text-zinc-500" },
-                { label: "Cashiers Waiting", val: pendingChanges.cashiers, color: "text-indigo-500" }
+                { label: "Pending Uploads", val: status.pending, color: "text-orange-500" },
+                { label: "Failed Uploads", val: status.failed, color: "text-red-500" },
+                { label: "Successfully Synced", val: status.synced, color: "text-emerald-500" },
+                { label: "Next Retry Delay", val: `${status.nextRunDelay / 1000}s`, color: "text-blue-500" }
               ].map((item, idx) => (
-                <div key={idx} className="p-3 bg-secondary/40 border border-border rounded-xl text-center">
+                <div key={idx} className="p-4 bg-secondary/40 border border-border rounded-xl text-center">
                   <span className="text-[9px] text-muted-foreground uppercase font-black">{item.label}</span>
-                  <p className={`text-xl font-black mt-2 ${item.color}`}>{item.val}</p>
+                  <p className={`text-2xl font-black mt-2 ${item.color}`}>{item.val}</p>
                 </div>
               ))}
-            </div>
-          </div>
-
-          {/* Sync History timeline */}
-          <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4">
-            <h3 className="text-base font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
-              <History className="w-5 h-5 text-primary" /> Sync History Log
-            </h3>
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left border-collapse">
-                <thead className="bg-secondary/30 text-muted-foreground text-xs uppercase font-bold border-b border-border">
-                  <tr>
-                    <th className="px-4 py-3">Timestamp</th>
-                    <th className="px-4 py-3">Device Terminal</th>
-                    <th className="px-4 py-3 text-center">Uploaded</th>
-                    <th className="px-4 py-3 text-center">Downloaded</th>
-                    <th className="px-4 py-3">Duration</th>
-                    <th className="px-4 py-3 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {syncHistory.map((row) => (
-                    <tr key={row.id} className="hover:bg-secondary/20 transition-colors">
-                      <td className="px-4 py-3 font-bold text-muted-foreground text-xs">{row.date}, {row.time}</td>
-                      <td className="px-4 py-3 font-black text-foreground">{row.device}</td>
-                      <td className="px-4 py-3 text-center font-bold">{row.uploaded}</td>
-                      <td className="px-4 py-3 text-center font-bold">{row.downloaded}</td>
-                      <td className="px-4 py-3 text-xs">{row.duration}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`text-[9px] px-2 py-0.5 rounded font-black uppercase border ${
-                          row.status === "Successful" 
-                            ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
-                            : 'bg-red-500/10 text-red-500 border-red-500/20'
-                        }`}>
-                          {row.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           </div>
 
           {/* Conflict Resolution Block */}
-          {conflicts.length > 0 && (
-            <div className="p-6 bg-amber-500/10 border border-amber-500/25 rounded-[2.5rem] shadow-sm space-y-4">
-              <div className="flex items-center gap-2 text-amber-500">
-                <AlertTriangle className="w-5 h-5" />
-                <h3 className="text-sm font-black uppercase tracking-wider">Sync Conflict Warnings</h3>
-              </div>
-              
-              {conflicts.map(conf => (
-                <div key={conf.id} className="p-4 bg-card border border-border rounded-2xl space-y-3 text-xs font-bold text-foreground">
-                  <div className="flex justify-between">
-                    <span className="text-primary font-black">{conf.item}</span>
-                    <span className="text-muted-foreground">Conflict ID: {conf.id}</span>
-                  </div>
-                  <p className="text-muted-foreground font-semibold leading-relaxed">{conf.description}</p>
-                  
-                  <div className="flex gap-2 pt-2">
-                    <button 
-                      onClick={() => handleResolveConflict(conf.id, "local")}
-                      className="px-3 py-1.5 bg-secondary hover:bg-border border border-border text-[10px] uppercase font-black rounded-lg transition-colors"
-                    >
-                      Keep Local PC Data
-                    </button>
-                    <button 
-                      onClick={() => handleResolveConflict(conf.id, "cloud")}
-                      className="px-3 py-1.5 bg-secondary hover:bg-border border border-border text-[10px] uppercase font-black rounded-lg transition-colors"
-                    >
-                      Keep Cloud Data
-                    </button>
-                    <button 
-                      onClick={() => handleResolveConflict(conf.id, "merge")}
-                      className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white text-[10px] uppercase font-black rounded-lg transition-colors"
-                    >
-                      Automated Merge Rules
-                    </button>
-                  </div>
+          <AnimatePresence>
+            {conflicts.length > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="p-6 bg-amber-500/10 border border-amber-500/25 rounded-[2.5rem] shadow-sm space-y-4"
+              >
+                <div className="flex items-center gap-2 text-amber-500">
+                  <AlertTriangle className="w-5 h-5" />
+                  <h3 className="text-sm font-black uppercase tracking-wider">Sync Conflict Warnings</h3>
                 </div>
-              ))}
-            </div>
-          )}
+                
+                {conflicts.map(conf => (
+                  <div key={conf.id} className="p-4 bg-card border border-border rounded-2xl space-y-3 text-xs font-bold text-foreground">
+                    <div className="flex justify-between">
+                      <span className="text-primary font-black">{conf.item}</span>
+                      <span className="text-muted-foreground">Conflict ID: {conf.id}</span>
+                    </div>
+                    <p className="text-muted-foreground font-semibold leading-relaxed">{conf.description}</p>
+                    
+                    <div className="flex gap-2 pt-2">
+                      <button 
+                        onClick={() => handleResolveConflict(conf.id, "local")}
+                        className="px-3 py-1.5 bg-secondary hover:bg-border border border-border text-[10px] uppercase font-black rounded-lg transition-colors"
+                      >
+                        Keep Local PC Data
+                      </button>
+                      <button 
+                        onClick={() => handleResolveConflict(conf.id, "cloud")}
+                        className="px-3 py-1.5 bg-secondary hover:bg-border border border-border text-[10px] uppercase font-black rounded-lg transition-colors"
+                      >
+                        Keep Cloud Data
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
         </div>
 
@@ -315,18 +222,18 @@ export default function Synchronization() {
             <h3 className="text-base font-black uppercase tracking-wider text-foreground">Sync Preferences</h3>
             
             <div className="space-y-4 text-xs font-bold">
-              <div className="flex justify-between items-center p-2 bg-secondary/40 border border-border rounded-xl">
+              <div className="flex justify-between items-center p-3 bg-secondary/40 border border-border rounded-xl">
                 <span className="text-muted-foreground">Enable Periodic Auto-Sync</span>
-                <input type="checkbox" checked={autoSync} onChange={e=>setAutoSync(e.target.checked)} className="w-4 h-4 rounded cursor-pointer" />
+                <input type="checkbox" checked={autoSync} onChange={e=>setAutoSync(e.target.checked)} className="w-4 h-4 rounded cursor-pointer accent-primary" />
               </div>
 
               {autoSync && (
                 <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-black text-muted-foreground">Sync Interval</label>
+                  <label className="text-[10px] uppercase font-black text-muted-foreground ml-1">Sync Interval</label>
                   <select 
                     value={syncInterval}
                     onChange={e=>setSyncInterval(e.target.value)}
-                    className="w-full h-9 rounded-lg bg-secondary border border-border px-2 focus:outline-none"
+                    className="w-full h-10 rounded-xl bg-secondary/50 border border-border px-3 focus:outline-none focus:border-primary transition-colors font-black"
                   >
                     <option value="10 Seconds">Every 10 Seconds</option>
                     <option value="30 Seconds">Every 30 Seconds</option>
@@ -340,72 +247,45 @@ export default function Synchronization() {
 
           {/* Connected LAN Terminals list */}
           <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4">
-            <h3 className="text-base font-black uppercase tracking-wider text-foreground">Registered Devices</h3>
-            
-            <div className="space-y-2 max-h-56 overflow-y-auto custom-scrollbar">
-              {devices.map(dev => (
-                <div key={dev.id} className="flex justify-between items-center p-3 bg-secondary/40 border border-border rounded-xl">
-                  <div>
-                    <span className="font-black text-xs text-foreground block">{dev.name}</span>
-                    <span className="text-[9px] text-muted-foreground block mt-0.5">IP: {dev.ip} • Role: {dev.role}</span>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded border ${
-                      dev.status === "Online" 
-                        ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
-                        : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
-                    }`}>
-                      {dev.status}
-                    </span>
-                    <button 
-                      type="button" 
-                      onClick={() => handleRemoveDevice(dev.id)}
-                      className="text-red-500 hover:bg-red-500/10 p-1 rounded"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black uppercase tracking-wider text-foreground">Live Active Devices</h3>
+              <span className="flex items-center gap-1.5 text-[9px] font-black uppercase px-2 py-1 bg-primary/10 text-primary rounded-full">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" /> {devices.length} Online
+              </span>
             </div>
-          </div>
-
-          {/* Register New Terminal Form */}
-          <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4">
-            <h3 className="text-sm font-black uppercase tracking-wider text-foreground">Register POS Terminal</h3>
-            <form onSubmit={handleRegisterDevice} className="space-y-3 text-xs font-bold">
-              <div className="space-y-1">
-                <label className="text-[10px] uppercase font-black text-muted-foreground">Terminal Name</label>
-                <input 
-                  required
-                  type="text" 
-                  placeholder="e.g. Counter PC 3" 
-                  value={newDeviceName}
-                  onChange={e=>setNewDeviceName(e.target.value)}
-                  className="w-full h-9 px-2.5 rounded-lg bg-secondary border border-border outline-none focus:border-orange-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] uppercase font-black text-muted-foreground">LAN IP Address</label>
-                <input 
-                  required
-                  type="text" 
-                  placeholder="e.g. 192.168.1.12" 
-                  value={newDeviceIp}
-                  onChange={e=>setNewDeviceIp(e.target.value)}
-                  className="w-full h-9 px-2.5 rounded-lg bg-secondary border border-border outline-none focus:border-orange-500"
-                />
-              </div>
-
-              <button 
-                type="submit"
-                className="w-full h-9 bg-primary hover:bg-primary/95 text-white font-black text-xs uppercase rounded-lg transition-colors flex items-center justify-center gap-1 mt-2"
-              >
-                <Plus className="w-3.5 h-3.5" /> Register Terminal
-              </button>
-            </form>
+            
+            <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+              {devices.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground text-xs font-bold">
+                  <MonitorSmartphone className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  No devices connected right now.
+                </div>
+              ) : (
+                devices.map(dev => {
+                  const isOnline = (Date.now() - dev.lastSeen) < 10000; // 10 seconds ago = online
+                  return (
+                  <div key={dev.id} className="flex justify-between items-center p-3 bg-secondary/40 border border-border rounded-xl hover:border-primary/50 transition-colors">
+                    <div>
+                      <span className="font-black text-xs text-foreground flex items-center gap-1.5">
+                        <MonitorSmartphone className="w-3.5 h-3.5 text-muted-foreground" /> {dev.name}
+                      </span>
+                      <span className="text-[9px] text-muted-foreground block mt-1 font-semibold">IP: {dev.ip} • ID: {dev.id}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                        isOnline
+                          ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+                          : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+                      }`}>
+                        {isOnline ? 'Online' : 'Away'}
+                      </span>
+                    </div>
+                  </div>
+                  )
+                })
+              )}
+            </div>
           </div>
 
         </div>

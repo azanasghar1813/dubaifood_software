@@ -40,6 +40,32 @@ app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Global device tracking
+global.activeDevices = new Map();
+
+// Device Tracking Middleware
+app.use((req, res, next) => {
+  const terminalId = req.headers['x-terminal-id'];
+  const deviceName = req.headers['x-device-name'];
+  
+  if (terminalId && deviceName) {
+    let ip = req.ip || req.socket?.remoteAddress || 'Unknown IP';
+    // Clean IPv6 to IPv4 format if it's loopback
+    if (ip === '::1') ip = '127.0.0.1';
+    if (ip.startsWith('::ffff:')) ip = ip.substring(7);
+
+    global.activeDevices.set(terminalId, {
+      id: terminalId,
+      name: deviceName,
+      ip: ip,
+      role: "Counter Terminal", 
+      lastSeen: Date.now(),
+      status: 'Online'
+    });
+  }
+  next();
+});
+
 // Serve static storage (images, etc)
 app.use('/storage', express.static(config.paths.root));
 
