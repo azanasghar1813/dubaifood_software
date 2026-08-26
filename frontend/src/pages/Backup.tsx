@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { 
   Database, RefreshCw, Trash2, HardDrive, Clock
 } from "lucide-react"
-import { backupApi, BackupRecord } from "../api/backupApi"
+import { backupApi, type BackupRecord } from "../api/backupApi"
 import toast from "react-hot-toast"
 
 export default function Backup() {

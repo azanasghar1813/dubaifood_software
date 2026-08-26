@@ -1,5 +1,5 @@
-export const migration = {
-  version: 30,
+export default {
+  version: '030',
   name: 'add_payment_idempotency',
   up: (db) => {
     // Check if column exists first to be idempotent
@@ -9,7 +9,7 @@ export const migration = {
     if (!hasIdempotencyKey) {
       db.exec(`
         ALTER TABLE order_payments 
-        ADD COLUMN idempotency_key TEXT UNIQUE;
+        ADD COLUMN idempotency_key TEXT;
       `);
       db.exec(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_order_payments_idempotency 

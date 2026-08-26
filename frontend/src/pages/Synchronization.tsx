@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { 
   RefreshCw, AlertTriangle, History, Trash2, Plus, MonitorSmartphone, Wifi, Database
 } from "lucide-react"
-import { syncApi, SyncStatus, ActiveDevice } from "../api/syncApi"
+import { syncApi, type SyncStatus, type ActiveDevice } from "../api/syncApi"
 import toast from "react-hot-toast"
 import { AnimatePresence, motion } from "framer-motion"
 
