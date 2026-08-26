@@ -60,6 +60,14 @@ class SyncService {
       WHERE id = ?
     `).run(errorMsg, eventId);
   }
+
+  markEventPermanentFailure(eventId, errorMsg) {
+    dbEngine.prepare(`
+      UPDATE sync_queue 
+      SET status = 'FAILED', error_details = ?, retry_count = retry_count + 1, updated_at = CURRENT_TIMESTAMP, permanent_failure = 1
+      WHERE id = ?
+    `).run(errorMsg, eventId);
+  }
 }
 
 export const syncService = new SyncService();

@@ -19,6 +19,25 @@ import crypto from 'crypto';
 
 class OrderService {
   /**
+   * Internal guard to prevent concurrent modification of an order by different devices.
+   */
+  _enforceLock(orderId, terminalId) {
+    const order = orderRepository.findById(orderId);
+    if (!order) throw new Error('Order not found.');
+    
+    // Immutable check
+    if (order.lifecycle_state === 'COMPLETED' || order.lifecycle_state === 'CANCELLED') {
+      throw new Error(`Order ${order.order_number} is ${order.lifecycle_state} and cannot be modified.`);
+    }
+
+    if (terminalId === 'SYSTEM' || !terminalId) return order; // System processes bypass lock
+    
+    if (order.locked_by && order.locked_by !== terminalId) {
+      throw new Error(`Order is currently locked by device ${order.locked_by}. Please wait or unlock it first.`);
+    }
+    return order;
+  }
+  /**
    * Retrieves full hydrated order graph.
    */
   getOrderById(orderId) {
@@ -200,8 +219,9 @@ class OrderService {
   /**
    * Adds an item to a specific order.
    */
-  addItemToOrder(orderId, itemInput, actorUserId = 'SYSTEM') {
+  addItemToOrder(orderId, itemInput, actorUserId = 'SYSTEM', terminalId = 'SYSTEM') {
     return dbEngine.transaction(() => {
+      this._enforceLock(orderId, terminalId);
       const order = orderRepository.findById(orderId);
       orderValidationService.validateItemAddition(order, itemInput);
 
@@ -275,8 +295,9 @@ class OrderService {
   /**
    * Updates an item's quantity or removes if quantity <= 0.
    */
-  updateItemQuantity(orderId, itemId, newQuantity, actorUserId = 'SYSTEM') {
+  updateItemQuantity(orderId, itemId, newQuantity, actorUserId = 'SYSTEM', terminalId = 'SYSTEM') {
     return dbEngine.transaction(() => {
+      this._enforceLock(orderId, terminalId);
       const order = orderRepository.findById(orderId);
       orderValidationService.validateItemModification(order, itemId);
 
@@ -322,8 +343,9 @@ class OrderService {
   /**
    * Removes an item from an order.
    */
-  removeItem(orderId, itemId, actorUserId = 'SYSTEM', reason = null) {
+  removeItem(orderId, itemId, actorUserId = 'SYSTEM', reason = null, terminalId = 'SYSTEM') {
     return dbEngine.transaction(() => {
+      this._enforceLock(orderId, terminalId);
       const order = orderRepository.findById(orderId);
       orderValidationService.validateItemModification(order, itemId);
 
@@ -418,8 +440,9 @@ class OrderService {
   /**
    * Updates order metadata directly (like table_id or order_type) for an active order
    */
-  updateOrderMeta(orderId, meta, userId) {
+  updateOrderMeta(orderId, meta, userId, terminalId = 'SYSTEM') {
     return dbEngine.transaction(() => {
+      this._enforceLock(orderId, terminalId);
       const order = orderRepository.findById(orderId);
       if (!order) throw new Error('Order not found.');
 
@@ -467,8 +490,9 @@ class OrderService {
   /**
    * Deletes an order permanently from the database.
    */
-  deleteOrder(orderId, userId) {
+  deleteOrder(orderId, userId, terminalId = 'SYSTEM') {
     return dbEngine.transaction(() => {
+      this._enforceLock(orderId, terminalId);
       const order = orderRepository.findById(orderId);
       if (!order) throw new Error('Order not found.');
 
@@ -486,6 +510,48 @@ class OrderService {
       orderCacheService.invalidate(orderId);
       syncService.queueSyncEvent('ORDER_DELETED', orderId, { order_number: order.order_number });
       return { success: true, message: 'Order deleted successfully' };
+    });
+  }
+
+  /**
+   * Lock an order for editing.
+   */
+  lockOrder(orderId, terminalId, userId) {
+    return dbEngine.transaction(() => {
+      const order = this._enforceLock(orderId, null); // Check immutability first
+      
+      if (order.locked_by && order.locked_by !== terminalId) {
+        throw new Error(`Order is currently locked by device ${order.locked_by}`);
+      }
+
+      const updated = orderRepository.update(orderId, { locked_by: terminalId });
+      
+      activityLogService.logActivity(userId, 'ORDER_LOCKED', 'ORDER', orderId, { terminalId });
+      syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', { locked_by: terminalId });
+
+      return this._hydrateOrder(updated);
+    });
+  }
+
+  /**
+   * Unlock an order.
+   */
+  unlockOrder(orderId, terminalId, userId) {
+    return dbEngine.transaction(() => {
+      const order = orderRepository.findById(orderId);
+      if (!order) throw new Error('Order not found.');
+      // Unlock doesn't enforce immutability strictly, but it checks lock
+      
+      if (order.locked_by && order.locked_by !== terminalId) {
+        throw new Error(`Order is locked by ${order.locked_by} and cannot be unlocked by ${terminalId}`);
+      }
+
+      const updated = orderRepository.update(orderId, { locked_by: null });
+      
+      activityLogService.logActivity(userId, 'ORDER_UNLOCKED', 'ORDER', orderId, { terminalId });
+      syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', { locked_by: null });
+
+      return this._hydrateOrder(updated);
     });
   }
 }

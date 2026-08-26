@@ -1,8 +1,20 @@
 import { supabase } from '../config/supabaseClient.js';
+import crypto from 'crypto';
+
+const hashPayload = (obj) => {
+  if (!obj) return '';
+  const clean = { ...obj };
+  delete clean.updated_at;
+  delete clean.created_at;
+  delete clean.payload_version;
+  const str = JSON.stringify(clean, Object.keys(clean).sort());
+  return crypto.createHash('md5').update(str).digest('hex');
+};
 
 export const pushSyncEvents = async (req, res) => {
   try {
-    const { events } = req.body;
+    const { events, terminal_id } = req.body;
+    const terminalId = req.headers['x-terminal-id'] || terminal_id || 'UNKNOWN';
 
     if (!Array.isArray(events)) {
       return res.status(400).json({ error: 'events array is required' });
@@ -24,9 +36,13 @@ export const pushSyncEvents = async (req, res) => {
         'CATEGORY': 'categories',
         'DEAL': 'deals',
         'CUSTOMER': 'customers',
-        'EMPLOYEE': 'users', // or employees
+        'USER': 'users',
+        'EMPLOYEE': 'users',
         'ORDER': 'orders',
-        'SETTING': 'settings'
+        'ORDER_ITEM': 'order_items',
+        'ORDER_PAYMENT': 'order_payments',
+        'DINING_TABLE': 'dining_tables',
+        'SETTING': 'application_settings'
       };
 
       const tableName = tableMap[entity_type.toUpperCase()];
@@ -42,7 +58,8 @@ export const pushSyncEvents = async (req, res) => {
         tableGroups[tableName].deletes.push(entity_id);
       } else {
         const entityData = typeof payload === 'string' ? JSON.parse(payload) : payload;
-        tableGroups[tableName].upserts.push({ ...entityData, id: entity_id, payload_version });
+        // Inject terminalId if applicable (e.g. tracking who touched it last)
+        tableGroups[tableName].upserts.push({ ...entityData, id: entity_id, payload_version, last_updated_by_device: terminalId });
       }
       tableGroups[tableName].eventMap[entity_id] = event;
     }
@@ -61,7 +78,7 @@ export const pushSyncEvents = async (req, res) => {
           const ids = group.upserts.map(u => u.id);
           const { data: existingEntities } = await supabase
             .from(tableName)
-            .select('id, payload_version' + (tableName === 'orders' ? ', status' : ''))
+            .select('*')
             .in('id', ids);
             
           const existingMap = {};
@@ -76,19 +93,29 @@ export const pushSyncEvents = async (req, res) => {
             let hasConflict = false;
             
             if (existing) {
-              if (existing.payload_version > u.payload_version) {
+              if (existing.payload_version >= u.payload_version) {
+                const existingHash = hashPayload(existing);
+                const incomingHash = hashPayload(u);
+                
+                if (existingHash === incomingHash) {
+                  // Exact match, no conflict, but skip DB write since it's already there
+                  continue;
+                } else {
+                  results.conflicts.push({
+                    eventId: event.id,
+                    entityId: u.id,
+                    serverVersion: existing.payload_version,
+                    clientVersion: u.payload_version,
+                    needsPull: true
+                  });
+                  hasConflict = true;
+                }
+              } else if (tableName === 'orders' && (existing.lifecycle_state === 'COMPLETED' || existing.status === 'COMPLETED')) {
                 results.conflicts.push({
                   eventId: event.id,
                   entityId: u.id,
-                  serverVersion: existing.payload_version,
-                  clientVersion: u.payload_version
-                });
-                hasConflict = true;
-              } else if (tableName === 'orders' && existing.status === 'COMPLETED') {
-                results.conflicts.push({
-                  eventId: event.id,
-                  entityId: u.id,
-                  error: 'Order is completed and cannot be mutated.'
+                  error: 'Order is completed and cannot be mutated.',
+                  needsPull: true
                 });
                 hasConflict = true;
               }
@@ -129,57 +156,41 @@ export const pushSyncEvents = async (req, res) => {
 
 export const pullSyncEvents = async (req, res) => {
   try {
-    const { last_sync_timestamp } = req.query;
+    const { last_sync_timestamp, limit = 50, offset = 0 } = req.query;
     const since = last_sync_timestamp ? new Date(parseInt(last_sync_timestamp)).toISOString() : new Date(0).toISOString();
+    
+    const parsedLimit = parseInt(limit, 10) || 50;
+    const parsedOffset = parseInt(offset, 10) || 0;
+
+    // Helper to fetch paginated data
+    const fetchTable = async (tableName) => {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .gt('updated_at', since)
+        .order('updated_at', { ascending: true })
+        .range(parsedOffset, parsedOffset + parsedLimit - 1);
+      
+      if (error) throw error;
+      return data;
+    };
 
     // Pull all updated data for all relevant tables
-    const { data: products, error: productError } = await supabase
-      .from('products')
-      .select('*')
-      .gt('updated_at', since)
-      .limit(1000);
-      
-    if (productError) throw productError;
-
-    const { data: categories, error: categoryError } = await supabase
-      .from('categories')
-      .select('*')
-      .gt('updated_at', since)
-      .limit(1000);
-      
-    if (categoryError) throw categoryError;
-
-    const { data: orders, error: orderError } = await supabase
-      .from('orders')
-      .select('*')
-      .gt('updated_at', since)
-      .limit(1000);
-
-    if (orderError) throw orderError;
-
-    const { data: order_items, error: orderItemError } = await supabase
-      .from('order_items')
-      .select('*')
-      .gt('updated_at', since)
-      .limit(1000);
-
-    if (orderItemError) throw orderItemError;
-    
-    const { data: customers, error: customerError } = await supabase
-      .from('customers')
-      .select('*')
-      .gt('updated_at', since)
-      .limit(1000);
-
-    if (customerError) throw customerError;
-    
-    const { data: users, error: userError } = await supabase
-      .from('users')
-      .select('*')
-      .gt('updated_at', since)
-      .limit(1000);
-
-    if (userError) throw userError;
+    const [
+      products,
+      categories,
+      orders,
+      order_items,
+      customers,
+      users
+    ] = await Promise.all([
+      fetchTable('products'),
+      fetchTable('categories'),
+      fetchTable('orders'),
+      fetchTable('order_items'),
+      fetchTable('customers'),
+      fetchTable('users')
+    ]);
 
     // Return the batched updates
     return res.status(200).json({

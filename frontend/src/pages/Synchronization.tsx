@@ -14,15 +14,13 @@ export default function Synchronization() {
   
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const [networkQuality] = useState<"Excellent" | "Good" | "Poor" | "Offline">("Excellent")
-  const [latency, setLatency] = useState(24)
+  const [networkQuality] = useState<"Excellent" | "Good" | "Poor" | "Offline" | "N/A">("N/A")
+  const [latency, setLatency] = useState<number | null>(null)
 
   const [status, setStatus] = useState<SyncStatus>({ pending: 0, failed: 0, synced: 0, isRunning: false, nextRunDelay: 0 })
   const [devices, setDevices] = useState<ActiveDevice[]>([])
 
-  const [syncHistory, setSyncHistory] = useState([
-    { id: "H-9921", date: "Today", time: "05:00 PM", device: "Counter PC 1", uploaded: 12, downloaded: 4, duration: "1.2s", status: "Successful" },
-  ])
+  const [syncHistory, setSyncHistory] = useState([])
 
   const [conflicts, setConflicts] = useState<any[]>([])
 
@@ -65,9 +63,8 @@ export default function Synchronization() {
   }, [])
 
   const handleAutoDetect = () => {
-    setLatency(Math.floor(Math.random() * 30) + 10)
     fetchSyncData();
-    toast.success("Refreshing device mesh and cloud latency...");
+    toast.success("Refreshing device mesh...");
   }
 
   const triggerSync = async () => {
@@ -106,6 +103,11 @@ export default function Synchronization() {
           <p className="text-xs text-muted-foreground font-bold mt-1">
             Manage multi-terminal LAN database mesh, offline caching queue, and secure Cloud backup syncing.
           </p>
+          {status.deviceId && (
+            <p className="text-[10px] text-zinc-500 font-mono mt-2">
+              Terminal ID: {status.deviceId}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap relative z-10">
@@ -125,7 +127,7 @@ export default function Synchronization() {
           ==================================================== */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
         {[
-          { label: "Internet", val: networkQuality, sub: `Latency: ${latency} ms`, color: networkQuality === "Offline" ? "text-red-500" : "text-emerald-500", icon: Wifi },
+          { label: "Internet", val: networkQuality, sub: latency ? `Latency: ${latency} ms` : "Latency: N/A", color: networkQuality === "Offline" ? "text-red-500" : (networkQuality === "N/A" ? "text-zinc-500" : "text-emerald-500"), icon: Wifi },
           { label: "Cloud Sync Gateway", val: status.isRunning ? "Syncing..." : "Idle", sub: "Cloud DB Mirror Active", color: "text-emerald-500", icon: Database },
           { label: "Pending Upload Queue", val: `${status.pending} Items`, sub: `${status.failed} failed items`, color: status.pending > 0 ? "text-amber-500" : "text-emerald-500", icon: History },
           { label: "Auto Sync Status", val: autoSync ? `Every ${syncInterval}` : "Disabled", sub: "Periodic sync task", color: autoSync ? "text-emerald-500" : "text-zinc-500", icon: RefreshCw }

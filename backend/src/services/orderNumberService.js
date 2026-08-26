@@ -16,7 +16,10 @@ class OrderNumberService {
     }
 
     const orderConfig = configService.getOrderConfig() || {};
-    const prefix = orderConfig.order_number_prefix || 'POS';
+    const syncConfig = configService.getSyncConfig() || {};
+    
+    // Prioritize the device-specific order_prefix, fallback to global prefix or 'POS'
+    const prefix = syncConfig.order_prefix || orderConfig.order_number_prefix || 'POS';
     const padLength = orderConfig.order_number_pad_length || 6;
     
     let resetDaily = true;

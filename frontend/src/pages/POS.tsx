@@ -210,6 +210,13 @@ export default function POS() {
     }
   }, [user, waiterId, setWaiterId, setWaiterName])
 
+  // Clear edit lock on unmount
+  useEffect(() => {
+    return () => {
+      clearEditMode();
+    }
+  }, [clearEditMode])
+
   useEffect(() => {
     const fetchData = async () => {
       try {

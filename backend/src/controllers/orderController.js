@@ -4,6 +4,7 @@ import { sendSuccess, sendError } from '../utils/responseHandler.js';
 const resolveSessionContext = (req, res, { requireShift = true } = {}) => {
   const shiftId = req.headers['x-cashier-session-id'];
   const userId = req.headers['x-user-id'] || req.user?.userId;
+  const terminalId = req.headers['x-terminal-id'] || 'DEFAULT_DEVICE';
 
   if (requireShift && !shiftId) {
     sendError(res, 400, 'x-cashier-session-id header is required.');
@@ -14,7 +15,7 @@ const resolveSessionContext = (req, res, { requireShift = true } = {}) => {
     return null;
   }
 
-  return { shiftId, userId };
+  return { shiftId, userId, terminalId };
 };
 
 export const orderController = {
@@ -56,7 +57,7 @@ export const orderController = {
     const ctx = resolveSessionContext(req, res, { requireShift: false });
     if (!ctx) return;
     try {
-      const updatedOrder = orderService.updateOrderMeta(req.params.orderId, req.body, ctx.userId);
+      const updatedOrder = orderService.updateOrderMeta(req.params.orderId, req.body, ctx.userId, ctx.terminalId);
       sendSuccess(res, updatedOrder, 'Order metadata updated');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -78,7 +79,7 @@ export const orderController = {
     const ctx = resolveSessionContext(req, res, { requireShift: false });
     if (!ctx) return;
     try {
-      const updatedOrder = orderService.addItemToOrder(req.params.orderId, req.body, ctx.userId);
+      const updatedOrder = orderService.addItemToOrder(req.params.orderId, req.body, ctx.userId, ctx.terminalId);
       sendSuccess(res, updatedOrder, 'Item added to order');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -89,7 +90,7 @@ export const orderController = {
     const ctx = resolveSessionContext(req, res, { requireShift: false });
     if (!ctx) return;
     try {
-      const updatedOrder = orderService.updateItemQuantity(req.params.orderId, req.params.itemId, req.body.quantity, ctx.userId);
+      const updatedOrder = orderService.updateItemQuantity(req.params.orderId, req.params.itemId, req.body.quantity, ctx.userId, ctx.terminalId);
       sendSuccess(res, updatedOrder, 'Item quantity updated');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -100,7 +101,7 @@ export const orderController = {
     const ctx = resolveSessionContext(req, res, { requireShift: false });
     if (!ctx) return;
     try {
-      const updatedOrder = orderService.removeItem(req.params.orderId, req.params.itemId, ctx.userId, req.body.reason);
+      const updatedOrder = orderService.removeItem(req.params.orderId, req.params.itemId, ctx.userId, req.body.reason, ctx.terminalId);
       sendSuccess(res, updatedOrder, 'Item removed from order');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -161,10 +162,32 @@ export const orderController = {
     const ctx = resolveSessionContext(req, res, { requireShift: false });
     if (!ctx) return;
     try {
-      const result = orderService.deleteOrder(req.params.orderId, ctx.userId);
+      const result = orderService.deleteOrder(req.params.orderId, ctx.userId, ctx.terminalId);
       sendSuccess(res, result, 'Order deleted successfully');
     } catch (error) {
       console.error('Delete Order Error:', error);
+      sendError(res, 400, error.message);
+    }
+  },
+
+  lockOrder: (req, res) => {
+    const ctx = resolveSessionContext(req, res, { requireShift: false });
+    if (!ctx) return;
+    try {
+      const order = orderService.lockOrder(req.params.orderId, ctx.terminalId, ctx.userId);
+      sendSuccess(res, order, 'Order locked');
+    } catch (error) {
+      sendError(res, 400, error.message);
+    }
+  },
+
+  unlockOrder: (req, res) => {
+    const ctx = resolveSessionContext(req, res, { requireShift: false });
+    if (!ctx) return;
+    try {
+      const order = orderService.unlockOrder(req.params.orderId, ctx.terminalId, ctx.userId);
+      sendSuccess(res, order, 'Order unlocked');
+    } catch (error) {
       sendError(res, 400, error.message);
     }
   },

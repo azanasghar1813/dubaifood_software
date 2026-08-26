@@ -244,13 +244,13 @@ export default function Backup() {
             <h3 className="text-base font-black uppercase tracking-wider text-foreground">Cloud Backups</h3>
             
             <div className="space-y-3 text-xs font-bold text-muted-foreground">
-              <div className="flex justify-between items-center p-3 bg-secondary/40 border border-border rounded-xl border-emerald-500/20">
-                <span className="text-emerald-500">Google Cloud Storage Mirror</span>
-                <span className="text-emerald-500 text-[10px] uppercase font-black px-2 py-0.5 bg-emerald-500/10 rounded-full">Active</span>
+              <div className="flex justify-between items-center p-3 bg-secondary/40 border border-border rounded-xl opacity-50">
+                <span>Google Cloud Storage Mirror</span>
+                <span className="text-zinc-400 text-[10px] uppercase">Not Available</span>
               </div>
               <div className="flex justify-between items-center p-3 bg-secondary/40 border border-border rounded-xl opacity-50">
                 <span>Amazon AWS S3 Glacier</span>
-                <span className="text-zinc-400 text-[10px] uppercase">Disabled</span>
+                <span className="text-zinc-400 text-[10px] uppercase">Not Available</span>
               </div>
             </div>
           </div>

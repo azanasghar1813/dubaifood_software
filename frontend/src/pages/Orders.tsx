@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
+import toast from "react-hot-toast"
 import { motion, AnimatePresence } from "framer-motion"
 import jsPDF from "jspdf"
 import ReceiptPreview from "./ReceiptPreview"
@@ -340,12 +341,12 @@ export default function Orders() {
   }
 
   const handleEditClick = async (order: Order) => {
-    const cashierName = user?.name || 'Ahmed'
-    lockOrder(order.id, cashierName)
-
-    await loadOrderForEdit(order)
-
-    navigate("/pos")
+    try {
+      await loadOrderForEdit(order)
+      navigate("/pos")
+    } catch (e: any) {
+      toast.error(e.message || "Failed to edit order")
+    }
   }
 
   const handlePrintReceipt = async (order: Order) => {

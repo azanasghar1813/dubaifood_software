@@ -6,6 +6,7 @@ export interface SyncStatus {
   synced: number;
   isRunning: boolean;
   nextRunDelay: number;
+  deviceId?: string;
 }
 
 export interface ActiveDevice {

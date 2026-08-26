@@ -30,7 +30,20 @@ export const systemSchema = `
     status TEXT NOT NULL DEFAULT 'PENDING', -- 'PENDING', 'SYNCED', 'FAILED'
     attempts INTEGER DEFAULT 0,
     last_attempt_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    permanent_failure BOOLEAN DEFAULT 0
+  );
+
+  -- Sync Conflicts
+  CREATE TABLE IF NOT EXISTS sync_conflicts (
+    id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    local_version INTEGER,
+    server_version INTEGER,
+    resolution TEXT, -- 'PENDING', 'KEPT_LOCAL', 'KEPT_SERVER', 'MERGED'
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    resolved_at DATETIME
   );
 
   CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON activity_logs(user_id);

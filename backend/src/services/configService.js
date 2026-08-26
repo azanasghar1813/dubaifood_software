@@ -5,6 +5,7 @@ import { activityLogService } from './activityLogService.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { SerialPort } from 'serialport';
+import crypto from 'crypto';
 
 const execAsync = promisify(exec);
 
@@ -19,7 +20,24 @@ class ConfigService {
   initialize() {
     if (this.initialized) return;
     this.refreshCache();
+    
+    // Prevent infinite recursion by setting initialized before using getters
     this.initialized = true;
+    
+    // Ensure Device Identity exists
+    const syncConfig = this.getSyncConfig();
+    if (!syncConfig.device_id) {
+      const deviceId = crypto.randomUUID();
+      this.updateApplicationCategory('SYSTEM', 'SYNC', { device_id: deviceId });
+      console.log(`[ConfigService] Generated persistent device_id: ${deviceId}`);
+    }
+    
+    if (!syncConfig.order_prefix) {
+      const prefix = `T${Math.floor(Math.random() * 90) + 10}`; // e.g. T42
+      this.updateApplicationCategory('SYSTEM', 'SYNC', { order_prefix: prefix });
+      console.log(`[ConfigService] Generated default order_prefix: ${prefix}`);
+    }
+
     console.log('[ConfigService] In-memory configuration cache loaded.');
   }
 

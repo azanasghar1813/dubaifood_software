@@ -195,6 +195,16 @@ export const usePosStore = create<POSState>()(
   },
 
   loadOrderForEdit: async (order) => {
+    // Attempt to lock the order on the backend
+    try {
+      const lockRes = await apiClient.post(`/orders/${order.id}/lock`)
+      if (!(lockRes as any).success) {
+        throw new Error('Order is currently locked by another device.')
+      }
+    } catch (e: any) {
+      throw new Error(e?.response?.data?.message || e.message || 'Order is locked by another device')
+    }
+
     // Silently clear the backend cart WITHOUT triggering fetchDraftOrder
     // This prevents the race condition where fetchDraftOrder overwrites the edit cart
     try { await apiClient.delete('/cart') } catch {}
@@ -719,7 +729,17 @@ export const usePosStore = create<POSState>()(
     }
   },
   toggleTax: () => set((state) => ({ isTaxEnabled: !state.isTaxEnabled })),
-  clearEditMode: () => set({ editingOrderId: null }),
+  clearEditMode: async () => {
+    const editingId = get().editingOrderId;
+    if (editingId) {
+      try {
+        await apiClient.post(`/orders/${editingId}/unlock`)
+      } catch (e) {
+        console.error('Failed to unlock order:', e)
+      }
+    }
+    set({ editingOrderId: null })
+  },
   switchOrder: (orderId) => console.log('switchOrder stub called', orderId)
     }),
     {

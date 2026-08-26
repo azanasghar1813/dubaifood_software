@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import config from '../config/index.js';
 import { dbEngine } from '../database/sqlite.js';
+import Database from 'better-sqlite3';
 import { createRequire } from 'module';
 import { backupService } from '../backup/backupService.js';
 
@@ -110,10 +111,31 @@ export const restoreBackup = async (req, res) => {
 
     zip.extractAllTo(tempExtractDir, true);
 
-    // Step 3: Replace DB
+    // Step 3: Verify Integrity & Replace DB
     const extractedDbPath = path.join(tempExtractDir, 'database', 'pos.db');
     if (fs.existsSync(extractedDbPath)) {
-      fs.copyFileSync(extractedDbPath, config.paths.database.file);
+      console.log('[BackupController] Verifying backup database integrity...');
+      const tempDb = new Database(extractedDbPath, { fileMustExist: true });
+      const integrityCheck = tempDb.pragma('integrity_check', { simple: true });
+      tempDb.close();
+
+      const isOk = integrityCheck[0].integrity_check === 'ok';
+      if (!isOk) {
+        fs.rmSync(tempExtractDir, { recursive: true, force: true });
+        fs.unlinkSync(zipFilePath);
+        throw new Error('Database backup failed integrity check. Aborting restore.');
+      }
+      console.log('[BackupController] Backup database integrity OK.');
+
+      // Make a safety copy of the live database
+      const liveDbPath = config.paths.database.file;
+      const safetyCopyPath = `${liveDbPath}.bak`;
+      console.log(`[BackupController] Creating safety copy at ${safetyCopyPath}...`);
+      if (fs.existsSync(liveDbPath)) {
+        fs.copyFileSync(liveDbPath, safetyCopyPath);
+      }
+
+      fs.copyFileSync(extractedDbPath, liveDbPath);
       console.log('[BackupController] Database replaced successfully.');
     }
 

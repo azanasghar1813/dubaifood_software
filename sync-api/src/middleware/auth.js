@@ -3,8 +3,12 @@ import config from '../config/index.js';
 
 export const requireDeviceAuth = (req, res, next) => {
   const deviceSecret = req.headers['x-device-secret'];
+  const terminalId = req.headers['x-terminal-id'];
   if (!deviceSecret || deviceSecret !== config.deviceSecret) {
     return res.status(401).json({ error: 'Unauthorized device' });
+  }
+  if (!terminalId) {
+    return res.status(401).json({ error: 'Missing x-terminal-id header' });
   }
   next();
 };

@@ -1,5 +1,6 @@
 import { dbEngine } from '../database/sqlite.js';
 import { syncWorker } from '../sync/syncWorker.js';
+import { configService } from '../services/configService.js';
 
 export const getSyncStatus = async (req, res) => {
   try {
@@ -20,12 +21,15 @@ export const getSyncStatus = async (req, res) => {
       if (row.status === 'SYNCED') synced = row.count;
     }
 
+    const syncConfig = configService.getSyncConfig();
+
     res.status(200).json({
       pending,
       failed,
       synced,
       isRunning: syncWorker.isRunning,
-      nextRunDelay: syncWorker.currentDelayMs
+      nextRunDelay: syncWorker.currentDelayMs,
+      deviceId: syncConfig.device_id || 'UNKNOWN_DEVICE'
     });
   } catch (error) {
     console.error('[SyncController] Status fetch failed:', error);

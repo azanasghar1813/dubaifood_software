@@ -34,6 +34,10 @@ router.post('/draft/hold', validate(holdOrderSchema), orderController.holdOrder)
 router.post('/resume/:orderId', orderController.resumeOrder);
 router.post('/:orderId/transition', validate(transitionStateSchema), orderController.transitionState);
 
+// Lock operations
+router.post('/:orderId/lock', orderController.lockOrder);
+router.post('/:orderId/unlock', orderController.unlockOrder);
+
 // Delete order
 router.delete('/:orderId', orderController.deleteOrder);
 
