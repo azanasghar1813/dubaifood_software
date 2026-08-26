@@ -169,7 +169,14 @@ class OrderCreationService {
    * @param {Object} options - Overrides: { order_type, customer_id, table_id, waiter_id, waiter_name_snapshot, rider_id, rider_name_snapshot, notes, branch_id, business_date }
    * @returns {Object} Hydrated Order Draft with all sub-entities
    */
-  checkoutCart(sessionId, cashierUserId, options = {}) {
+  checkoutCart(sessionId, cashierUserId, options = {}, idempotencyKey = null) {
+    if (idempotencyKey) {
+      const existingOrder = dbEngine.prepare('SELECT id FROM orders WHERE idempotency_key = ?').get(idempotencyKey);
+      if (existingOrder) {
+        return this._hydrateOrder(existingOrder.id);
+      }
+    }
+
     // 1. Retrieve working cart from memory / crash-recovery cache
     this._assertActiveSession(sessionId);
     this._assertCheckoutPermission(cashierUserId);
@@ -233,7 +240,7 @@ class OrderCreationService {
       // ── 3b. Calculate cart-level financial totals ──────────────────────────
       let subtotal = 0;
       let taxTotal = 0;
-      let discountTotal = Number(options.discount_total) || 0;
+      let discountTotal = Number(cart.totals?.discount_total) || 0;
       const isTaxEnabled = options.is_tax_enabled !== false;
       const deliveryCharges = Number(options.delivery_charges) || Number(options.metadata?.delivery_charges) || 0;
       const serviceCharge = Number(options.service_charge) || Number(options.metadata?.service_charge) || 0;
@@ -243,7 +250,8 @@ class OrderCreationService {
         if (isTaxEnabled) {
           taxTotal += Number(cartItem.tax_amount) || 0;
         }
-        discountTotal += Number(cartItem.discount_amount) || 0;
+        // Do not accumulate line item discounts here if cart.totals.discount_total already has it,
+        // but let's be safe and accumulate it ONLY if we aren't relying on cart.totals.
       }
 
       const financeConfig = configService.getFinanceConfig() || {};
@@ -282,7 +290,8 @@ class OrderCreationService {
         grand_total: grandTotal,
         paid_total: 0,
         due_total: grandTotal,
-        notes: orderNotes
+        notes: orderNotes,
+        idempotency_key: idempotencyKey
       });
 
       orderMetadataRepository.setMeta(newOrderId, 'order_type', orderType);

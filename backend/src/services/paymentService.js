@@ -59,7 +59,32 @@ class PaymentService {
    *
    * @returns {Object} { payment, order, receipt, change_returned, quick_summary }
    */
-  processPayment(orderId, sessionId, cashierUserId, input) {
+  processPayment(orderId, sessionId, cashierUserId, input, idempotencyKey = null) {
+    // ── 0. Idempotency Check (Race-safe in SQLite because it runs sequentially) ──
+    if (idempotencyKey) {
+      const existingPayment = orderPaymentRepository.findByIdempotencyKey(idempotencyKey);
+      if (existingPayment) {
+        // If we've already processed this exact payment attempt, return the existing successful state.
+        const order = this._hydrateOrder(orderId);
+        return {
+          payment: existingPayment,
+          order: order,
+          receipt: this.getReceipt(existingPayment.id),
+          change_returned: existingPayment.change_returned,
+          is_fully_paid: Number(order.due_total) <= 0.005,
+          quick_summary: {
+            order_number: order.order_number,
+            payment_method: existingPayment.payment_method_label,
+            amount_charged: existingPayment.amount,
+            amount_received: existingPayment.amount_received,
+            change_returned: existingPayment.change_returned,
+            new_payment_state: order.payment_state,
+            new_lifecycle_state: order.lifecycle_state
+          }
+        };
+      }
+    }
+
     // ── 1. Pre-transaction validation (read-only, safe to run outside tx) ──
     paymentValidationService.validateSession(sessionId, cashierUserId);
 
@@ -116,7 +141,8 @@ class PaymentService {
         transaction_reference: normalizedInput.transaction_reference,
         approval_code:         normalizedInput.approval_code,
         notes:                 normalizedInput.notes,
-        status:                'COMPLETED'
+        status:                'COMPLETED',
+        idempotency_key:       idempotencyKey
       });
 
       // ── 3b. Recalculate order financials ────────────────────────────────

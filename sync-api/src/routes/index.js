@@ -8,7 +8,19 @@ import publicRoutes from './publicRoutes.js';
 const router = express.Router();
 
 // Setup multer for memory storage (for image uploads to Cloudinary)
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 2 * 1024 * 1024 // 2MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'), false);
+    }
+  }
+});
 
 // Public route for health check
 router.get('/health', (req, res) => {

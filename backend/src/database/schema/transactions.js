@@ -33,6 +33,7 @@ export const transactionsSchema = `
     synced_at DATETIME,
     sync_version INTEGER NOT NULL DEFAULT 1,
     sync_hash TEXT,
+    idempotency_key TEXT UNIQUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     completed_at DATETIME,
@@ -150,6 +151,7 @@ export const transactionsSchema = `
     status TEXT NOT NULL DEFAULT 'COMPLETED',
     transaction_reference TEXT,
     notes TEXT,
+    idempotency_key TEXT UNIQUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
   );
@@ -215,6 +217,7 @@ export const transactionsSchema = `
   CREATE INDEX IF NOT EXISTS idx_combo_components_item ON order_combo_components(order_item_id);
   CREATE INDEX IF NOT EXISTS idx_order_timeline_order ON order_timeline(order_id);
   CREATE INDEX IF NOT EXISTS idx_order_payments_order ON order_payments(order_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_order_payments_idempotency ON order_payments(idempotency_key) WHERE idempotency_key IS NOT NULL;
   CREATE INDEX IF NOT EXISTS idx_order_metadata_order ON order_metadata(order_id, meta_key);
   CREATE INDEX IF NOT EXISTS idx_order_tags_order ON order_tags(order_id);
   CREATE INDEX IF NOT EXISTS idx_order_attachments_order ON order_attachments(order_id);

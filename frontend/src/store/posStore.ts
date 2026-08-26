@@ -56,6 +56,9 @@ interface POSState {
   isLoadingOrder: boolean
   financeConfig: any | null
   
+  checkoutIdempotencyKey: string | null
+  paymentIdempotencyKeys: Record<number, string>
+  
   // Legacy UI state aliases for compatibility
   cart: CartItem[]
   
@@ -126,6 +129,8 @@ export const usePosStore = create<POSState>()(
   activeOrder: null,
   isLoadingOrder: false,
   financeConfig: null,
+  checkoutIdempotencyKey: null,
+  paymentIdempotencyKeys: {},
   
   cart: [],
   setCart: (cart) => set({ cart }),
@@ -247,6 +252,8 @@ export const usePosStore = create<POSState>()(
       editingOrderId: order.id,
       activeOrder,
       cart: mappedItems,
+      checkoutIdempotencyKey: null,
+      paymentIdempotencyKeys: {},
       orderType: order?.orderType || order?.order_type || (backendOrder?.order_type === 'DINE_IN' ? 'Dine In' : backendOrder?.order_type === 'TAKEAWAY' ? 'Takeaway' : backendOrder?.order_type === 'DELIVERY' ? 'Delivery' : get().orderType),
       tableNumber: order?.tableNumber || order?.table_id || backendOrder?.table_id || null,
       waiterId: order?.waiterId || order?.waiter_id || backendOrder?.waiter_id || null,
@@ -427,7 +434,7 @@ export const usePosStore = create<POSState>()(
       const res = await cartService.holdOrder(holdName)
       if ((res as any).success) {
         // Clear active order because it's held
-        set({ activeOrder: null, cart: [] })
+        set({ activeOrder: null, cart: [], checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
         await get().fetchDraftOrder() // create new draft
       }
     } catch (e) {
@@ -444,6 +451,8 @@ export const usePosStore = create<POSState>()(
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
+          checkoutIdempotencyKey: null,
+          paymentIdempotencyKeys: {},
           cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] }))
         })
       }
@@ -461,6 +470,12 @@ export const usePosStore = create<POSState>()(
     set({ isLoadingOrder: true })
     try {
       let order = state.activeOrder as any
+      
+      let checkoutKey = state.checkoutIdempotencyKey;
+      if (!checkoutKey) {
+        checkoutKey = crypto.randomUUID();
+        set({ checkoutIdempotencyKey: checkoutKey });
+      }
 
       if (!order.order_number) {
         const checkoutResult = await cartService.checkout({
@@ -480,7 +495,7 @@ export const usePosStore = create<POSState>()(
           service_charge: state.getServiceCharge(),
           is_tax_enabled: state.isTaxEnabled,
           discount_total: discountTotal
-        })
+        }, checkoutKey)
 
         if (!(checkoutResult as any).success) {
           console.error('Checkout failed:', checkoutResult)
@@ -491,7 +506,17 @@ export const usePosStore = create<POSState>()(
         set({ activeOrder: order, cart: (order?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] })) })
       }
 
-      for (const p of payments) {
+      const paymentKeys = get().paymentIdempotencyKeys;
+      const updatedPaymentKeys = { ...paymentKeys };
+
+      for (let i = 0; i < payments.length; i++) {
+        const p = payments[i];
+        let paymentKey = updatedPaymentKeys[i];
+        if (!paymentKey) {
+          paymentKey = crypto.randomUUID();
+          updatedPaymentKeys[i] = paymentKey;
+        }
+
         await cartService.addPayment(order.id, {
           payment_method: String(p.method || p.paymentMethod || 'CASH').toUpperCase().replace(/ /g, '_'),
           amount: p.amount,
@@ -499,10 +524,13 @@ export const usePosStore = create<POSState>()(
           transaction_reference: p.transaction_reference || p.reference || null,
           approval_code: p.approval_code || null,
           notes: p.notes || null
-        })
+        }, paymentKey)
       }
+      
+      set({ paymentIdempotencyKeys: updatedPaymentKeys });
+
       // Draft order is now completed. Fetch a new draft order and sync history.
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, isVipOrder: false })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, isVipOrder: false, checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
       await get().fetchDraftOrder()
       // Immediately sync order history for instant status updates
       useOrderStore.getState().syncOrdersFromBackend()
@@ -517,10 +545,10 @@ export const usePosStore = create<POSState>()(
 
   clearCart: () => {
     void cartService.clearCart().then(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0, isVipOrder: false })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0, isVipOrder: false, checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
       void get().fetchDraftOrder()
     }).catch(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0, isVipOrder: false })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0, isVipOrder: false, checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
       void get().fetchDraftOrder()
     })
   },

@@ -22,14 +22,14 @@ class OrderPaymentRepository {
         payment_method, payment_method_label,
         amount, amount_received, change_returned,
         transaction_reference, approval_code, gateway_response,
-        notes, status,
+        notes, status, idempotency_key,
         sync_status, created_at, updated_at
       ) VALUES (
         @id, @order_id, @shift_id, @cashier_user_id, @business_date,
         @payment_method, @payment_method_label,
         @amount, @amount_received, @change_returned,
         @transaction_reference, @approval_code, @gateway_response,
-        @notes, @status,
+        @notes, @status, @idempotency_key,
         'PENDING', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       )
     `).run({
@@ -47,10 +47,19 @@ class OrderPaymentRepository {
       approval_code:         paymentData.approval_code || null,
       gateway_response:      paymentData.gateway_response || null,
       notes:                 paymentData.notes || null,
-      status:                paymentData.status || 'COMPLETED'
+      status:                paymentData.status || 'COMPLETED',
+      idempotency_key:       paymentData.idempotency_key || null
     });
 
     return this.findById(paymentData.id);
+  }
+
+  /**
+   * Finds a payment by its idempotency key
+   */
+  findByIdempotencyKey(key) {
+    if (!key) return null;
+    return dbEngine.prepare('SELECT * FROM order_payments WHERE idempotency_key = ?').get(key) || null;
   }
 
   /**

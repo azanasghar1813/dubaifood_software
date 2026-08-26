@@ -13,10 +13,15 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import { globalLimiter } from './middleware/rateLimiter.js';
+
 const app = express();
 
 // Trust proxy if running behind reverse proxy (e.g. Nginx, Heroku)
 app.set('trust proxy', 1);
+
+// Apply global rate limiter
+app.use(globalLimiter);
 
 // --- GLOBAL MIDDLEWARE ---
 

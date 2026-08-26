@@ -156,9 +156,10 @@ export const cartController = {
   checkout: (req, res) => {
     const ctx = resolveCartContext(req, res);
     if (!ctx) return;
+    const idempotencyKey = req.headers['idempotency-key'];
 
     try {
-      const order = orderCreationService.checkoutCart(ctx.sessionId, ctx.userId, req.body || {});
+      const order = orderCreationService.checkoutCart(ctx.sessionId, ctx.userId, req.body || {}, idempotencyKey);
       sendSuccess(res, order, `Order ${order.order_number} created successfully.`, 201);
     } catch (error) {
       sendError(res, 400, error.message);

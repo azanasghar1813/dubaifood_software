@@ -23,18 +23,21 @@ export const paymentController = {
   processPayment: (req, res) => {
     const sessionId     = req.headers['x-cashier-session-id'];
     const cashierUserId = req.headers['x-user-id'] || req.user?.userId;
+    const idempotencyKey = req.headers['idempotency-key'];
     const { orderId }   = req.params;
 
     if (!sessionId)     return sendError(res, 400, 'x-cashier-session-id header is required.');
     if (!cashierUserId) return sendError(res, 400, 'x-user-id header is required.');
     if (!orderId)       return sendError(res, 400, 'orderId path parameter is required.');
+    if (!idempotencyKey) return sendError(res, 400, 'Idempotency-Key header is required.');
 
     try {
       const result = paymentService.processPayment(
         orderId,
         sessionId,
         cashierUserId,
-        req.body
+        req.body,
+        idempotencyKey
       );
 
       const method   = req.body.payment_method;

@@ -105,8 +105,8 @@ class SyncWorker {
 
         console.log(`[SyncWorker] Sync complete. Success: ${data.successful.length}, Failed: ${data.failed.length}, Conflicts: ${data.conflicts.length}`);
         
-        // Reset delay on success
-        this.currentDelayMs = this.baseDelayMs;
+        // Reset delay on success, but immediately pull next batch if queue is full
+        this.currentDelayMs = pendingEvents.length === 50 ? 0 : this.baseDelayMs;
       }
     } catch (error) {
       console.error('[SyncWorker] Sync failed (Offline or API Error):', error.message);

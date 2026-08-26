@@ -65,13 +65,15 @@ export const cartService = {
     return res
   },
 
-  async checkout(orderData: any) {
-    const res = await apiClient.post(`${CART_BASE_URL}/checkout`, orderData) as any
+  async checkout(orderData: any, idempotencyKey?: string) {
+    const config = idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}
+    const res = await apiClient.post(`${CART_BASE_URL}/checkout`, orderData, config) as any
     return res
   },
 
-  async addPayment(orderId: string, paymentData: any) {
-    const res = await apiClient.post(`${PAYMENT_BASE_URL}/order/${orderId}`, paymentData) as any
+  async addPayment(orderId: string, paymentData: any, idempotencyKey?: string) {
+    const config = idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}
+    const res = await apiClient.post(`${PAYMENT_BASE_URL}/order/${orderId}`, paymentData, config) as any
     return res
   }
 }
