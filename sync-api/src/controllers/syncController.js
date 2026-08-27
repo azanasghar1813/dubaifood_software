@@ -26,9 +26,30 @@ export const pushSyncEvents = async (req, res) => {
       conflicts: []
     };
 
+    // Idempotency check: Processed events fallback
+    let processedSet = new Set();
+    const incomingEventIds = events.map(e => e.id);
+    try {
+      const { data: alreadyProcessed, error: idempotencyError } = await supabase
+        .from('processed_sync_events')
+        .select('event_id')
+        .in('event_id', incomingEventIds);
+        
+      if (!idempotencyError && alreadyProcessed) {
+        processedSet = new Set(alreadyProcessed.map(r => r.event_id));
+      }
+    } catch (e) {
+      // Ignore if table doesn't exist yet
+    }
+
+    const freshEvents = events.filter(e => !processedSet.has(e.id));
+    for (const id of processedSet) {
+      results.successful.push(id); // Return early success for already-processed events
+    }
+
     // Group events by table and action
     const tableGroups = {};
-    for (const event of events) {
+    for (const event of freshEvents) {
       const { entity_type, entity_id, action, payload, payload_version } = event;
       
       const tableMap = {
@@ -59,49 +80,55 @@ export const pushSyncEvents = async (req, res) => {
       }
       
       if (!tableGroups[tableName]) tableGroups[tableName] = { upserts: [], deletes: [], eventMap: {} };
+      if (!tableGroups[tableName].eventMap[entity_id]) tableGroups[tableName].eventMap[entity_id] = [];
       
       if (action === 'DELETE' || action === 'ARCHIVED') {
         tableGroups[tableName].deletes.push(entity_id);
       } else {
-        const entityData = typeof payload === 'string' ? JSON.parse(payload) : payload;
-        
-        // --- PAYLOAD SANITIZATION ---
-        // Strip local-only columns that do not exist in Supabase cloud schema
-        delete entityData.idempotency_key;
-        delete entityData.sync_status;
-        delete entityData.synced_at;
-        delete entityData.sync_hash;
-        
-        // Strip kitchen timings which might not be in cloud schema
-        delete entityData.kitchen_started_at;
-        delete entityData.kitchen_ready_at;
-        delete entityData.kitchen_served_at;
-        delete entityData.kitchen_completed_at;
-        delete entityData.kitchen_cancelled_at;
-        
-        // Critical Fallbacks for old corrupt data
-        if (tableName === 'orders' && !entityData.order_number) {
-          entityData.order_number = `FALLBACK-${entity_id.substring(0, 8)}`;
-        }
-        
-        // Sanitize corrupt UUID fields that were populated with strings during local testing
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const potentialUuidFields = ['shift_id', 'cashier_user_id', 'table_id', 'waiter_id', 'rider_id', 'customer_id', 'kitchen_station_id', 'kitchen_printer_id', 'parent_id'];
-        for (const field of potentialUuidFields) {
-          if (entityData[field] && typeof entityData[field] === 'string' && !uuidRegex.test(entityData[field])) {
-            entityData[field] = null;
+        try {
+          const entityData = typeof payload === 'string' ? JSON.parse(payload) : payload || {};
+          
+          // --- PAYLOAD SANITIZATION ---
+          // Strip local-only columns that do not exist in Supabase cloud schema
+          delete entityData.idempotency_key;
+          delete entityData.sync_status;
+          delete entityData.synced_at;
+          delete entityData.sync_hash;
+          
+          // Strip kitchen timings which might not be in cloud schema
+          delete entityData.kitchen_started_at;
+          delete entityData.kitchen_ready_at;
+          delete entityData.kitchen_served_at;
+          delete entityData.kitchen_completed_at;
+          delete entityData.kitchen_cancelled_at;
+          
+          // Critical Fallbacks for old corrupt data
+          if (tableName === 'orders' && !entityData.order_number) {
+            entityData.order_number = `FALLBACK-${entity_id.substring(0, 8)}`;
           }
-        }
+          
+          // Sanitize corrupt UUID fields that were populated with strings during local testing
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          const potentialUuidFields = ['shift_id', 'cashier_user_id', 'table_id', 'waiter_id', 'rider_id', 'customer_id', 'kitchen_station_id', 'kitchen_printer_id', 'parent_id', 'category_id'];
+          for (const field of potentialUuidFields) {
+            if (entityData[field] && typeof entityData[field] === 'string' && !uuidRegex.test(entityData[field])) {
+              entityData[field] = null;
+            }
+          }
 
-        const upsertObj = { ...entityData, id: entity_id, payload_version };
-        const existingIndex = tableGroups[tableName].upserts.findIndex(u => u.id === entity_id);
-        if (existingIndex !== -1) {
-          tableGroups[tableName].upserts[existingIndex] = upsertObj;
-        } else {
-          tableGroups[tableName].upserts.push(upsertObj);
+          const upsertObj = { ...entityData, id: entity_id, payload_version };
+          const existingIndex = tableGroups[tableName].upserts.findIndex(u => u.id === entity_id);
+          if (existingIndex !== -1) {
+            tableGroups[tableName].upserts[existingIndex] = upsertObj;
+          } else {
+            tableGroups[tableName].upserts.push(upsertObj);
+          }
+          tableGroups[tableName].eventMap[entity_id].push(event);
+        } catch (parseError) {
+          console.error('[SyncController] Parse error for event', event.id, parseError);
+          results.failed.push({ eventId: event.id, error: 'Invalid payload format: ' + parseError.message });
         }
       }
-      tableGroups[tableName].eventMap[entity_id] = event;
     }
 
     // Process tables in dependency order to avoid foreign key violations
@@ -135,11 +162,11 @@ export const pushSyncEvents = async (req, res) => {
         group.upserts = [];
         for (const u of initialUpserts) {
           if (failedParentOrderIds.has(u.order_id)) {
-             const event = group.eventMap[u.id];
-             if (event) {
+             const events = group.eventMap[u.id] || [];
+             for (const event of events) {
                results.failed.push({ eventId: event.id, error: 'Parent order failed to sync in this batch.' });
-               delete group.eventMap[u.id];
              }
+             delete group.eventMap[u.id];
           } else {
              group.upserts.push(u);
           }
@@ -153,11 +180,11 @@ export const pushSyncEvents = async (req, res) => {
              for (const id of group.deletes) {
                const { error: singleError } = await supabase.from(tableName).delete().eq('id', id);
                if (singleError) {
-                 const event = group.eventMap[id];
-                 if (event) {
+                 const events = group.eventMap[id] || [];
+                 for (const event of events) {
                    results.failed.push({ eventId: event.id, error: singleError.message });
-                   delete group.eventMap[id];
                  }
+                 delete group.eventMap[id];
                }
              }
           }
@@ -178,11 +205,13 @@ export const pushSyncEvents = async (req, res) => {
           
           const validUpserts = [];
           for (const u of group.upserts) {
-            const event = group.eventMap[u.id];
+            // We use the first event for conflict reporting, but all apply to this entity
+            const eventsForEntity = group.eventMap[u.id] || [];
+            const primaryEvent = eventsForEntity[0];
             const existing = existingMap[u.id];
             let hasConflict = false;
             
-            if (existing) {
+            if (existing && primaryEvent) {
               if (existing.payload_version >= u.payload_version) {
                 const existingHash = hashPayload(existing);
                 const incomingHash = hashPayload(u);
@@ -192,7 +221,7 @@ export const pushSyncEvents = async (req, res) => {
                   continue;
                 } else {
                   results.conflicts.push({
-                    eventId: event.id,
+                    eventId: primaryEvent.id,
                     entityId: u.id,
                     serverVersion: existing.payload_version,
                     clientVersion: u.payload_version,
@@ -202,7 +231,7 @@ export const pushSyncEvents = async (req, res) => {
                 }
               } else if (tableName === 'orders' && (existing.lifecycle_state === 'COMPLETED' || existing.status === 'COMPLETED')) {
                 results.conflicts.push({
-                  eventId: event.id,
+                  eventId: primaryEvent.id,
                   entityId: u.id,
                   error: 'Order is completed and cannot be mutated.',
                   needsPull: true
@@ -214,6 +243,32 @@ export const pushSyncEvents = async (req, res) => {
           }
 
           if (validUpserts.length > 0) {
+            // Self-referencing FK resolution for categories (parent_id)
+            if (tableName === 'categories') {
+              // Extract all category IDs in this batch
+              const batchCategoryIds = new Set(validUpserts.map(u => u.id));
+              
+              // Find categories that reference a parent which is also in this batch
+              const dependentCategories = validUpserts.filter(u => u.parent_id && batchCategoryIds.has(u.parent_id));
+              
+              if (dependentCategories.length > 0) {
+                // First pass: upsert ALL categories but temporarily strip the parent_id for the dependent ones
+                const firstPassUpserts = validUpserts.map(u => {
+                  if (u.parent_id && batchCategoryIds.has(u.parent_id)) {
+                    return { ...u, parent_id: null };
+                  }
+                  return u;
+                });
+                
+                // Do first pass
+                const { error: firstPassError } = await supabase.from(tableName).upsert(firstPassUpserts, { onConflict: 'id' });
+                
+                if (firstPassError) {
+                  throw new Error(`Categories first pass failed: ${firstPassError.message}`);
+                }
+              }
+            }
+
             const { error: upsertError } = await supabase
               .from(tableName)
               .upsert(validUpserts, { onConflict: 'id' });
@@ -223,11 +278,11 @@ export const pushSyncEvents = async (req, res) => {
               for (const u of validUpserts) {
                 const { error: singleError } = await supabase.from(tableName).upsert([u], { onConflict: 'id' });
                 if (singleError) {
-                  const event = group.eventMap[u.id];
-                  if (event) {
+                  const events = group.eventMap[u.id] || [];
+                  for (const event of events) {
                     results.failed.push({ eventId: event.id, error: singleError.message });
-                    delete group.eventMap[u.id];
                   }
+                  delete group.eventMap[u.id];
                   
                   if (tableName === 'orders') {
                     failedParentOrderIds.add(u.id);
@@ -240,22 +295,47 @@ export const pushSyncEvents = async (req, res) => {
         
         // Mark successful
         for (const entityId of Object.keys(group.eventMap)) {
-          const event = group.eventMap[entityId];
-          const isConflict = results.conflicts.some(c => c.eventId === event.id);
-          if (!isConflict) {
-            results.successful.push(event.id);
+          const events = group.eventMap[entityId] || [];
+          for (const event of events) {
+            const isConflict = results.conflicts.some(c => c.eventId === event.id);
+            if (!isConflict) {
+              results.successful.push(event.id);
+            }
           }
         }
       } catch (err) {
         // If bulk fails, mark all events in this group as failed
         for (const entityId of Object.keys(group.eventMap)) {
-          results.failed.push({ eventId: group.eventMap[entityId].id, error: err.message });
+          const events = group.eventMap[entityId] || [];
+          for (const event of events) {
+            results.failed.push({ eventId: event.id, error: err.message });
+          }
         }
         
         // Ensure child items are blocked from attempting to push
         if (tableName === 'orders') {
           group.upserts.forEach(u => failedParentOrderIds.add(u.id));
         }
+      }
+    }
+
+    // Record processed event IDs to idempotency table if it exists
+    if (results.successful.length > 0) {
+      const successfulEventsToRecord = results.successful
+        .filter(id => !processedSet.has(id)) // don't insert duplicates
+        .map(id => {
+          const event = events.find(e => e.id === id);
+          return event ? { event_id: id, entity_type: event.entity_type, entity_id: event.entity_id } : null;
+        })
+        .filter(e => e !== null);
+        
+      if (successfulEventsToRecord.length > 0) {
+        // Fire and forget
+        supabase.from('processed_sync_events').insert(successfulEventsToRecord).then(({ error }) => {
+          if (error && error.code !== '42P01') { // Ignore 42P01 (relation does not exist)
+            console.warn('[SyncController] Failed to record idempotency:', error.message);
+          }
+        });
       }
     }
 

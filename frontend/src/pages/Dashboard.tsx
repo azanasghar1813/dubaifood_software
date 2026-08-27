@@ -16,6 +16,7 @@ import { dashboardService } from "../services/dashboardService"
 import type { DashboardSummary, DashboardOperations, RevenueAnalytics, PopularProduct, ActivityFeedItem } from "../services/dashboardService"
 import { toast } from "../store/toastStore"
 import { useNavigate } from "react-router-dom"
+import { DateUtils } from "../utils/dateUtils"
 
 // Status color definitions
 const orderStatusColors: Record<string, string> = {
@@ -99,14 +100,14 @@ export default function Dashboard() {
 
   // Notifications (Now using backend activity feed)
   const liveStats = useMemo(() => {
-    const today = new Date().setHours(0, 0, 0, 0)
+    const currentBusinessDate = DateUtils.getBusinessDate()
     let todaySales = 0
     let todayOrders = 0
     let paidOrders = 0
     let unpaidOrders = 0
 
     orders.forEach(o => {
-      const isToday = new Date(o.timestamp).setHours(0, 0, 0, 0) === today
+      const isToday = o.businessDate === currentBusinessDate
       if (isToday) {
         todayOrders++
         if (o.status !== 'Cancelled') {
@@ -192,9 +193,9 @@ export default function Dashboard() {
 
   // Filter orders based on query and ensure they are today's orders
   const filteredOrders = useMemo(() => {
-    const today = new Date().setHours(0, 0, 0, 0)
+    const currentBusinessDate = DateUtils.getBusinessDate()
     const result = orders.filter(o => {
-      const isToday = new Date(o.timestamp).setHours(0, 0, 0, 0) === today
+      const isToday = o.businessDate === currentBusinessDate
       if (!isToday) return false
       
       const q = searchQuery.toLowerCase()

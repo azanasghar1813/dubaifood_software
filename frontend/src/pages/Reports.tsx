@@ -12,6 +12,7 @@ import { formatCurrency } from "../utils/currency"
 import { motion, AnimatePresence } from "framer-motion"
 import { fetchDetailedSales, type DetailedSaleRow } from "../api/reportApi"
 import { apiClient } from "../api/client"
+import { DateUtils } from "../utils/dateUtils"
 
 export const mapCategory = (cat: string | null | undefined) => {
   const lower = (cat || '').toLowerCase()
@@ -199,7 +200,7 @@ export default function Reports() {
 
     if (activeTab === 'Dashboard Summary' || activeTab === 'Orders Report') {
       const headers = ['Order #', 'Date', 'Customer', 'Type', 'Subtotal', 'Tax', 'Service Charge', 'Delivery', 'Discount', 'Total', 'Payment Method', 'Payment Status', 'Order Status']
-      const rows = orders.map(o => [
+      const rows = reportOrders.map(o => [
         o.orderNumber,
         `"${new Date(o.timestamp).toLocaleString()}"`,
         `"${o.customerName || 'Guest'}"`,
@@ -300,7 +301,7 @@ export default function Reports() {
           autoTable(doc, {
             startY: (doc as any).lastAutoTable.finalY + 14,
             head: [["Order #", "Date", "Cashier", "Order Type", "Customer", "Subtotal", "Discount", "Tax", "Total", "Pay Method", "Status", "Items"]],
-            body: orders.map(o => [
+            body: reportOrders.map(o => [
               o.orderNumber,
               new Date(o.timestamp).toLocaleString(),
               o.cashierName || 'Staff',
@@ -373,7 +374,7 @@ export default function Reports() {
         <table>
           <thead><tr><th>Order #</th><th>Date</th><th>Type</th><th>Total</th><th>Payment</th><th>Status</th></tr></thead>
           <tbody>
-            ${orders.map(o => `<tr><td>${o.orderNumber}</td><td>${new Date(o.timestamp).toLocaleString()}</td><td>${o.orderType}</td><td>Rs. ${formatCurrency(o.total)}</td><td>${o.payments?.[0]?.method || 'Cash'}</td><td>${o.status}</td></tr>`).join('')}
+            ${reportOrders.map(o => `<tr><td>${o.orderNumber}</td><td>${new Date(o.timestamp).toLocaleString()}</td><td>${o.orderType}</td><td>Rs. ${formatCurrency(o.total)}</td><td>${o.payments?.[0]?.method || 'Cash'}</td><td>${o.status}</td></tr>`).join('')}
           </tbody>
         </table>`
     } else if (activeTab === 'Product Sales') {
@@ -558,9 +559,54 @@ export default function Reports() {
   }, [productSalesData])
 
   // Orders Report Specific Data
+  const reportOrders = useMemo(() => {
+    let startDate = '';
+    let endDate = '';
+    const todayStr = DateUtils.getBusinessDate();
+
+    if (timeRange === 'Today') {
+      startDate = todayStr;
+      endDate = todayStr;
+    } else if (timeRange === 'Yesterday') {
+      const yesterdayStr = DateUtils.getYesterdayBusinessDate();
+      startDate = yesterdayStr;
+      endDate = yesterdayStr;
+    } else if (timeRange === 'This Week') {
+      const d = new Date();
+      d.setDate(d.getDate() - d.getDay());
+      startDate = DateUtils.getBusinessDate(d);
+      endDate = todayStr;
+    } else if (timeRange === 'This Month' || timeRange === 'Monthly') {
+      startDate = DateUtils.getBusinessMonthStart();
+      const d = new Date();
+      if (d.getHours() < 6) d.setDate(d.getDate() - 1);
+      const year = d.getFullYear();
+      const month = d.getMonth();
+      const lastDayOfMonth = new Date(year, month + 1, 0);
+      endDate = DateUtils.getBusinessDate(lastDayOfMonth);
+    } else if (timeRange === 'Custom Date') {
+      startDate = customDateFrom;
+      endDate = customDateFrom;
+    } else if (timeRange === 'Custom Range') {
+      startDate = customDateFrom;
+      endDate = customDateTo;
+    } else if (timeRange === 'All Time') {
+      startDate = '1970-01-01';
+      endDate = '2099-12-31';
+    }
+
+    if (!startDate) startDate = todayStr;
+    if (!endDate) endDate = startDate;
+
+    return orders.filter(o => {
+      const bd = o.businessDate || DateUtils.getBusinessDate(o.timestamp);
+      return bd >= startDate && bd <= endDate;
+    });
+  }, [orders, timeRange, customDateFrom, customDateTo]);
+
   const orderReportStats = useMemo(() => {
     let completed = 0, preparing = 0, ready = 0, cancelled = 0, edited = 0
-    orders.forEach(o => {
+    reportOrders.forEach(o => {
       if (o.status === 'Completed') completed++
       if (o.kitchenStatus === 'Preparing') preparing++
       if (o.kitchenStatus === 'Ready') ready++
@@ -568,14 +614,14 @@ export default function Reports() {
       if (o.timeline && o.timeline.some(t => t.event === 'Order Edited')) edited++
     })
     return {
-      total: orders.length,
+      total: reportOrders.length,
       completed, preparing, ready, cancelled, edited
     }
-  }, [orders])
+  }, [reportOrders])
 
   const orderVolumeChartData = useMemo(() => {
     const map = new Map<string, number>()
-    orders.forEach(o => {
+    reportOrders.forEach(o => {
       const date = new Date(o.timestamp)
       let key = ""
       if (orderChartTimeView === 'Hour') {
@@ -598,12 +644,12 @@ export default function Reports() {
       data.sort((a, b) => parseInt(a.time) - parseInt(b.time))
     }
     return data.length > 0 ? data : [{ time: 'No Data', count: 0 }]
-  }, [orders, orderChartTimeView])
+  }, [reportOrders, orderChartTimeView])
 
   // Order Types Data
   const orderTypeData = useMemo(() => {
     let dineIn = 0, takeaway = 0, delivery = 0
-    orders.forEach(o => {
+    reportOrders.forEach(o => {
       if (o.orderType === 'Dine In') dineIn++
       else if (o.orderType === 'Takeaway') takeaway++
       else if (o.orderType === 'Delivery') delivery++
@@ -613,7 +659,7 @@ export default function Reports() {
       { name: 'Takeaway', value: takeaway, color: '#3b82f6' },
       { name: 'Delivery', value: delivery, color: '#10b981' }
     ]
-  }, [orders])
+  }, [reportOrders])
 
   const detailedTotals = useMemo(() => {
     let totalQty = 0, totalGross = 0, totalDiscount = 0, totalTax = 0, totalRefunds = 0, totalNet = 0;
