@@ -62,7 +62,7 @@ const updateSplashStatus = (message, isError = false, errorDetail = '') => {
     const cleanDetail = JSON.stringify(errorDetail);
     splashWindow.webContents.executeJavaScript(
       `window.updateStatus(${JSON.stringify(message)}, ${isError}, ${cleanDetail});`
-    ).catch(() => {});
+    ).catch(() => { });
   }
 };
 
@@ -284,6 +284,11 @@ app.whenReady().then(async () => {
   // Auto-updater setup
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
+
+  // Set the read-only GitHub token for private repository access
+  autoUpdater.requestHeaders = {
+    "Authorization": "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"
+  };
 
   autoUpdater.on('update-available', (info) => {
     if (mainWindow) mainWindow.webContents.send('update-available', info);
