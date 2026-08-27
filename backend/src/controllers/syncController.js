@@ -1,6 +1,7 @@
 import { dbEngine } from '../database/sqlite.js';
 import { syncWorker } from '../sync/syncWorker.js';
 import { configService } from '../services/configService.js';
+import { syncService } from '../services/syncService.js';
 
 export const getSyncStatus = async (req, res) => {
   try {
@@ -64,5 +65,36 @@ export const getActiveDevices = (req, res) => {
     res.status(200).json(activeDevices);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch devices' });
+  }
+};
+
+export const getSyncQueue = (req, res) => {
+  try {
+    const { status = 'FAILED', limit = 50 } = req.query;
+    // ensure status is either FAILED or SYNCED
+    if (!['FAILED', 'SYNCED', 'PENDING'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    const data = syncService.getQueue(status, parseInt(limit, 10) || 50);
+    res.status(200).json(data);
+  } catch (error) {
+    console.error('[SyncController] Failed to get sync queue:', error);
+    res.status(500).json({ error: 'Failed to fetch sync queue' });
+  }
+};
+
+export const retrySyncEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const success = syncService.retryEvent(id);
+    if (!success) {
+      return res.status(404).json({ error: 'Failed event not found or already retried' });
+    }
+    // Immediately trigger the background worker to try and push it
+    syncWorker.run().catch(e => console.error('Error triggering syncWorker after retry:', e));
+    res.status(200).json({ message: 'Event queued for retry' });
+  } catch (error) {
+    console.error('[SyncController] Failed to retry event:', error);
+    res.status(500).json({ error: 'Failed to retry event' });
   }
 };

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { 
   RefreshCw, AlertTriangle, History, Trash2, Plus, MonitorSmartphone, Wifi, Database
 } from "lucide-react"
-import { syncApi, type SyncStatus, type ActiveDevice } from "../api/syncApi"
+import { syncApi, type SyncStatus, type ActiveDevice, type SyncQueueItem } from "../api/syncApi"
 import toast from "react-hot-toast"
 import { AnimatePresence, motion } from "framer-motion"
 
@@ -24,16 +24,22 @@ export default function Synchronization() {
   const [syncHistory, setSyncHistory] = useState([])
 
   const [conflicts, setConflicts] = useState<any[]>([])
+  const [failedQueue, setFailedQueue] = useState<SyncQueueItem[]>([])
+  const [syncedQueue, setSyncedQueue] = useState<SyncQueueItem[]>([])
 
   const fetchSyncData = async () => {
     try {
       setIsLoading(true);
-      const [statusData, devicesData] = await Promise.all([
+      const [statusData, devicesData, failedData, syncedData] = await Promise.all([
         syncApi.getStatus(),
-        syncApi.getActiveDevices()
+        syncApi.getActiveDevices(),
+        syncApi.getQueue('FAILED'),
+        syncApi.getQueue('SYNCED', 10)
       ]);
       setStatus(statusData);
       setDevices(devicesData);
+      setFailedQueue(failedData);
+      setSyncedQueue(syncedData);
     } catch (err) {
       toast.error("Failed to fetch sync status");
     } finally {
@@ -89,6 +95,16 @@ export default function Synchronization() {
   const handleResolveConflict = (conflictId: string, resolution: "local" | "cloud" | "merge") => {
     setConflicts(conflicts.filter(c => c.id !== conflictId))
     toast.success(`Conflict resolved using "${resolution}" strategy.`);
+  }
+
+  const handleRetryEvent = async (id: string) => {
+    try {
+      await syncApi.retryEvent(id);
+      toast.success("Event queued for retry!");
+      fetchSyncData();
+    } catch (err: any) {
+      toast.error("Failed to retry event");
+    }
   }
 
   return (
@@ -304,6 +320,68 @@ export default function Synchronization() {
             </div>
           </div>
 
+        </div>
+
+      </div>
+
+      {/* ====================================================
+          SYNC QUEUE VISUALIZATION
+          ==================================================== */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Failed Uploads */}
+        <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4">
+          <h3 className="text-base font-black uppercase tracking-wider text-red-500 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5" /> Failed Uploads
+          </h3>
+          <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+            {failedQueue.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground text-xs font-bold">
+                No failed uploads.
+              </div>
+            ) : (
+              failedQueue.map(item => (
+                <div key={item.id} className="p-4 bg-red-500/5 border border-red-500/20 rounded-2xl flex flex-col gap-2">
+                  <div className="flex justify-between items-start">
+                    <span className="font-black text-xs text-red-500 uppercase">{item.entity_type} • {item.action}</span>
+                    <button 
+                      onClick={() => handleRetryEvent(item.id)}
+                      className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-[10px] uppercase font-black rounded-lg transition-colors shadow-sm"
+                    >
+                      Retry Now
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground break-all">ID: {item.entity_id}</p>
+                  <p className="text-[11px] font-semibold text-red-500/80 mt-1">{item.error_details || "Unknown error"}</p>
+                  <p className="text-[9px] text-zinc-500 mt-1">Failed on {new Date(item.updated_at).toLocaleString()}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Synced Uploads */}
+        <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4">
+          <h3 className="text-base font-black uppercase tracking-wider text-emerald-500 flex items-center gap-2">
+            <History className="w-5 h-5" /> Recent Synced Uploads
+          </h3>
+          <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+            {syncedQueue.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground text-xs font-bold">
+                No recent sync history.
+              </div>
+            ) : (
+              syncedQueue.map(item => (
+                <div key={item.id} className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl flex flex-col gap-1">
+                  <div className="flex justify-between items-start">
+                    <span className="font-black text-xs text-emerald-500 uppercase">{item.entity_type} • {item.action}</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground break-all">ID: {item.entity_id}</p>
+                  <p className="text-[9px] text-zinc-500 mt-1">Synced on {new Date(item.updated_at).toLocaleString()}</p>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
       </div>

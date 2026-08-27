@@ -75,7 +75,7 @@ export default function Settings() {
       ipcRenderer.invoke('get-app-version').then(setAppVersion);
 
       const handleAvailable = (_: any, info: any) => { setUpdateStatus("available"); setUpdateInfo(info); };
-      const handleNotAvailable = () => setUpdateStatus("idle");
+      const handleNotAvailable = () => setUpdateStatus("up-to-date");
       const handleError = (_: any, err: any) => { setUpdateStatus("error"); setUpdateError(err); };
       const handleProgress = (_: any, progressObj: any) => { setUpdateStatus("downloading"); setDownloadProgress(progressObj); };
       const handleDownloaded = () => setUpdateStatus("downloaded");
@@ -95,6 +95,23 @@ export default function Settings() {
       };
     }
   }, []);
+
+  const getFriendlyErrorMessage = (err: string) => {
+    const errorStr = String(err).toLowerCase();
+    if (errorStr.includes("404") || errorStr.includes("not found")) {
+      return "No release found on the server. If you just set up updates, please publish a release on GitHub first.";
+    }
+    if (errorStr.includes("net::err_internet_disconnected") || errorStr.includes("network")) {
+      return "Network error. Please check your internet connection and try again.";
+    }
+    if (errorStr.includes("unauthorized") || errorStr.includes("401") || errorStr.includes("403")) {
+      return "Authentication error. The GitHub token may be invalid or lacks repository access.";
+    }
+    if (errorStr.includes("no published versions")) {
+       return "No published versions found on GitHub. Please create a release.";
+    }
+    return String(err);
+  };
 
   const checkForUpdates = async () => {
     const w = window as any;
@@ -492,17 +509,35 @@ export default function Settings() {
                       )}
 
                       {updateStatus === "error" && (
-                        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl space-y-3">
-                          <div className="flex items-center gap-2 text-red-500 font-bold">
-                            <AlertCircle className="w-5 h-5" /> Update Error
+                        <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-3">
+                          <div className="flex items-center gap-2 text-amber-500 font-bold">
+                            <AlertCircle className="w-5 h-5" /> Update Check Failed
                           </div>
-                          <p className="text-sm text-red-500/80">{updateError}</p>
+                          <p className="text-sm text-amber-500/80 font-medium">
+                            {getFriendlyErrorMessage(updateError)}
+                          </p>
                           <button
                             type="button"
                             onClick={checkForUpdates}
                             className="px-4 py-2 bg-background border border-border text-foreground font-bold rounded-xl hover:bg-secondary transition-all text-sm"
                           >
                             Try Again
+                          </button>
+                        </div>
+                      )}
+
+                      {updateStatus === "up-to-date" && (
+                        <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-3">
+                          <div className="flex items-center gap-2 text-emerald-500 font-bold">
+                            <CheckCircle className="w-5 h-5" /> You're up to date!
+                          </div>
+                          <p className="text-sm text-emerald-500/80">You are running the newest version of Restaurant POS.</p>
+                          <button
+                            type="button"
+                            onClick={checkForUpdates}
+                            className="px-4 py-2 bg-background border border-border text-foreground font-bold rounded-xl hover:bg-secondary transition-all text-sm"
+                          >
+                            Check Again
                           </button>
                         </div>
                       )}

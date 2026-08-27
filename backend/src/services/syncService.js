@@ -68,6 +68,24 @@ class SyncService {
       WHERE id = ?
     `).run(errorMsg, eventId);
   }
+
+  getQueue(status, limit = 50) {
+    return dbEngine.prepare(`
+      SELECT * FROM sync_queue 
+      WHERE status = ? 
+      ORDER BY updated_at DESC 
+      LIMIT ?
+    `).all(status, limit);
+  }
+
+  retryEvent(eventId) {
+    const info = dbEngine.prepare(`
+      UPDATE sync_queue 
+      SET status = 'PENDING', permanent_failure = 0, error_details = NULL 
+      WHERE id = ? AND status = 'FAILED'
+    `).run(eventId);
+    return info.changes > 0;
+  }
 }
 
 export const syncService = new SyncService();

@@ -18,10 +18,27 @@ export interface ActiveDevice {
   status: string;
 }
 
+export interface SyncQueueItem {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  status: string;
+  error_details?: string;
+  retry_count: number;
+  created_at: string;
+  updated_at: string;
+  permanent_failure: number;
+}
+
 export const syncApi = {
   getStatus: () => apiClient.get('/sync/status') as Promise<SyncStatus>,
   
   triggerSync: () => apiClient.post('/sync/trigger') as Promise<{ message: string, pushed?: number, pulled?: number }>,
   
-  getActiveDevices: () => apiClient.get('/sync/devices') as Promise<ActiveDevice[]>
+  getActiveDevices: () => apiClient.get('/sync/devices') as Promise<ActiveDevice[]>,
+
+  getQueue: (status: string, limit?: number) => apiClient.get(`/sync/queue?status=${status}&limit=${limit || 50}`) as Promise<SyncQueueItem[]>,
+
+  retryEvent: (id: string) => apiClient.post(`/sync/retry/${id}`) as Promise<{ message: string }>
 };

@@ -64,7 +64,27 @@ export const pushSyncEvents = async (req, res) => {
       tableGroups[tableName].eventMap[entity_id] = event;
     }
 
-    for (const tableName of Object.keys(tableGroups)) {
+    // Process tables in dependency order to avoid foreign key violations
+    const orderedTables = [
+      'users',
+      'categories',
+      'products',
+      'deals',
+      'customers',
+      'dining_tables',
+      'orders',
+      'order_items',
+      'order_payments',
+      'application_settings'
+    ];
+
+    // Ensure we also process any tables that might have been missed in the ordered list
+    const tablesToProcess = [
+      ...orderedTables.filter(t => tableGroups[t]),
+      ...Object.keys(tableGroups).filter(t => !orderedTables.includes(t))
+    ];
+
+    for (const tableName of tablesToProcess) {
       const group = tableGroups[tableName];
       
       try {
@@ -206,6 +226,6 @@ export const pullSyncEvents = async (req, res) => {
     });
   } catch (error) {
     console.error('[SyncController] Pull error:', error);
-    return res.status(500).json({ error: 'Internal server error during sync pull' });
+    return res.status(500).json({ error: error.message || 'Internal server error during sync pull' });
   }
 };
