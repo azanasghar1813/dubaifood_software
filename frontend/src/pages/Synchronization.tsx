@@ -19,6 +19,7 @@ export default function Synchronization() {
 
   const [status, setStatus] = useState<SyncStatus>({ pending: 0, failed: 0, synced: 0, isRunning: false, nextRunDelay: 0 })
   const [devices, setDevices] = useState<ActiveDevice[]>([])
+  const [lastError, setLastError] = useState<string | null>(null)
 
   const [syncHistory, setSyncHistory] = useState([])
 
@@ -72,11 +73,14 @@ export default function Synchronization() {
     setIsSyncing(true)
     const tId = toast.loading("Pushing offline data to cloud...")
     try {
-      await syncApi.triggerSync();
-      toast.success("Sync triggered successfully", { id: tId });
+      const res = await syncApi.triggerSync();
+      setLastError(null);
+      toast.success(`Sync successful: Pushed ${res.pushed || 0}, Pulled ${res.pulled || 0}`, { id: tId });
       fetchSyncData();
-    } catch (err) {
-      toast.error("Cloud sync failed", { id: tId });
+    } catch (err: any) {
+      const errMsg = err.response?.data?.error || err.message || "Cloud sync failed";
+      setLastError(errMsg);
+      toast.error(`Sync failed: ${errMsg}`, { id: tId });
     } finally {
       setIsSyncing(false)
     }
@@ -170,6 +174,16 @@ export default function Synchronization() {
                 </div>
               ))}
             </div>
+
+            {lastError && (
+              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3 animate-in fade-in zoom-in-95">
+                <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-sm font-black text-red-500">Last Sync Error</h4>
+                  <p className="text-xs font-semibold text-red-500/80 mt-1">{lastError}</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Conflict Resolution Block */}

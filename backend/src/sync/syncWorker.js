@@ -45,12 +45,16 @@ class SyncWorker {
   async run() {
     if (this.isRunning) {
       this.scheduleNextRun(this.currentDelayMs);
-      return;
+      return { success: false, error: 'Sync already running' };
     }
 
     this.isRunning = true;
+    let pushed = 0;
+    let pulled = 0;
 
     try {
+      const syncConfig = configService.getSyncConfig();
+      const terminalId = syncConfig.device_id || 'UNKNOWN_DEVICE';
       const pendingEvents = syncService.getPendingEvents(50); // Batch of 50
 
       if (pendingEvents.length > 0) {
@@ -85,9 +89,6 @@ class SyncWorker {
           }
         }
 
-        const syncConfig = configService.getSyncConfig();
-        const terminalId = syncConfig.device_id || 'UNKNOWN_DEVICE';
-
         // Push to cloud
         const response = await fetch(`${config.sync.apiUrl}/sync/push`, {
           method: 'POST',
@@ -120,6 +121,7 @@ class SyncWorker {
           syncService.markEventPermanentFailure(conflict.eventId, `Conflict: Server version ${conflict.serverVersion} >= client version ${conflict.clientVersion}. Needs pull: ${conflict.needsPull || false}`);
         }
 
+        pushed = data.successful.length;
         console.log(`[SyncWorker] Sync complete. Success: ${data.successful.length}, Failed: ${data.failed.length}, Conflicts: ${data.conflicts.length}`);
         
         // Reset delay on success if queue is full
@@ -201,11 +203,14 @@ class SyncWorker {
       }
       // --- PULL LOGIC END ---
 
+      pulled = totalPulled;
+      return { success: true, pushed, pulled };
     } catch (error) {
       console.error('[SyncWorker] Sync failed (Offline or API Error):', error.message);
       // Exponential backoff
       this.currentDelayMs = Math.min(this.currentDelayMs * 2, this.maxDelayMs);
       console.log(`[SyncWorker] Backing off. Next attempt in ${this.currentDelayMs / 1000}s`);
+      return { success: false, error: error.message };
     } finally {
       this.isRunning = false;
       this.scheduleNextRun(this.currentDelayMs);

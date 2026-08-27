@@ -39,11 +39,17 @@ export const getSyncStatus = async (req, res) => {
 
 export const triggerSync = async (req, res) => {
   try {
-    // Fire and forget
-    syncWorker.run();
-    res.status(200).json({ message: 'Sync triggered successfully' });
+    const result = await syncWorker.run();
+    if (result && !result.success) {
+      return res.status(400).json({ error: result.error || 'Sync failed' });
+    }
+    res.status(200).json({ 
+      message: 'Sync completed successfully',
+      pushed: result ? result.pushed : 0,
+      pulled: result ? result.pulled : 0
+    });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to trigger sync' });
+    res.status(500).json({ error: error.message || 'Failed to trigger sync' });
   }
 };
 

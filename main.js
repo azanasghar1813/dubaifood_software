@@ -4,7 +4,8 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import http from 'http';
-import { autoUpdater, CancellationToken } from 'electron-updater';
+import pkg from 'electron-updater';
+const { autoUpdater, CancellationToken } = pkg;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

@@ -21,7 +21,7 @@ export interface ActiveDevice {
 export const syncApi = {
   getStatus: () => apiClient.get('/sync/status') as Promise<SyncStatus>,
   
-  triggerSync: () => apiClient.post('/sync/trigger') as Promise<{ message: string }>,
+  triggerSync: () => apiClient.post('/sync/trigger') as Promise<{ message: string, pushed?: number, pulled?: number }>,
   
   getActiveDevices: () => apiClient.get('/sync/devices') as Promise<ActiveDevice[]>
 };
