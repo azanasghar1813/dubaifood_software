@@ -41,6 +41,7 @@ export const pushSyncEvents = async (req, res) => {
         'ORDER': 'orders',
         'ORDER_ITEM': 'order_items',
         'ORDER_PAYMENT': 'order_payments',
+        'PAYMENT': 'order_payments',
         'DINING_TABLE': 'dining_tables',
         'SETTING': 'application_settings'
       };
@@ -48,7 +49,7 @@ export const pushSyncEvents = async (req, res) => {
       const tableName = tableMap[entity_type.toUpperCase()];
 
       if (!tableName) {
-        if (entity_type.toUpperCase() === 'PRINT' || entity_type.toUpperCase() === 'KDS' || entity_type.toUpperCase() === 'RECEIPT') {
+        if (entity_type.toUpperCase() === 'PRINT' || entity_type.toUpperCase() === 'KDS' || entity_type.toUpperCase() === 'RECEIPT' || entity_type.toUpperCase() === 'VARIANT') {
           // Gracefully ignore local-only events
           results.successful.push(event.id);
           continue;
@@ -85,7 +86,7 @@ export const pushSyncEvents = async (req, res) => {
         
         // Sanitize corrupt UUID fields that were populated with strings during local testing
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const potentialUuidFields = ['shift_id', 'cashier_user_id', 'table_id', 'waiter_id', 'rider_id', 'customer_id', 'kitchen_station_id'];
+        const potentialUuidFields = ['shift_id', 'cashier_user_id', 'table_id', 'waiter_id', 'rider_id', 'customer_id', 'kitchen_station_id', 'kitchen_printer_id', 'parent_id'];
         for (const field of potentialUuidFields) {
           if (entityData[field] && typeof entityData[field] === 'string' && !uuidRegex.test(entityData[field])) {
             entityData[field] = null;
@@ -148,7 +149,18 @@ export const pushSyncEvents = async (req, res) => {
       try {
         if (group.deletes.length > 0) {
           const { error } = await supabase.from(tableName).delete().in('id', group.deletes);
-          if (error) throw error;
+          if (error) {
+             for (const id of group.deletes) {
+               const { error: singleError } = await supabase.from(tableName).delete().eq('id', id);
+               if (singleError) {
+                 const event = group.eventMap[id];
+                 if (event) {
+                   results.failed.push({ eventId: event.id, error: singleError.message });
+                   delete group.eventMap[id];
+                 }
+               }
+             }
+          }
         }
 
         if (group.upserts.length > 0) {
@@ -205,7 +217,24 @@ export const pushSyncEvents = async (req, res) => {
             const { error: upsertError } = await supabase
               .from(tableName)
               .upsert(validUpserts, { onConflict: 'id' });
-            if (upsertError) throw upsertError;
+              
+            if (upsertError) {
+              // Fallback to one-by-one insertion if batch fails due to a constraint or data type violation
+              for (const u of validUpserts) {
+                const { error: singleError } = await supabase.from(tableName).upsert([u], { onConflict: 'id' });
+                if (singleError) {
+                  const event = group.eventMap[u.id];
+                  if (event) {
+                    results.failed.push({ eventId: event.id, error: singleError.message });
+                    delete group.eventMap[u.id];
+                  }
+                  
+                  if (tableName === 'orders') {
+                    failedParentOrderIds.add(u.id);
+                  }
+                }
+              }
+            }
           }
         }
         

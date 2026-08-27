@@ -20,7 +20,7 @@ class OrderNumberService {
     
     // Prioritize the device-specific order_prefix, fallback to global prefix or 'POS'
     const prefix = syncConfig.order_prefix || orderConfig.order_number_prefix || 'POS';
-    const padLength = orderConfig.order_number_pad_length || 6;
+    const padLength = orderConfig.order_number_pad_length || 1;
     
     let resetDaily = true;
     if (orderConfig.order_number_reset_daily !== undefined) {
@@ -28,7 +28,7 @@ class OrderNumberService {
       resetDaily = val === 'true' || val === '1';
     }
     
-    const template = orderConfig.order_number_template || '{PREFIX}-{YYYYMMDD}-{SEQ}';
+    const template = orderConfig.order_number_template || '{PREFIX}-{SEQ}';
 
     const dateKey = resetDaily ? businessDate : 'GLOBAL';
 

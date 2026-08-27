@@ -188,12 +188,24 @@ class SyncWorker {
           dbEngine.transaction(() => {
             const upsertData = (tableName, items) => {
               if (!items || items.length === 0) return;
-              const keys = Object.keys(items[0]);
+              
+              const tableInfo = dbEngine.pragma(`table_info(${tableName})`);
+              const validColumns = new Set(tableInfo.map(c => c.name));
+              
+              const keys = Object.keys(items[0]).filter(k => validColumns.has(k));
+              if (validColumns.has('sync_status') && !keys.includes('sync_status')) {
+                keys.push('sync_status');
+              }
+              
               const placeholders = keys.map(() => '?').join(', ');
               const updateSet = keys.filter(k => k !== 'id').map(k => `${k} = excluded.${k}`).join(', ');
               const stmt = dbEngine.prepare(`INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${updateSet}`);
               for (const item of items) {
-                stmt.run(...keys.map(k => item[k] === undefined ? null : item[k]));
+                const values = keys.map(k => {
+                  if (k === 'sync_status') return 'SYNCED';
+                  return item[k] === undefined ? null : item[k];
+                });
+                stmt.run(...values);
               }
             };
 
