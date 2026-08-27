@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import http from 'http';
+import { autoUpdater, CancellationToken } from 'electron-updater';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -278,6 +279,66 @@ app.whenReady().then(async () => {
       createWindow();
     }
   });
+
+  // Auto-updater setup
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+
+  autoUpdater.on('update-available', (info) => {
+    if (mainWindow) mainWindow.webContents.send('update-available', info);
+  });
+  autoUpdater.on('update-not-available', (info) => {
+    if (mainWindow) mainWindow.webContents.send('update-not-available', info);
+  });
+  autoUpdater.on('error', (err) => {
+    if (mainWindow) mainWindow.webContents.send('update-error', err.message);
+  });
+  autoUpdater.on('download-progress', (progressObj) => {
+    if (mainWindow) mainWindow.webContents.send('download-progress', progressObj);
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    if (mainWindow) mainWindow.webContents.send('update-downloaded', info);
+  });
+
+  ipcMain.handle('check-for-updates', async () => {
+    try {
+      if (!app.isPackaged) return { error: "Development mode: Updates disabled" };
+      return await autoUpdater.checkForUpdates();
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  let cancellationToken;
+  ipcMain.handle('download-update', async () => {
+    try {
+      cancellationToken = new CancellationToken();
+      return await autoUpdater.downloadUpdate(cancellationToken);
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('cancel-update', () => {
+    if (cancellationToken) {
+      cancellationToken.cancel();
+    }
+    return true;
+  });
+
+  ipcMain.handle('install-update', async () => {
+    if (mainWindow) mainWindow.webContents.send('update-installing');
+    await stopBackendGracefully();
+    autoUpdater.quitAndInstall();
+  });
+
+  ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
+  });
+
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdates().catch(err => console.error("Silent update check failed:", err));
+  }
 });
 
 // Ensures the backend is stopped cleanly (checkpointing SQLite) before

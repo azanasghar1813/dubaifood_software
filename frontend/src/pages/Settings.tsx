@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
-  Printer as PrinterIcon, Building2, Save, Trash2, Plus, Server, Edit2, X, RefreshCw, Shield
+  Printer as PrinterIcon, Building2, Save, Trash2, Plus, Server, Edit2, X, RefreshCw, Shield, Download, ArrowDownCircle, CheckCircle, AlertCircle, Loader2
 } from "lucide-react"
 import { useAuthStore, hasPermission } from "../store/authStore"
 import { configApi } from "../api/configApi"
@@ -17,6 +17,13 @@ export default function Settings() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
+
+  // Update State
+  const [appVersion, setAppVersion] = useState("")
+  const [updateStatus, setUpdateStatus] = useState("idle")
+  const [updateInfo, setUpdateInfo] = useState<any>(null)
+  const [downloadProgress, setDownloadProgress] = useState<any>(null)
+  const [updateError, setUpdateError] = useState("")
 
   // Form Data
   const [orderConfig, setOrderConfig] = useState<OrderConfig>({
@@ -60,6 +67,76 @@ export default function Settings() {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    const w = window as any;
+    if (w.require) {
+      const { ipcRenderer } = w.require('electron');
+      ipcRenderer.invoke('get-app-version').then(setAppVersion);
+
+      const handleAvailable = (_: any, info: any) => { setUpdateStatus("available"); setUpdateInfo(info); };
+      const handleNotAvailable = () => setUpdateStatus("idle");
+      const handleError = (_: any, err: any) => { setUpdateStatus("error"); setUpdateError(err); };
+      const handleProgress = (_: any, progressObj: any) => { setUpdateStatus("downloading"); setDownloadProgress(progressObj); };
+      const handleDownloaded = () => setUpdateStatus("downloaded");
+
+      ipcRenderer.on('update-available', handleAvailable);
+      ipcRenderer.on('update-not-available', handleNotAvailable);
+      ipcRenderer.on('update-error', handleError);
+      ipcRenderer.on('download-progress', handleProgress);
+      ipcRenderer.on('update-downloaded', handleDownloaded);
+
+      return () => {
+        ipcRenderer.removeListener('update-available', handleAvailable);
+        ipcRenderer.removeListener('update-not-available', handleNotAvailable);
+        ipcRenderer.removeListener('update-error', handleError);
+        ipcRenderer.removeListener('download-progress', handleProgress);
+        ipcRenderer.removeListener('update-downloaded', handleDownloaded);
+      };
+    }
+  }, []);
+
+  const checkForUpdates = async () => {
+    const w = window as any;
+    if (w.require) {
+      setUpdateStatus("checking");
+      setUpdateError("");
+      const res = await w.require('electron').ipcRenderer.invoke('check-for-updates');
+      if (res?.error) {
+        setUpdateStatus("error");
+        setUpdateError(res.error);
+      }
+    }
+  };
+
+  const startDownload = async () => {
+    const w = window as any;
+    if (w.require) {
+      setUpdateStatus("downloading");
+      setUpdateError("");
+      const res = await w.require('electron').ipcRenderer.invoke('download-update');
+      if (res?.error) {
+        setUpdateStatus("error");
+        setUpdateError(res.error);
+      }
+    }
+  };
+
+  const cancelDownload = async () => {
+    const w = window as any;
+    if (w.require) {
+      await w.require('electron').ipcRenderer.invoke('cancel-update');
+      setUpdateStatus("idle");
+      setDownloadProgress(null);
+    }
+  };
+
+  const installUpdate = async () => {
+    const w = window as any;
+    if (w.require) {
+      await w.require('electron').ipcRenderer.invoke('install-update');
+    }
+  };
 
   const handleSaveBusiness = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -148,7 +225,8 @@ export default function Settings() {
 
   const tabsList = [
     { name: "Printers", icon: PrinterIcon },
-    { name: "Data Management", icon: Trash2 }
+    { name: "Data Management", icon: Trash2 },
+    { name: "Software Update", icon: Download }
   ]
 
   if (isLoading) {
@@ -372,6 +450,125 @@ export default function Settings() {
                           ))}
                         </tbody>
                       </table>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* SOFTWARE UPDATE */}
+                {activeTab === "Software Update" && (
+                  <motion.div
+                    key="software-update"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="space-y-8"
+                  >
+                    <div className="bg-secondary/30 p-6 rounded-2xl border border-border space-y-4">
+                      <div>
+                        <h3 className="text-base font-black flex items-center gap-2">
+                          <Download className="w-5 h-5 text-primary" /> Application Update
+                        </h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Current Version: <span className="font-bold font-mono bg-background px-2 py-1 rounded-md border border-border ml-1">{appVersion || "Unknown"}</span>
+                        </p>
+                      </div>
+
+                      {updateStatus === "idle" && (
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            onClick={checkForUpdates}
+                            className="px-6 py-2.5 bg-primary text-primary-foreground font-black rounded-xl hover:bg-primary/95 transition-all shadow-md shadow-primary/20"
+                          >
+                            Check for Updates
+                          </button>
+                        </div>
+                      )}
+
+                      {updateStatus === "checking" && (
+                        <div className="flex items-center gap-3 pt-2 text-primary font-bold">
+                          <Loader2 className="w-5 h-5 animate-spin" /> Checking for updates...
+                        </div>
+                      )}
+
+                      {updateStatus === "error" && (
+                        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl space-y-3">
+                          <div className="flex items-center gap-2 text-red-500 font-bold">
+                            <AlertCircle className="w-5 h-5" /> Update Error
+                          </div>
+                          <p className="text-sm text-red-500/80">{updateError}</p>
+                          <button
+                            type="button"
+                            onClick={checkForUpdates}
+                            className="px-4 py-2 bg-background border border-border text-foreground font-bold rounded-xl hover:bg-secondary transition-all text-sm"
+                          >
+                            Try Again
+                          </button>
+                        </div>
+                      )}
+
+                      {updateStatus === "available" && updateInfo && (
+                        <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl space-y-3">
+                          <div className="flex items-center gap-2 text-blue-500 font-bold">
+                            <ArrowDownCircle className="w-5 h-5" /> New Update Available!
+                          </div>
+                          <p className="text-sm text-blue-500/80">Version {updateInfo.version} is ready to be downloaded.</p>
+                          <button
+                            type="button"
+                            onClick={startDownload}
+                            className="px-6 py-2.5 bg-blue-500 text-white font-black rounded-xl hover:bg-blue-600 transition-all shadow-md shadow-blue-500/20"
+                          >
+                            Update Now
+                          </button>
+                        </div>
+                      )}
+
+                      {updateStatus === "downloading" && downloadProgress && (
+                        <div className="p-4 bg-secondary/50 border border-border rounded-xl space-y-4">
+                          <div className="flex justify-between items-center text-sm font-bold">
+                            <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-primary" /> Downloading Update...</span>
+                            <span>{Math.round(downloadProgress.percent || 0)}%</span>
+                          </div>
+                          
+                          {/* Progress Bar */}
+                          <div className="w-full bg-background rounded-full h-2.5 border border-border overflow-hidden">
+                            <div className="bg-primary h-2.5 rounded-full transition-all duration-300" style={{ width: `${downloadProgress.percent}%` }}></div>
+                          </div>
+                          
+                          <div className="flex justify-between items-center text-xs text-muted-foreground font-medium">
+                            <span>
+                              {((downloadProgress.transferred || 0) / 1048576).toFixed(2)} MB of {((downloadProgress.total || 0) / 1048576).toFixed(2)} MB
+                            </span>
+                            <span>{((downloadProgress.bytesPerSecond || 0) / 1048576).toFixed(2)} MB/s</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={cancelDownload}
+                            className="mt-2 px-4 py-2 bg-background border border-border text-foreground font-bold rounded-xl hover:bg-red-500 hover:text-white hover:border-red-500 transition-all text-sm"
+                          >
+                            Cancel Download
+                          </button>
+                        </div>
+                      )}
+
+                      {updateStatus === "downloaded" && (
+                        <div className="p-5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-4">
+                          <div className="flex items-center gap-2 text-emerald-500 font-bold text-lg">
+                            <CheckCircle className="w-6 h-6" /> Update downloaded successfully.
+                          </div>
+                          <p className="text-sm text-emerald-500/80">
+                            The software must be restarted to apply the update. Your current order and sync queue will be safely saved.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={installUpdate}
+                            className="px-6 py-3 bg-emerald-500 text-white font-black rounded-xl hover:bg-emerald-600 transition-all shadow-md shadow-emerald-500/20 flex items-center gap-2"
+                          >
+                            <RefreshCw className="w-5 h-5" /> Restart & Install
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </motion.div>
                 )}
