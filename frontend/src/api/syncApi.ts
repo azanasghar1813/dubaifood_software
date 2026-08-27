@@ -40,7 +40,14 @@ export const syncApi = {
   
   getActiveDevices: () => apiClient.get('/sync/devices') as Promise<ActiveDevice[]>,
 
-  getQueue: (status: string, limit?: number) => apiClient.get(`/sync/queue?status=${status}&limit=${limit || 50}`) as Promise<SyncQueueItem[]>,
+  getQueue: (status: string, limit?: number) => {
+    const url = limit ? `/sync/queue?status=${status}&limit=${limit}` : `/sync/queue?status=${status}`;
+    return apiClient.get(url) as Promise<SyncQueueItem[]>;
+  },
 
-  retryEvent: (id: string) => apiClient.post(`/sync/retry/${id}`) as Promise<{ message: string }>
+  retryEvent: (id: string) => apiClient.post(`/sync/retry/${id}`) as Promise<{ message: string }>,
+  
+  retryAll: () => apiClient.post(`/sync/retry-all`) as Promise<{ message: string }>,
+  
+  clearQueue: () => apiClient.delete(`/sync/clear-queue`) as Promise<{ message: string }>
 };

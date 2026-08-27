@@ -153,13 +153,6 @@ class PrintService {
       reason,
     });
 
-    // Sync event
-    syncService.queueSyncEvent('PRINT', jobId, 'REPRINT_EVENT', {
-      order_id:       orderId,
-      order_number:   order.order_number,
-      reprint_count:  reprintCount,
-      reason,
-    });
 
     setImmediate(() => {
       printEngineService.processPendingJobs().catch(() => {});

@@ -133,9 +133,11 @@ class SyncWorker {
           syncService.markEventFailed(failure.eventId, failure.error);
         }
 
-        // Handle conflicts (Mark them as permanent failures so they don't block the queue forever)
+        // Handle conflicts
+        // If the server has an equal or newer version, the local event is obsolete.
+        // We mark it as synced to clear it from the queue, and rely on the subsequent PULL to sync the local DB.
         for (const conflict of data.conflicts) {
-          syncService.markEventPermanentFailure(conflict.eventId, `Conflict: Server version ${conflict.serverVersion} >= client version ${conflict.clientVersion}. Needs pull: ${conflict.needsPull || false}`);
+          syncService.markEventSynced(conflict.eventId);
         }
 
         pushed = data.successful.length;

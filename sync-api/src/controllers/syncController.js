@@ -82,10 +82,23 @@ export const pushSyncEvents = async (req, res) => {
         if (tableName === 'orders' && !entityData.order_number) {
           entityData.order_number = `FALLBACK-${entity_id.substring(0, 8)}`;
         }
+        
+        // Sanitize corrupt UUID fields that were populated with strings during local testing
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const potentialUuidFields = ['shift_id', 'cashier_user_id', 'table_id', 'waiter_id', 'rider_id', 'customer_id', 'kitchen_station_id'];
+        for (const field of potentialUuidFields) {
+          if (entityData[field] && typeof entityData[field] === 'string' && !uuidRegex.test(entityData[field])) {
+            entityData[field] = null;
+          }
+        }
 
-        // Inject terminalId if applicable (e.g. tracking who touched it last)
-        // Wait, Supabase does not have 'last_updated_by_device' so we shouldn't inject it!
-        tableGroups[tableName].upserts.push({ ...entityData, id: entity_id, payload_version });
+        const upsertObj = { ...entityData, id: entity_id, payload_version };
+        const existingIndex = tableGroups[tableName].upserts.findIndex(u => u.id === entity_id);
+        if (existingIndex !== -1) {
+          tableGroups[tableName].upserts[existingIndex] = upsertObj;
+        } else {
+          tableGroups[tableName].upserts.push(upsertObj);
+        }
       }
       tableGroups[tableName].eventMap[entity_id] = event;
     }
@@ -110,8 +123,27 @@ export const pushSyncEvents = async (req, res) => {
       ...Object.keys(tableGroups).filter(t => !orderedTables.includes(t))
     ];
 
+    const failedParentOrderIds = new Set();
+
     for (const tableName of tablesToProcess) {
       const group = tableGroups[tableName];
+      
+      // Prevent foreign key violations if parent order failed in the same batch
+      if (tableName === 'order_items' || tableName === 'order_payments') {
+        const initialUpserts = [...group.upserts];
+        group.upserts = [];
+        for (const u of initialUpserts) {
+          if (failedParentOrderIds.has(u.order_id)) {
+             const event = group.eventMap[u.id];
+             if (event) {
+               results.failed.push({ eventId: event.id, error: 'Parent order failed to sync in this batch.' });
+               delete group.eventMap[u.id];
+             }
+          } else {
+             group.upserts.push(u);
+          }
+        }
+      }
       
       try {
         if (group.deletes.length > 0) {
@@ -189,6 +221,11 @@ export const pushSyncEvents = async (req, res) => {
         // If bulk fails, mark all events in this group as failed
         for (const entityId of Object.keys(group.eventMap)) {
           results.failed.push({ eventId: group.eventMap[entityId].id, error: err.message });
+        }
+        
+        // Ensure child items are blocked from attempting to push
+        if (tableName === 'orders') {
+          group.upserts.forEach(u => failedParentOrderIds.add(u.id));
         }
       }
     }

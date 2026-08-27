@@ -25,5 +25,7 @@ export const backupApi = {
         'Content-Type': 'multipart/form-data'
       }
     });
-  }
+  },
+
+  restoreLocalBackup: (id: string) => apiClient.post(`/backup/restore-local/${id}`) as Promise<{ message: string }>
 };

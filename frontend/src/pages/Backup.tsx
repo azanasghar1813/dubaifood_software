@@ -87,6 +87,23 @@ export default function Backup() {
     }
   }
 
+  const handleRestoreBackup = async (id: string) => {
+    if (confirm("WARNING: This will overwrite your current database with this backup! Any new transactions made after this backup was created WILL BE LOST! Are you absolutely sure you want to restore?")) {
+      setIsRestoring(true);
+      const tId = toast.loading("Restoring backup and restarting system...");
+      try {
+        await backupApi.restoreLocalBackup(id);
+        toast.success("Restore successful! The system is restarting...", { id: tId });
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      } catch (err) {
+        toast.error("Failed to restore backup", { id: tId });
+        setIsRestoring(false);
+      }
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto text-foreground pb-12 animate-in fade-in zoom-in-95 duration-500">
       
@@ -197,8 +214,16 @@ export default function Backup() {
                         <td className="px-6 py-4 text-right">
                           <div className="flex justify-end gap-1.5">
                             <button 
+                              onClick={() => handleRestoreBackup(bkp.id)}
+                              className="px-3 py-1 bg-primary text-white hover:bg-primary/90 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors shadow-sm"
+                              title="Restore Database"
+                            >
+                              Restore
+                            </button>
+                            <button 
                               onClick={() => handleDeleteBackup(bkp.id)}
                               className="p-2 bg-secondary text-red-500 hover:bg-red-500 hover:text-white border border-border rounded-xl transition-colors"
+                              title="Delete Backup"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>

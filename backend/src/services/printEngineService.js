@@ -140,14 +140,7 @@ class PrintEngineService {
           }
         );
 
-        // Sync event (only print events, not printer config)
-        if (job.order_id) {
-          syncService.queueSyncEvent('PRINT', jobId, 'PRINT_COMPLETED', {
-            order_id:     job.order_id,
-            order_number: job.order_number,
-            job_type:     job.job_type,
-          });
-        }
+
       } else {
         // ── Failure path ─────────────────────────────────────────────────
         printQueueService.markFailed(jobId, result.error || 'Print failed');
@@ -173,14 +166,7 @@ class PrintEngineService {
           }
         );
 
-        // Sync event for failure (so cloud dashboard can track)
-        if (job.order_id) {
-          syncService.queueSyncEvent('PRINT', jobId, 'PRINT_FAILED', {
-            order_id:     job.order_id,
-            job_type:     job.job_type,
-            error:        result.error,
-          });
-        }
+
       }
     } catch (error) {
       // Outer catch: protect the cycle from crashing on any single job

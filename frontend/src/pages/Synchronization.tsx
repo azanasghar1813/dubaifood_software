@@ -14,6 +14,16 @@ export default function Synchronization() {
   
   const searchInputRef = useRef<HTMLInputElement>(null)
 
+  const formatTime = (timeStr: string) => {
+    if (!timeStr) return "";
+    let t = timeStr.trim();
+    if (!t.endsWith('Z') && !t.includes('+')) {
+       // Replace space with T just in case, then append Z
+       t = t.replace(' ', 'T') + 'Z';
+    }
+    return new Date(t).toLocaleString();
+  }
+
   const [networkQuality] = useState<"Excellent" | "Good" | "Poor" | "Offline" | "N/A">("N/A")
   const [latency, setLatency] = useState<number | null>(null)
 
@@ -33,7 +43,7 @@ export default function Synchronization() {
       const [statusData, devicesData, failedData, syncedData] = await Promise.all([
         syncApi.getStatus(),
         syncApi.getActiveDevices(),
-        syncApi.getQueue('FAILED'),
+        syncApi.getQueue('FAILED', 10000), // Show virtually all failed items
         syncApi.getQueue('SYNCED', 10)
       ]);
       setStatus(statusData);
@@ -118,6 +128,28 @@ export default function Synchronization() {
       fetchSyncData();
     } catch (err: any) {
       toast.error("Failed to retry event");
+    }
+  }
+
+  const handleRetryAll = async () => {
+    try {
+      await syncApi.retryAll();
+      toast.success("All failed events queued for retry!");
+      fetchSyncData();
+    } catch (err: any) {
+      toast.error("Failed to retry all events");
+    }
+  }
+
+  const handleClearQueue = async () => {
+    if (window.confirm("Are you sure you want to completely wipe the sync history? This will delete all FAILED and SYNCED logs.")) {
+      try {
+        await syncApi.clearQueue();
+        toast.success("Sync history cleared completely!");
+        fetchSyncData();
+      } catch (err: any) {
+        toast.error("Failed to clear sync history");
+      }
     }
   }
 
@@ -384,10 +416,20 @@ export default function Synchronization() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Failed Uploads */}
-        <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4">
-          <h3 className="text-base font-black uppercase tracking-wider text-red-500 flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5" /> Failed Uploads
-          </h3>
+        <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4 flex flex-col">
+          <div className="flex justify-between items-center">
+            <h3 className="text-base font-black uppercase tracking-wider text-red-500 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" /> Failed Uploads
+            </h3>
+            {failedQueue.length > 0 && (
+              <button 
+                onClick={handleRetryAll}
+                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white text-[10px] uppercase font-black rounded-lg transition-colors border border-red-500/20 shadow-sm flex items-center gap-1"
+              >
+                <RefreshCw className="w-3 h-3" /> Retry All
+              </button>
+            )}
+          </div>
           <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
             {failedQueue.length === 0 ? (
               <div className="text-center py-6 text-muted-foreground text-xs font-bold">
@@ -407,7 +449,7 @@ export default function Synchronization() {
                   </div>
                   <p className="text-[10px] text-muted-foreground break-all">ID: {item.entity_id}</p>
                   <p className="text-[11px] font-semibold text-red-500/80 mt-1">{item.error_details || "Unknown error"}</p>
-                  <p className="text-[9px] text-zinc-500 mt-1">Failed on {new Date(item.updated_at).toLocaleString()}</p>
+                  <p className="text-[9px] text-zinc-500 mt-1">Failed on {formatTime(item.updated_at)}</p>
                 </div>
               ))
             )}
@@ -415,10 +457,20 @@ export default function Synchronization() {
         </div>
 
         {/* Synced Uploads */}
-        <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4">
-          <h3 className="text-base font-black uppercase tracking-wider text-emerald-500 flex items-center gap-2">
-            <History className="w-5 h-5" /> Recent Synced Uploads
-          </h3>
+        <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4 flex flex-col">
+          <div className="flex justify-between items-center">
+            <h3 className="text-base font-black uppercase tracking-wider text-emerald-500 flex items-center gap-2">
+              <History className="w-5 h-5" /> Recent Synced Uploads
+            </h3>
+            {(syncedQueue.length > 0 || failedQueue.length > 0) && (
+              <button 
+                onClick={handleClearQueue}
+                className="px-3 py-1.5 bg-zinc-500/10 hover:bg-zinc-500 text-zinc-500 hover:text-white text-[10px] uppercase font-black rounded-lg transition-colors border border-zinc-500/20 shadow-sm flex items-center gap-1"
+              >
+                <Trash2 className="w-3 h-3" /> Clear History
+              </button>
+            )}
+          </div>
           <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
             {syncedQueue.length === 0 ? (
               <div className="text-center py-6 text-muted-foreground text-xs font-bold">
@@ -431,7 +483,7 @@ export default function Synchronization() {
                     <span className="font-black text-xs text-emerald-500 uppercase">{item.entity_type} • {item.action}</span>
                   </div>
                   <p className="text-[10px] text-muted-foreground break-all">ID: {item.entity_id}</p>
-                  <p className="text-[9px] text-zinc-500 mt-1">Synced on {new Date(item.updated_at).toLocaleString()}</p>
+                  <p className="text-[9px] text-zinc-500 mt-1">Synced on {formatTime(item.updated_at)}</p>
                 </div>
               ))
             )}

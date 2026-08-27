@@ -100,3 +100,27 @@ export const retrySyncEvent = async (req, res) => {
     res.status(500).json({ error: 'Failed to retry event' });
   }
 };
+
+export const retryAllSyncEvents = async (req, res) => {
+  try {
+    const success = syncService.retryAllEvents();
+    if (!success) {
+      return res.status(404).json({ error: 'No failed events found to retry' });
+    }
+    syncWorker.run().catch(e => console.error('Error triggering syncWorker after retryAll:', e));
+    res.status(200).json({ message: 'All failed events queued for retry' });
+  } catch (error) {
+    console.error('[SyncController] Failed to retry all events:', error);
+    res.status(500).json({ error: 'Failed to retry all events' });
+  }
+};
+
+export const clearSyncQueue = async (req, res) => {
+  try {
+    syncService.clearQueue();
+    res.status(200).json({ message: 'Sync queue cleared successfully' });
+  } catch (error) {
+    console.error('[SyncController] Failed to clear sync queue:', error);
+    res.status(500).json({ error: 'Failed to clear sync queue' });
+  }
+};

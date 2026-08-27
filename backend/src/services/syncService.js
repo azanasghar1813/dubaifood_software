@@ -86,6 +86,23 @@ class SyncService {
     `).run(eventId);
     return info.changes > 0;
   }
+
+  retryAllEvents() {
+    const info = dbEngine.prepare(`
+      UPDATE sync_queue 
+      SET status = 'PENDING', permanent_failure = 0, error_details = NULL 
+      WHERE status = 'FAILED'
+    `).run();
+    return info.changes > 0;
+  }
+
+  clearQueue() {
+    const info = dbEngine.prepare(`
+      DELETE FROM sync_queue 
+      WHERE status = 'FAILED' OR status = 'SYNCED'
+    `).run();
+    return info.changes;
+  }
 }
 
 export const syncService = new SyncService();
