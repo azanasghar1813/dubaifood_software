@@ -48,6 +48,11 @@ export const pushSyncEvents = async (req, res) => {
       const tableName = tableMap[entity_type.toUpperCase()];
 
       if (!tableName) {
+        if (entity_type.toUpperCase() === 'PRINT' || entity_type.toUpperCase() === 'KDS' || entity_type.toUpperCase() === 'RECEIPT') {
+          // Gracefully ignore local-only events
+          results.successful.push(event.id);
+          continue;
+        }
         results.failed.push({ eventId: event.id, error: `Unknown entity_type: ${entity_type}` });
         continue;
       }
@@ -58,8 +63,29 @@ export const pushSyncEvents = async (req, res) => {
         tableGroups[tableName].deletes.push(entity_id);
       } else {
         const entityData = typeof payload === 'string' ? JSON.parse(payload) : payload;
+        
+        // --- PAYLOAD SANITIZATION ---
+        // Strip local-only columns that do not exist in Supabase cloud schema
+        delete entityData.idempotency_key;
+        delete entityData.sync_status;
+        delete entityData.synced_at;
+        delete entityData.sync_hash;
+        
+        // Strip kitchen timings which might not be in cloud schema
+        delete entityData.kitchen_started_at;
+        delete entityData.kitchen_ready_at;
+        delete entityData.kitchen_served_at;
+        delete entityData.kitchen_completed_at;
+        delete entityData.kitchen_cancelled_at;
+        
+        // Critical Fallbacks for old corrupt data
+        if (tableName === 'orders' && !entityData.order_number) {
+          entityData.order_number = `FALLBACK-${entity_id.substring(0, 8)}`;
+        }
+
         // Inject terminalId if applicable (e.g. tracking who touched it last)
-        tableGroups[tableName].upserts.push({ ...entityData, id: entity_id, payload_version, last_updated_by_device: terminalId });
+        // Wait, Supabase does not have 'last_updated_by_device' so we shouldn't inject it!
+        tableGroups[tableName].upserts.push({ ...entityData, id: entity_id, payload_version });
       }
       tableGroups[tableName].eventMap[entity_id] = event;
     }
