@@ -189,7 +189,7 @@ class SyncWorker {
             const upsertData = (tableName, items) => {
               if (!items || items.length === 0) return;
               
-              const tableInfo = dbEngine.pragma(`table_info(${tableName})`);
+              const tableInfo = dbEngine.prepare(`PRAGMA table_info(${tableName})`).all();
               const validColumns = new Set(tableInfo.map(c => c.name));
               
               const keys = Object.keys(items[0]).filter(k => validColumns.has(k));
