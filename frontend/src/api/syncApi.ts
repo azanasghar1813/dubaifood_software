@@ -5,6 +5,8 @@ export interface SyncStatus {
   failed: number;
   synced: number;
   isRunning: boolean;
+  currentPhase: 'IDLE' | 'PUSHING' | 'PULLING' | 'ERROR';
+  logs: { timestamp: string, message: string, level: string }[];
   nextRunDelay: number;
   deviceId?: string;
 }

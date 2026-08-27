@@ -29,6 +29,8 @@ export const getSyncStatus = async (req, res) => {
       failed,
       synced,
       isRunning: syncWorker.isRunning,
+      currentPhase: syncWorker.currentPhase,
+      logs: syncWorker.logs,
       nextRunDelay: syncWorker.currentDelayMs,
       deviceId: syncConfig.device_id || 'UNKNOWN_DEVICE'
     });

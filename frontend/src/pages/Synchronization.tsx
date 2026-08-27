@@ -17,7 +17,7 @@ export default function Synchronization() {
   const [networkQuality] = useState<"Excellent" | "Good" | "Poor" | "Offline" | "N/A">("N/A")
   const [latency, setLatency] = useState<number | null>(null)
 
-  const [status, setStatus] = useState<SyncStatus>({ pending: 0, failed: 0, synced: 0, isRunning: false, nextRunDelay: 0 })
+  const [status, setStatus] = useState<SyncStatus>({ pending: 0, failed: 0, synced: 0, isRunning: false, currentPhase: 'IDLE', logs: [], nextRunDelay: 0 })
   const [devices, setDevices] = useState<ActiveDevice[]>([])
   const [lastError, setLastError] = useState<string | null>(null)
 
@@ -47,11 +47,25 @@ export default function Synchronization() {
     }
   }
 
+  const fetchStatusOnly = async () => {
+    try {
+      const statusData = await syncApi.getStatus();
+      setStatus(statusData);
+    } catch (err) {
+      // Ignore
+    }
+  }
+
   useEffect(() => {
     fetchSyncData();
-    // Poll every 5 seconds for live devices
+    // Poll fast for live sequence
+    const fastInterval = setInterval(fetchStatusOnly, 1500);
+    // Poll queues and devices every 5 seconds
     const interval = setInterval(fetchSyncData, 5000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      clearInterval(fastInterval);
+    }
   }, [])
 
   useEffect(() => {
@@ -163,6 +177,46 @@ export default function Synchronization() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* ====================================================
+          LIVE ACTIVITY FEED
+          ==================================================== */}
+      <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-black uppercase tracking-wider text-foreground flex items-center gap-2">
+            Live Sync Activity
+            {status.currentPhase !== 'IDLE' && status.currentPhase !== 'ERROR' && (
+              <span className="flex h-3 w-3 relative ml-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+              </span>
+            )}
+          </h3>
+          <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg border ${
+            status.currentPhase === 'PUSHING' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
+            status.currentPhase === 'PULLING' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+            status.currentPhase === 'ERROR' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+            'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
+          }`}>
+            {status.currentPhase}
+          </span>
+        </div>
+        
+        <div className="bg-secondary/30 border border-border rounded-xl p-4 font-mono text-[11px] h-[200px] overflow-y-auto flex flex-col gap-1 custom-scrollbar">
+          {status.logs && status.logs.length > 0 ? (
+            status.logs.map((log, idx) => (
+              <div key={idx} className={`flex gap-3 py-1 border-b border-border/40 last:border-0 ${idx === 0 ? 'opacity-100 font-bold' : 'opacity-60'}`}>
+                <span className="text-muted-foreground shrink-0">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                <span className={`break-all ${log.level === 'error' ? 'text-red-500' : 'text-foreground'}`}>
+                  {log.message}
+                </span>
+              </div>
+            ))
+          ) : (
+            <div className="text-muted-foreground opacity-50 flex items-center justify-center h-full">Waiting for background worker...</div>
+          )}
+        </div>
       </div>
 
       {/* ====================================================

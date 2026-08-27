@@ -10,20 +10,36 @@ class SyncWorker {
     this.baseDelayMs = 5000; // 5 seconds
     this.currentDelayMs = this.baseDelayMs;
     this.maxDelayMs = 60000; // 1 minute max backoff
+    
+    this.currentPhase = 'IDLE';
+    this.logs = [];
+  }
+
+  logActivity(message, level = 'info') {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      message,
+      level
+    };
+    this.logs.unshift(entry);
+    if (this.logs.length > 10) {
+      this.logs.pop(); // Keep only last 10 logs
+    }
+    console.log(`[SyncWorker] ${message}`);
   }
 
   start() {
     if (this.intervalId) return;
-    console.log('[SyncWorker] Starting background synchronization worker...');
+    this.logActivity('Starting background synchronization worker...');
     
     // Automatically retry any previously failed syncs on startup
     try {
       const resetCount = dbEngine.prepare("UPDATE sync_queue SET status = 'PENDING' WHERE status = 'FAILED' AND permanent_failure = 0").run();
       if (resetCount.changes > 0) {
-        console.log(`[SyncWorker] Reset ${resetCount.changes} FAILED events back to PENDING for retry.`);
+        this.logActivity(`Reset ${resetCount.changes} FAILED events back to PENDING for retry.`);
       }
     } catch (e) {
-      console.error('[SyncWorker] Failed to reset sync queue:', e.message);
+      this.logActivity(`Failed to reset sync queue: ${e.message}`, 'error');
     }
 
     this.scheduleNextRun(this.baseDelayMs);
@@ -34,7 +50,7 @@ class SyncWorker {
       clearTimeout(this.intervalId);
       this.intervalId = null;
     }
-    console.log('[SyncWorker] Stopped.');
+    this.logActivity('Worker Stopped.');
   }
 
   scheduleNextRun(delay) {
@@ -58,7 +74,8 @@ class SyncWorker {
       const pendingEvents = syncService.getPendingEvents(50); // Batch of 50
 
       if (pendingEvents.length > 0) {
-        console.log(`[SyncWorker] Processing ${pendingEvents.length} pending events...`);
+        this.currentPhase = 'PUSHING';
+        this.logActivity(`Pushing ${pendingEvents.length} pending events to cloud...`);
         
         // Dynamically fetch payloads for triggers that did not include them
         for (const event of pendingEvents) {
@@ -122,7 +139,7 @@ class SyncWorker {
         }
 
         pushed = data.successful.length;
-        console.log(`[SyncWorker] Sync complete. Success: ${data.successful.length}, Failed: ${data.failed.length}, Conflicts: ${data.conflicts.length}`);
+        this.logActivity(`Push complete. Success: ${data.successful.length}, Failed: ${data.failed.length}, Conflicts: ${data.conflicts.length}`);
         
         // Reset delay on success if queue is full
         if (pendingEvents.length === 50) {
@@ -141,6 +158,9 @@ class SyncWorker {
       let hasMore = true;
       let finalTimestamp = null;
       let totalPulled = 0;
+
+      this.currentPhase = 'PULLING';
+      this.logActivity(`Pulling new data from cloud... (Since: ${lastSyncTimestamp})`);
 
       while (hasMore) {
         const pullResponse = await fetch(`${config.sync.apiUrl}/sync/pull?last_sync_timestamp=${lastSyncTimestamp}&limit=${limit}&offset=${offset}`, {
@@ -194,7 +214,9 @@ class SyncWorker {
       }
 
       if (totalPulled > 0) {
-        console.log(`[SyncWorker] Pull complete. Processed ${totalPulled} items from cloud.`);
+        this.logActivity(`Pull complete. Processed ${totalPulled} new items from cloud.`);
+      } else {
+        this.logActivity(`Pull complete. No new items found.`);
       }
 
       // Update timestamp unconditionally if full paginated pull succeeded without throwing
@@ -204,14 +226,19 @@ class SyncWorker {
       // --- PULL LOGIC END ---
 
       pulled = totalPulled;
+      this.currentPhase = 'IDLE';
       return { success: true, pushed, pulled };
     } catch (error) {
-      console.error('[SyncWorker] Sync failed (Offline or API Error):', error.message);
+      this.currentPhase = 'ERROR';
+      this.logActivity(`Sync failed (Offline or API Error): ${error.message}`, 'error');
       // Exponential backoff
       this.currentDelayMs = Math.min(this.currentDelayMs * 2, this.maxDelayMs);
-      console.log(`[SyncWorker] Backing off. Next attempt in ${this.currentDelayMs / 1000}s`);
+      this.logActivity(`Backing off. Next attempt in ${this.currentDelayMs / 1000}s`);
       return { success: false, error: error.message };
     } finally {
+      if (this.currentPhase !== 'ERROR') {
+        this.currentPhase = 'IDLE';
+      }
       this.isRunning = false;
       this.scheduleNextRun(this.currentDelayMs);
     }
