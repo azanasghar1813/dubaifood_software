@@ -24,8 +24,35 @@ export default function Synchronization() {
     return new Date(t).toLocaleString();
   }
 
-  const [networkQuality] = useState<"Excellent" | "Good" | "Poor" | "Offline" | "N/A">("N/A")
+  const [networkQuality, setNetworkQuality] = useState<"Excellent" | "Good" | "Poor" | "Offline" | "N/A">("N/A")
   const [latency, setLatency] = useState<number | null>(null)
+
+  useEffect(() => {
+    const updateOnlineStatus = () => {
+      if (navigator.onLine) {
+        const connection = (navigator as any).connection;
+        if (connection && connection.downlink) {
+          setLatency(connection.rtt || null);
+          if (connection.downlink >= 10) setNetworkQuality("Excellent");
+          else if (connection.downlink >= 2) setNetworkQuality("Good");
+          else setNetworkQuality("Poor");
+        } else {
+          setNetworkQuality("Excellent");
+        }
+      } else {
+        setNetworkQuality("Offline");
+      }
+    }
+    
+    updateOnlineStatus();
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
+    }
+  }, [])
 
   const [status, setStatus] = useState<SyncStatus>({ pending: 0, failed: 0, synced: 0, isRunning: false, currentPhase: 'IDLE', logs: [], nextRunDelay: 0 })
   const [devices, setDevices] = useState<ActiveDevice[]>([])
@@ -188,28 +215,7 @@ export default function Synchronization() {
         </div>
       </div>
 
-      {/* ====================================================
-          SYNC STATUS CARDS
-          ==================================================== */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        {[
-          { label: "Internet", val: networkQuality, sub: latency ? `Latency: ${latency} ms` : "Latency: N/A", color: networkQuality === "Offline" ? "text-red-500" : (networkQuality === "N/A" ? "text-zinc-500" : "text-emerald-500"), icon: Wifi },
-          { label: "Cloud Sync Gateway", val: status.isRunning ? "Syncing..." : "Idle", sub: "Cloud DB Mirror Active", color: "text-emerald-500", icon: Database },
-          { label: "Pending Upload Queue", val: `${status.pending} Items`, sub: `${status.failed} failed items`, color: status.pending > 0 ? "text-amber-500" : "text-emerald-500", icon: History },
-          { label: "Auto Sync Status", val: autoSync ? `Every ${syncInterval}` : "Disabled", sub: "Periodic sync task", color: autoSync ? "text-emerald-500" : "text-zinc-500", icon: RefreshCw }
-        ].map((card, i) => (
-          <div key={i} className="p-4 bg-card border border-border/50 rounded-2xl flex items-center justify-between shadow-sm relative overflow-hidden group">
-            <div className="absolute right-[-15px] top-[-15px] opacity-5 group-hover:scale-110 transition-transform duration-500">
-              <card.icon className="w-20 h-20" />
-            </div>
-            <div className="relative z-10">
-              <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">{card.label}</span>
-              <h4 className="text-base font-black mt-2 text-foreground">{card.val}</h4>
-              <span className={`text-[8px] font-bold mt-2 block ${card.color}`}>{card.sub}</span>
-            </div>
-          </div>
-        ))}
-      </div>
+
 
       {/* ====================================================
           LIVE ACTIVITY FEED
@@ -263,6 +269,26 @@ export default function Synchronization() {
           <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4">
             <h3 className="text-base font-black uppercase tracking-wider text-foreground">Pending Offline Queue</h3>
             
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              {[
+                { label: "Internet", val: networkQuality, sub: latency ? `Latency: ${latency} ms` : "Status: Active", color: networkQuality === "Offline" ? "text-red-500" : (networkQuality === "N/A" ? "text-zinc-500" : "text-emerald-500"), icon: Wifi },
+                { label: "Cloud Sync Gateway", val: status.isRunning ? "Syncing..." : "Idle", sub: "Cloud DB Mirror Active", color: "text-emerald-500", icon: Database },
+                { label: "Pending Upload Queue", val: `${status.pending} Items`, sub: `${status.failed} failed items`, color: status.pending > 0 ? "text-amber-500" : "text-emerald-500", icon: History },
+                { label: "Auto Sync Status", val: autoSync ? `Every ${syncInterval}` : "Disabled", sub: "Periodic sync task", color: autoSync ? "text-emerald-500" : "text-zinc-500", icon: RefreshCw }
+              ].map((card, i) => (
+                <div key={i} className="p-4 bg-card border border-border/50 rounded-2xl flex items-center justify-between shadow-sm relative overflow-hidden group">
+                  <div className="absolute right-[-15px] top-[-15px] opacity-5 group-hover:scale-110 transition-transform duration-500">
+                    <card.icon className="w-20 h-20" />
+                  </div>
+                  <div className="relative z-10">
+                    <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">{card.label}</span>
+                    <h4 className="text-base font-black mt-2 text-foreground">{card.val}</h4>
+                    <span className={`text-[8px] font-bold mt-2 block ${card.color}`}>{card.sub}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 { label: "Pending Uploads", val: status.pending, color: "text-orange-500" },

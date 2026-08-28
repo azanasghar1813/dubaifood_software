@@ -216,8 +216,8 @@ export const wipeOutHistory = (req, res) => {
     const userId = req.user.userId;
     const user = userRepository.findById(userId);
     
-    if (!user || !['Owner', 'Super Admin', 'Super Administrator', 'super_admin'].includes(user.role_name)) {
-      return res.status(403).json({ success: false, message: 'Only the Owner or Super Admin can wipe out history.' });
+    if (!user || !['Owner', 'Super Admin', 'Super Administrator', 'super_admin', 'Admin', 'admin'].includes(user.role_name)) {
+      return res.status(403).json({ success: false, message: 'Only the Owner, Admin or Super Admin can wipe out history.' });
     }
 
     const isValid = securityUtils.verifyPin(pin, user.pin_code);
