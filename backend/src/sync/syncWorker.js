@@ -191,19 +191,50 @@ class SyncWorker {
               
               const tableInfo = dbEngine.prepare(`PRAGMA table_info(${tableName})`).all();
               const validColumns = new Set(tableInfo.map(c => c.name));
+              const columnMeta = {};
+              tableInfo.forEach(c => { columnMeta[c.name] = c; });
               
               const keys = Object.keys(items[0]).filter(k => validColumns.has(k));
               if (validColumns.has('sync_status') && !keys.includes('sync_status')) {
                 keys.push('sync_status');
               }
               
+              // Ensure ALL NOT NULL columns without defaults are in `keys` so our fallback logic can handle them
+              tableInfo.forEach(meta => {
+                if (meta.notnull && meta.dflt_value === null && !keys.includes(meta.name)) {
+                  keys.push(meta.name);
+                }
+              });
+              
               const placeholders = keys.map(() => '?').join(', ');
               const updateSet = keys.filter(k => k !== 'id').map(k => `${k} = excluded.${k}`).join(', ');
               const stmt = dbEngine.prepare(`INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${updateSet}`);
+              
               for (const item of items) {
                 const values = keys.map(k => {
                   if (k === 'sync_status') return 'SYNCED';
-                  return item[k] === undefined ? null : item[k];
+                  
+                  let val = item[k];
+                  const meta = columnMeta[k];
+                  
+                  if (val === undefined || val === null) {
+                    if (meta && meta.notnull) {
+                       // Try to use default value from schema
+                       if (meta.dflt_value !== null) {
+                         // dflt_value comes back as a string, e.g., '0', 'DINE_IN', or "DEFAULT_BRANCH"
+                         // Remove surrounding quotes if they exist
+                         return meta.dflt_value.replace(/^['"](.*)['"]$/, '$1');
+                       }
+                       // Fallbacks for known non-defaultable foreign keys
+                       if (k === 'shift_id') return 'SYSTEM_SHIFT';
+                       if (k === 'cashier_user_id') return 'SYSTEM_USER';
+                       if (meta.type.includes('INT') || meta.type.includes('REAL')) return 0;
+                       return '';
+                    }
+                    return null;
+                  }
+                  
+                  return val;
                 });
                 stmt.run(...values);
               }
@@ -214,6 +245,15 @@ class SyncWorker {
             upsertData('products', products);
             upsertData('users', users);
             upsertData('customers', customers);
+            
+            // Ensure SYSTEM fallbacks exist for orders that reference them to prevent Foreign Key constraint failures
+            if (orders && orders.length > 0) {
+              const anyRole = dbEngine.prepare('SELECT id, name FROM roles LIMIT 1').get();
+              if (anyRole) {
+                 dbEngine.prepare(`INSERT OR IGNORE INTO users (id, username, password_hash, pin_code, first_name, last_name, role_id, role_name, force_pin_change, is_active, created_at, updated_at) VALUES ('SYSTEM_USER', 'system_user', 'system_hash', '0000', 'System', 'User', ?, ?, 0, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(anyRole.id, anyRole.name);
+                 dbEngine.prepare(`INSERT OR IGNORE INTO cashier_sessions (id, user_id, device_info, status, opening_balance, opened_at, created_at, updated_at) VALUES ('SYSTEM_SHIFT', 'SYSTEM_USER', 'System Sync', 'CLOSED', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run();
+              }
+            }
             
             // Upsert orders and items
             upsertData('orders', orders);
