@@ -79,6 +79,16 @@ class SyncWorker {
         
         // Dynamically fetch payloads for triggers that did not include them
         for (const event of pendingEvents) {
+          // Auto-heal legacy 'CATEGORIE' typos from old software versions
+          if (event.entity_type === 'CATEGORIE') {
+            event.entity_type = 'CATEGORY';
+            try {
+              dbEngine.prepare("UPDATE sync_queue SET entity_type = 'CATEGORY' WHERE id = ?").run(event.id);
+            } catch (e) {
+              this.logActivity(`Failed to auto-heal CATEGORIE typo for event ${event.id}: ${e.message}`, 'error');
+            }
+          }
+
           if (!event.payload) {
              const tableMap = {
                'PRODUCT': 'products',
