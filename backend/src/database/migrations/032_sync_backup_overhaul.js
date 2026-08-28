@@ -1,5 +1,5 @@
 export default {
-  version: '002',
+  version: '032',
   name: 'sync_backup_overhaul',
 
   up: (db) => {
