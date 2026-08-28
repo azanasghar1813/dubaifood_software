@@ -12,10 +12,10 @@ backend/bin/node.exe
 .env.*
 
 # Database & Data
-backend/storage/database/*.db
-backend/storage/database/*.sqlite
-backend/storage/database/*.db-wal
-backend/storage/database/*.db-shm
+# backend/storage/database/*.db
+# backend/storage/database/*.sqlite
+# backend/storage/database/*.db-wal
+# backend/storage/database/*.db-shm
 *.db
 *.sqlite
 *.db-wal

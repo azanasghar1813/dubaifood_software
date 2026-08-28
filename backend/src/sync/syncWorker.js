@@ -97,6 +97,11 @@ class SyncWorker {
              if (tableName) {
                  const record = dbEngine.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(event.entity_id);
                  if (record) {
+                     // Strip columns that don't exist in Supabase yet to prevent schema cache errors
+                     if (tableName === 'orders' || tableName === 'order_items') {
+                         delete record.deleted_at;
+                         delete record.locked_by;
+                     }
                      event.payload = JSON.stringify(record);
                  } else {
                      // If record is gone, convert to DELETE
@@ -107,15 +112,24 @@ class SyncWorker {
         }
 
         // Push to cloud
-        const response = await fetch(`${config.sync.apiUrl}/sync/push`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-device-secret': config.sync.deviceSecret,
-            'x-terminal-id': terminalId
-          },
-          body: JSON.stringify({ events: pendingEvents, terminal_id: terminalId })
-        });
+        const pushController = new AbortController();
+        const pushTimeout = setTimeout(() => pushController.abort(), 30000); // 30s timeout
+        
+        let response;
+        try {
+          response = await fetch(`${config.sync.apiUrl}/sync/push`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-device-secret': config.sync.deviceSecret,
+              'x-terminal-id': terminalId
+            },
+            body: JSON.stringify({ events: pendingEvents, terminal_id: terminalId }),
+            signal: pushController.signal
+          });
+        } finally {
+          clearTimeout(pushTimeout);
+        }
 
         if (!response.ok) {
           throw new Error(`Cloud API responded with status: ${response.status}`);
@@ -130,14 +144,27 @@ class SyncWorker {
 
         // Mark failed
         for (const failure of data.failed) {
-          syncService.markEventFailed(failure.eventId, failure.error);
+          if (failure.permanent || (failure.error && failure.error.includes('Unknown entity_type'))) {
+            syncService.markEventPermanentFailure(failure.eventId, failure.error);
+          } else {
+            syncService.markEventFailed(failure.eventId, failure.error);
+          }
         }
 
         // Handle conflicts
-        // If the server has an equal or newer version, the local event is obsolete.
-        // We mark it as synced to clear it from the queue, and rely on the subsequent PULL to sync the local DB.
         for (const conflict of data.conflicts) {
-          syncService.markEventSynced(conflict.eventId);
+          const event = dbEngine.prepare("SELECT entity_type FROM sync_queue WHERE id = ?").get(conflict.eventId);
+          const entityType = event ? event.entity_type : null;
+          const isCatalogEntity = ['PRODUCT', 'CATEGORY', 'DEAL'].includes(entityType);
+          
+          if (isCatalogEntity) {
+            // Server-wins is correct for catalog data — discard local, will be overwritten by next pull.
+            syncService.markEventSynced(conflict.eventId);
+          } else {
+            // Orders, kitchen status, users, etc: do NOT silently discard.
+            // Flag as a real conflict requiring resolution.
+            syncService.markEventConflicted(conflict.eventId, conflict);
+          }
         }
 
         pushed = data.successful.length;
@@ -165,12 +192,21 @@ class SyncWorker {
       this.logActivity(`Pulling new data from cloud... (Since: ${lastSyncTimestamp})`);
 
       while (hasMore) {
-        const pullResponse = await fetch(`${config.sync.apiUrl}/sync/pull?last_sync_timestamp=${lastSyncTimestamp}&limit=${limit}&offset=${offset}`, {
-          headers: { 
-            'x-device-secret': config.sync.deviceSecret,
-            'x-terminal-id': terminalId
-          }
-        });
+        const pullController = new AbortController();
+        const pullTimeout = setTimeout(() => pullController.abort(), 30000);
+        let pullResponse;
+        
+        try {
+          pullResponse = await fetch(`${config.sync.apiUrl}/sync/pull?last_sync_timestamp=${lastSyncTimestamp}&limit=${limit}&offset=${offset}`, {
+            headers: { 
+              'x-device-secret': config.sync.deviceSecret,
+              'x-terminal-id': terminalId
+            },
+            signal: pullController.signal
+          });
+        } finally {
+          clearTimeout(pullTimeout);
+        }
 
         if (!pullResponse.ok) {
            throw new Error(`Cloud API Pull responded with status: ${pullResponse.status}`);
@@ -236,7 +272,16 @@ class SyncWorker {
                   
                   return val;
                 });
-                stmt.run(...values);
+                try {
+                  stmt.run(...values);
+                } catch (err) {
+                  // Catch both FK and UNIQUE constraints
+                  if (err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY' || err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.message.includes('FOREIGN KEY constraint failed') || err.message.includes('UNIQUE constraint failed')) {
+                    console.warn(`[Pull] Deferred/skipped ${tableName} row ${item.id} — ${err.code}: ${err.message}`);
+                    continue;
+                  }
+                  throw err;
+                }
               }
             };
 
@@ -251,7 +296,7 @@ class SyncWorker {
               const anyRole = dbEngine.prepare('SELECT id, name FROM roles LIMIT 1').get();
               if (anyRole) {
                  dbEngine.prepare(`INSERT OR IGNORE INTO users (id, username, password_hash, pin_code, first_name, last_name, role_id, force_pin_change, is_active, created_at, updated_at) VALUES ('SYSTEM_USER', 'system_user', 'system_hash', '0000', 'System', 'User', ?, 0, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(anyRole.id);
-                 dbEngine.prepare(`INSERT OR IGNORE INTO cashier_sessions (id, user_id, device_info, status, opening_balance, opened_at, created_at, updated_at) VALUES ('SYSTEM_SHIFT', 'SYSTEM_USER', 'System Sync', 'CLOSED', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run();
+                 dbEngine.prepare(`INSERT OR IGNORE INTO cashier_sessions (id, user_id, terminal_id, status, opening_float, opened_at, created_at, updated_at) VALUES ('SYSTEM_SHIFT', 'SYSTEM_USER', 'System Sync', 'CLOSED', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run();
               }
             }
             

@@ -197,9 +197,27 @@ export default function Synchronization() {
             Manage multi-terminal LAN database mesh, offline caching queue, and secure Cloud backup syncing.
           </p>
           {status.deviceId && (
-            <p className="text-[10px] text-zinc-500 font-mono mt-2">
-              Terminal ID: {status.deviceId}
-            </p>
+            <div className="flex items-center gap-2 mt-2">
+              <p className="text-[10px] text-zinc-500 font-mono">
+                Terminal ID: {status.deviceId}
+              </p>
+              <button 
+                onClick={async () => {
+                  if (window.confirm("Are you sure you want to generate a new device identity? Do this ONLY if this laptop was cloned from another and you want it to sync separately. This will wipe its pending sync queue!")) {
+                    try {
+                      await syncApi.reassignIdentity();
+                      toast.success("Device Identity reassigned successfully! Now treated as a unique device.");
+                      fetchSyncData();
+                    } catch (e: any) {
+                      toast.error("Failed to reassign identity.");
+                    }
+                  }
+                }}
+                className="px-2 py-0.5 bg-zinc-500/10 hover:bg-zinc-500/20 text-zinc-500 text-[9px] uppercase font-bold rounded"
+              >
+                Reassign ID
+              </button>
+            </div>
           )}
         </div>
 

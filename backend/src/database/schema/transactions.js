@@ -23,6 +23,7 @@ export const transactionsSchema = `
     discount_total REAL NOT NULL DEFAULT 0,
     tip_total REAL NOT NULL DEFAULT 0,
     delivery_fee REAL NOT NULL DEFAULT 0,
+    service_charge REAL NOT NULL DEFAULT 0,
     grand_total REAL NOT NULL DEFAULT 0,
     paid_total REAL NOT NULL DEFAULT 0,
     due_total REAL NOT NULL DEFAULT 0,

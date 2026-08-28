@@ -19,6 +19,52 @@ if (app.isPackaged) {
   if (!fs.existsSync(prodStorageRoot) && fs.existsSync(defaultStorageRoot)) {
     console.log('First run: Copying pre-populated database and storage to user data path...');
     fs.cpSync(defaultStorageRoot, prodStorageRoot, { recursive: true });
+    
+    // Wipe cloned identity so the new laptop generates its own unique ID and syncs properly
+    try {
+      const { createRequire } = await import('node:module');
+      const require = createRequire(import.meta.url);
+      const Database = require('better-sqlite3');
+      
+      const dbPath = path.join(prodStorageRoot, 'database', 'pos.db');
+      if (fs.existsSync(dbPath)) {
+        const db = new Database(dbPath);
+        db.prepare("DELETE FROM application_settings WHERE key = 'device_id'").run();
+        db.prepare("DELETE FROM sync_queue").run();
+        
+        // After wiping sync_queue/device identity, backfill fresh CREATE events
+        // for every entity already sitting in the cloned/local database, since
+        // none of them have ever actually been pushed to the cloud.
+        const backfillTables = [
+          { table: 'categories', type: 'CATEGORY' },
+          { table: 'products', type: 'PRODUCT' },
+          { table: 'deals', type: 'DEAL' },
+          { table: 'customers', type: 'CUSTOMER' },
+          { table: 'users', type: 'USER' },
+        ];
+
+        const cryptoLib = require('crypto');
+        for (const { table, type } of backfillTables) {
+          try {
+            const rows = db.prepare(`SELECT id FROM ${table}`).all();
+            const insertStmt = db.prepare(`
+              INSERT INTO sync_queue (id, entity_type, entity_id, action, metadata, payload_version)
+              VALUES (?, ?, ?, 'CREATED', '{}', 1)
+            `);
+            for (const row of rows) {
+              insertStmt.run(cryptoLib.randomUUID(), type, row.id);
+            }
+          } catch(e) {}
+        }
+
+        try { db.prepare("DELETE FROM sync_conflicts").run(); } catch(e){}
+        db.prepare("UPDATE application_settings SET value = '0' WHERE key = 'last_sync_timestamp'").run();
+        db.close();
+        console.log('Successfully wiped cloned identity for fresh start on new device.');
+      }
+    } catch (e) {
+      console.error('Failed to wipe cloned identity:', e.message);
+    }
   }
 }
 

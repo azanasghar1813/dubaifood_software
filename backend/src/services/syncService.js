@@ -96,11 +96,19 @@ class SyncService {
     return info.changes > 0;
   }
 
-  clearQueue() {
-    const info = dbEngine.prepare(`
-      DELETE FROM sync_queue 
-    `).run();
-    return info.changes;
+  markEventConflicted(eventId, conflictData) {
+    dbEngine.prepare(`
+      UPDATE sync_queue 
+      SET status = 'CONFLICT', error_details = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ?
+    `).run(JSON.stringify(conflictData), eventId);
+  }
+
+  clearQueue(force = false) {
+    if (force) {
+      return dbEngine.prepare(`DELETE FROM sync_queue`).run().changes;
+    }
+    return dbEngine.prepare(`DELETE FROM sync_queue WHERE status = 'SYNCED' OR permanent_failure = 1`).run().changes;
   }
 }
 

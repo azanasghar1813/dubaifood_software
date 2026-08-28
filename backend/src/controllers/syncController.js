@@ -15,11 +15,13 @@ export const getSyncStatus = async (req, res) => {
     let pending = 0;
     let failed = 0;
     let synced = 0;
+    let conflicted = 0;
 
     for (const row of counts) {
       if (row.status === 'PENDING') pending = row.count;
       if (row.status === 'FAILED') failed = row.count;
       if (row.status === 'SYNCED') synced = row.count;
+      if (row.status === 'CONFLICT') conflicted = row.count;
     }
 
     const syncConfig = configService.getSyncConfig();
@@ -28,6 +30,7 @@ export const getSyncStatus = async (req, res) => {
       pending,
       failed,
       synced,
+      conflicted,
       isRunning: syncWorker.isRunning,
       currentPhase: syncWorker.currentPhase,
       logs: syncWorker.logs,
@@ -37,6 +40,24 @@ export const getSyncStatus = async (req, res) => {
   } catch (error) {
     console.error('[SyncController] Status fetch failed:', error);
     res.status(500).json({ error: 'Failed to fetch sync status' });
+  }
+};
+
+export const resolveConflict = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { resolution } = req.body; // 'keep_local' | 'keep_cloud'
+    if (resolution === 'keep_local') {
+      // re-queue as a fresh PENDING push, bumping payload_version past the server's
+      dbEngine.prepare(`UPDATE sync_queue SET status='PENDING', payload_version = payload_version + 1 WHERE id = ?`).run(id);
+    } else {
+      // accept server's version — mark synced, let next pull bring the authoritative copy
+      dbEngine.prepare(`UPDATE sync_queue SET status='SYNCED' WHERE id = ?`).run(id);
+    }
+    res.json({ message: 'Conflict resolved' });
+  } catch (error) {
+    console.error('[SyncController] Failed to resolve conflict:', error);
+    res.status(500).json({ error: 'Failed to resolve conflict' });
   }
 };
 
@@ -73,8 +94,8 @@ export const getActiveDevices = (req, res) => {
 export const getSyncQueue = (req, res) => {
   try {
     const { status = 'FAILED', limit = 50 } = req.query;
-    // ensure status is either FAILED or SYNCED
-    if (!['FAILED', 'SYNCED', 'PENDING'].includes(status)) {
+    // ensure status is either FAILED or SYNCED or PENDING or CONFLICT
+    if (!['FAILED', 'SYNCED', 'PENDING', 'CONFLICT'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
     const data = syncService.getQueue(status, parseInt(limit, 10) || 50);
@@ -117,10 +138,74 @@ export const retryAllSyncEvents = async (req, res) => {
 
 export const clearSyncQueue = async (req, res) => {
   try {
-    syncService.clearQueue();
+    const { force } = req.body || req.query || {};
+    const pendingCount = dbEngine.prepare("SELECT COUNT(*) as c FROM sync_queue WHERE status = 'PENDING'").get().c;
+    
+    if (pendingCount > 0 && !force) {
+      return res.status(409).json({
+        error: `${pendingCount} operations have not yet synced. Confirm you want to clear them.`,
+        pendingCount
+      });
+    }
+
+    syncService.clearQueue(force);
     res.status(200).json({ message: 'Sync queue cleared successfully' });
   } catch (error) {
     console.error('[SyncController] Failed to clear sync queue:', error);
     res.status(500).json({ error: 'Failed to clear sync queue' });
+  }
+};
+
+export const reassignDeviceId = async (req, res) => {
+  try {
+    const { force } = req.body || {};
+    const pendingCount = dbEngine.prepare("SELECT COUNT(*) as c FROM sync_queue WHERE status = 'PENDING'").get().c;
+    if (pendingCount > 0 && !force) {
+      return res.status(409).json({
+        error: `${pendingCount} operations have not yet synced. Confirm you want to discard them, or wait for sync to complete.`,
+        pendingCount
+      });
+    }
+
+    const { v4: uuidv4 } = await import('uuid');
+    const newId = uuidv4();
+    
+    dbEngine.transaction(() => {
+      dbEngine.prepare("UPDATE application_settings SET value = ? WHERE key = 'device_id'").run(newId);
+      dbEngine.prepare("DELETE FROM sync_queue").run();
+      
+      // After wiping sync_queue/device identity, backfill fresh CREATE events
+      const backfillTables = [
+        { table: 'categories', type: 'CATEGORY' },
+        { table: 'products', type: 'PRODUCT' },
+        { table: 'deals', type: 'DEAL' },
+        { table: 'customers', type: 'CUSTOMER' },
+        { table: 'users', type: 'USER' },
+      ];
+
+      for (const { table, type } of backfillTables) {
+        try {
+          const rows = dbEngine.prepare(`SELECT id FROM ${table}`).all();
+          const insertStmt = dbEngine.prepare(`
+            INSERT INTO sync_queue (id, entity_type, entity_id, action, metadata, payload_version)
+            VALUES (?, ?, ?, 'CREATED', '{}', 1)
+          `);
+          for (const row of rows) {
+            insertStmt.run(uuidv4(), type, row.id);
+          }
+        } catch(e) {}
+      }
+
+      try { dbEngine.prepare("DELETE FROM sync_conflicts").run(); } catch(e){}
+      dbEngine.prepare("UPDATE application_settings SET value = '0' WHERE key = 'last_sync_timestamp'").run();
+    });
+
+    // Reload config in memory
+    configService.loadSettings();
+
+    res.status(200).json({ message: 'Device identity reassigned', newDeviceId: newId });
+  } catch (error) {
+    console.error('[SyncController] Failed to reassign device id:', error);
+    res.status(500).json({ error: 'Failed to reassign device id' });
   }
 };

@@ -38,6 +38,8 @@ export const authSchema = `
     pin_code TEXT, -- For fast POS login
     is_active INTEGER NOT NULL DEFAULT 1,
     last_login DATETIME,
+    sync_status TEXT NOT NULL DEFAULT 'PENDING',
+    sync_version INTEGER NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT

@@ -87,6 +87,13 @@ class OrderRepository {
       if (!params.updated_at) {
         fields.push('updated_at = CURRENT_TIMESTAMP');
       }
+      
+      // CRITICAL FIX: Automatically bump sync_version on every local mutation
+      // so the cloud sees this as a newer payload and conflict resolution works correctly.
+      if (!params.sync_version) {
+        fields.push('sync_version = sync_version + 1');
+      }
+
       dbEngine.prepare(`
         UPDATE orders 
         SET ${fields.join(', ')} 

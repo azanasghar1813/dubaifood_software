@@ -49,5 +49,7 @@ export const syncApi = {
   
   retryAll: () => apiClient.post(`/sync/retry-all`) as Promise<{ message: string }>,
   
-  clearQueue: () => apiClient.delete(`/sync/clear-queue`) as Promise<{ message: string }>
+  clearQueue: () => apiClient.delete(`/sync/clear-queue`) as Promise<{ message: string }>,
+
+  reassignIdentity: () => apiClient.post(`/sync/reassign-identity`) as Promise<{ message: string, newDeviceId: string }>
 };

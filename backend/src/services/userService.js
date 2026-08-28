@@ -2,6 +2,7 @@ import { userRepository } from '../repositories/userRepository.js';
 import { roleRepository } from '../repositories/roleRepository.js';
 import { activityLogService } from './activityLogService.js';
 import { securityUtils } from '../utils/security.js';
+import { syncService } from './syncService.js';
 
 const enforceRoleHierarchy = (actorId, targetRoleId = null, targetUserId = null) => {
   const actor = userRepository.findById(actorId);
@@ -70,6 +71,7 @@ export const userService = {
     const newUserId = userRepository.create(newUserData);
     
     activityLogService.logActivity(actorId, 'USER_CREATED', 'USER', newUserId, { username: userData.username, role: role.name });
+    syncService.queueSyncEvent('USER', newUserId, 'CREATED', { username: userData.username }, 1);
     return newUserId;
   },
 
@@ -90,7 +92,10 @@ export const userService = {
 
     userRepository.updateProfile(targetUserId, updateData);
     
+    // Retrieve the updated user to get the new sync_version
+    const updatedUser = userRepository.findById(targetUserId);
     activityLogService.logActivity(actorId, 'USER_UPDATED', 'USER', targetUserId, { roleChanged: user.role_id !== updateData.roleId });
+    syncService.queueSyncEvent('USER', targetUserId, 'UPDATED', {}, updatedUser.sync_version || 1);
   },
 
   updateUserStatus: (actorId, targetUserId, isActive) => {
@@ -106,8 +111,10 @@ export const userService = {
 
     userRepository.updateStatus(targetUserId, isActive);
     
+    const updatedUser = userRepository.findById(targetUserId);
     const action = isActive ? 'USER_ACTIVATED' : 'USER_DISABLED';
     activityLogService.logActivity(actorId, action, 'USER', targetUserId, {});
+    syncService.queueSyncEvent('USER', targetUserId, 'UPDATED', { isActive }, updatedUser.sync_version || 1);
   },
 
   resetUserPin: (actorId, targetUserId, newPin) => {
@@ -120,7 +127,9 @@ export const userService = {
     userRepository.updatePin(targetUserId, hashedPin);
     userRepository.resetFailedAttempts(targetUserId); // Unlock account if it was locked
 
+    const updatedUser = userRepository.findById(targetUserId);
     activityLogService.logActivity(actorId, 'PIN_RESET', 'USER', targetUserId, {});
+    syncService.queueSyncEvent('USER', targetUserId, 'UPDATED', { pin_reset: true }, updatedUser.sync_version || 1);
   },
   
   changeMyPin: (userId, oldPin, newPin) => {
@@ -134,7 +143,9 @@ export const userService = {
     const hashedPin = securityUtils.hashPin(newPin);
     userRepository.updatePin(userId, hashedPin);
     
+    const updatedUser = userRepository.findById(userId);
     activityLogService.logActivity(userId, 'PIN_CHANGED', 'USER', userId, {});
+    syncService.queueSyncEvent('USER', userId, 'UPDATED', { pin_changed: true }, updatedUser.sync_version || 1);
   },
 
   updateProfilePhoto: (actorId, targetUserId, photoPath) => {
@@ -142,6 +153,8 @@ export const userService = {
     if (!user) throw new Error('User not found');
 
     userRepository.updatePhoto(targetUserId, photoPath);
+    const updatedUser = userRepository.findById(targetUserId);
     activityLogService.logActivity(actorId, 'USER_PHOTO_UPDATED', 'USER', targetUserId, { photoPath });
+    syncService.queueSyncEvent('USER', targetUserId, 'UPDATED', { photoPath }, updatedUser.sync_version || 1);
   }
 };
