@@ -30,6 +30,7 @@ if (app.isPackaged) {
       if (fs.existsSync(dbPath)) {
         const db = new Database(dbPath);
         db.prepare("DELETE FROM application_settings WHERE key = 'device_id'").run();
+        db.prepare("DELETE FROM application_settings WHERE key = 'order_prefix'").run();
         db.prepare("DELETE FROM sync_queue").run();
         
         // After wiping sync_queue/device identity, backfill fresh CREATE events

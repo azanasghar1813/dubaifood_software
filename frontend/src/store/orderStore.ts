@@ -137,6 +137,18 @@ const formatName = (nameOrId?: string): string => {
   return nameOrId
 }
 
+const parseBackendDate = (dateStr?: string): string => {
+  if (!dateStr) return new Date().toISOString()
+  if (dateStr.includes('T')) {
+    // If it's already an ISO string (e.g. from Supabase), new Date() parses it natively
+    const d = new Date(dateStr)
+    return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
+  }
+  // If it's SQLite local/UTC format without 'T' (YYYY-MM-DD HH:MM:SS)
+  const d = new Date(dateStr.replace(' ', 'T') + 'Z')
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
+}
+
 export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOrderDetail): Order => {
   const items = (detail?.items || []).map((item: any, index: number) => ({
     cartItemId: item.id || `${row.id}-item-${index}`,
@@ -162,14 +174,14 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     amount: Number(payment.amount || 0),
     received: payment.amount_received ?? payment.received,
     change: payment.change_amount ?? payment.change,
-    timestamp: payment.created_at || row.updated_at,
+    timestamp: parseBackendDate(payment.created_at || row.updated_at),
     cashier: formatName(payment.cashier_name || row.cashier_user_id),
     status: payment.status || 'Completed'
   })) as PaymentRecord[]
 
   const timeline = (detail?.timeline || []).map((event: any) => ({
     event: event.event_type || event.notes || 'Event',
-    timestamp: event.created_at ? (event.created_at.includes('Z') ? event.created_at : event.created_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
+    timestamp: parseBackendDate(event.created_at),
     cashier: formatName(event.user_id || event.actor_user_id),
     remarks: event.description || event.notes || ''
   }))
@@ -177,7 +189,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
   const auditLog = (detail?.audit_trail || []).map((entry: any) => ({
     id: entry.id,
     who: formatName(entry.user_id),
-    when: entry.created_at ? (entry.created_at.includes('Z') ? entry.created_at : entry.created_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
+    when: parseBackendDate(entry.created_at),
     actionType: (entry.action || 'Other') as AuditLogEntry['actionType'],
     oldValue: typeof entry.old_value === 'string' ? entry.old_value : JSON.stringify(entry.old_value ?? ''),
     newValue: typeof entry.new_value === 'string' ? entry.new_value : JSON.stringify(entry.new_value ?? ''),
@@ -221,8 +233,8 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     status: mapLifecycleState(row.lifecycle_state),
     kitchenStatus: mapKitchenState(row.kitchen_state),
     paymentStatus: mapPaymentState(row.payment_state),
-    timestamp: row.created_at ? (row.created_at.includes('Z') ? row.created_at : row.created_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
-    lastEdited: row.updated_at ? (row.updated_at.includes('Z') ? row.updated_at : row.updated_at.replace(' ', 'T') + 'Z') : new Date().toISOString(),
+    timestamp: parseBackendDate(row.created_at),
+    lastEdited: parseBackendDate(row.updated_at),
     isEdited: Boolean(row.is_edited),
     isNegativeEdit,
     editedBy: undefined,
