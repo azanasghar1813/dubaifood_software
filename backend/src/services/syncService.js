@@ -99,7 +99,6 @@ class SyncService {
   clearQueue() {
     const info = dbEngine.prepare(`
       DELETE FROM sync_queue 
-      WHERE status = 'FAILED' OR status = 'SYNCED'
     `).run();
     return info.changes;
   }

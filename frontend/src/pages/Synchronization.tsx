@@ -169,7 +169,7 @@ export default function Synchronization() {
   }
 
   const handleClearQueue = async () => {
-    if (window.confirm("Are you sure you want to completely wipe the sync history? This will delete all FAILED and SYNCED logs.")) {
+    if (window.confirm("Are you ABSOLUTELY SURE you want to completely wipe the sync history? This will delete ALL PENDING, FAILED, and SYNCED uploads. Use this to completely reset the sync state for a fresh start!")) {
       try {
         await syncApi.clearQueue();
         toast.success("Sync history cleared completely!");
@@ -204,6 +204,13 @@ export default function Synchronization() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap relative z-10">
+          <button 
+            onClick={handleClearQueue}
+            className="flex items-center gap-1.5 px-4 py-2 bg-red-500 text-white rounded-xl text-xs font-black hover:bg-red-600 shadow-md shadow-red-500/20 transition-all active:scale-95"
+          >
+            <Trash2 className="w-4 h-4" />
+            Wipe Sync Queue
+          </button>
           <button 
             onClick={triggerSync}
             disabled={isSyncing || networkQuality === "Offline"}
@@ -488,14 +495,7 @@ export default function Synchronization() {
             <h3 className="text-base font-black uppercase tracking-wider text-emerald-500 flex items-center gap-2">
               <History className="w-5 h-5" /> Recent Synced Uploads
             </h3>
-            {(syncedQueue.length > 0 || failedQueue.length > 0) && (
-              <button 
-                onClick={handleClearQueue}
-                className="px-3 py-1.5 bg-zinc-500/10 hover:bg-zinc-500 text-zinc-500 hover:text-white text-[10px] uppercase font-black rounded-lg transition-colors border border-zinc-500/20 shadow-sm flex items-center gap-1"
-              >
-                <Trash2 className="w-3 h-3" /> Clear History
-              </button>
-            )}
+
           </div>
           <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
             {syncedQueue.length === 0 ? (
