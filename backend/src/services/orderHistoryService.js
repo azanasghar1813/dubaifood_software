@@ -195,6 +195,7 @@ class OrderHistoryService {
         dbEngine.prepare('DELETE FROM order_audit_trail').run();
         dbEngine.prepare('DELETE FROM reprint_log').run();
         dbEngine.prepare("DELETE FROM activity_logs WHERE entity_type = 'ORDER'").run();
+        dbEngine.prepare("DELETE FROM sync_queue WHERE entity_type IN ('ORDER', 'ORDER_ITEM', 'ORDER_PAYMENT')").run();
       });
       historyCacheService.clearAll();
       console.log('[OrderHistoryService] All order history wiped out successfully.');
