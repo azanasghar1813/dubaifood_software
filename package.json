@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "start": "electron .",
+    "start:build": "cross-env TEST_BUILD=true electron .",
     "build:frontend": "npm run build --prefix frontend",
     "build:exe": "npm run build:frontend && electron-builder"
   },

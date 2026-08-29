@@ -69,7 +69,8 @@ if (app.isPackaged) {
   }
 }
 
-process.env.NODE_ENV = app.isPackaged ? 'production' : 'development';
+const isProdMode = app.isPackaged || process.env.TEST_BUILD === 'true';
+process.env.NODE_ENV = isProdMode ? 'production' : 'development';
 
 const envPath = app.isPackaged
   ? path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', '.env')
@@ -129,10 +130,10 @@ const createWindow = () => {
   mainWindow.setMenu(null);
   mainWindow.maximize();
 
-  if (app.isPackaged) {
-    mainWindow.loadURL(`http://localhost:${BACKEND_PORT}`);
+  if (isProdMode) {
+    mainWindow.loadURL(`http://127.0.0.1:${BACKEND_PORT}`);
   } else {
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL('http://127.0.0.1:5173');
     mainWindow.webContents.openDevTools();
   }
 
@@ -168,6 +169,8 @@ const startBackendProcess = async () => {
   backendEnv.PORT = BACKEND_PORT;
   if (app.isPackaged) {
     backendEnv.STORAGE_ROOT = path.join(app.getPath('userData'), 'storage');
+  }
+  if (isProdMode) {
     backendEnv.NODE_ENV = 'production';
   }
 
@@ -240,16 +243,18 @@ const startBackendProcess = async () => {
       return;
     }
 
-    const req = http.get(`http://localhost:${BACKEND_PORT}/api/v1/health`, (res) => {
+    const req = http.get(`http://127.0.0.1:${BACKEND_PORT}/api/v1/health`, (res) => {
       if (res.statusCode === 200) {
         console.log('Backend is healthy! Creating main window...');
         createWindow();
       } else {
+        console.warn(`Health check got status: ${res.statusCode}`);
         setTimeout(checkHealth, POLL_INTERVAL_MS);
       }
     });
 
-    req.on('error', () => {
+    req.on('error', (err) => {
+      console.error('Health check error:', err.message);
       setTimeout(checkHealth, POLL_INTERVAL_MS);
     });
 
