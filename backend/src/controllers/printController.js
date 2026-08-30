@@ -70,7 +70,8 @@ export const printReceipt = async (req, res) => {
     const { orderId } = req.params;
     const cashierUserId = req.body?.cashier_user_id || req.query.cashier_user_id || 'SYSTEM';
 
-    const result = await printService.printReceipt(orderId, cashierUserId);
+    const printPaid = req.body?.print_paid === true || req.query.print_paid === 'true';
+    const result = await printService.printReceipt(orderId, cashierUserId, { printPaid });
     res.json({ success: true, data: result });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });

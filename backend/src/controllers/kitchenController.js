@@ -131,5 +131,15 @@ export const kitchenController = {
     } catch (error) {
       fail(res, error);
     }
+  },
+
+  clearFailed: (req, res) => {
+    try {
+      const orderIds = Array.isArray(req.body?.orderIds) ? req.body.orderIds : [];
+      const data = kitchenService.clearFailedTickets(orderIds, getActorId(req));
+      ok(res, data, 'Failed kitchen tickets cleared');
+    } catch (error) {
+      fail(res, error);
+    }
   }
 };

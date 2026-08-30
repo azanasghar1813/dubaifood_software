@@ -88,6 +88,26 @@ class PaymentService {
     // ── 1. Pre-transaction validation (read-only, safe to run outside tx) ──
     paymentValidationService.validateSession(sessionId, cashierUserId);
 
+    if (input.discount_total != null && Number(input.discount_total) >= 0) {
+      const live = orderRepository.findById(orderId);
+      if (live) {
+        const discount = Math.max(0, Number(input.discount_total) || 0);
+        const subtotal = Number(live.subtotal) || 0;
+        const service = Number(live.service_charge) || 0;
+        const delivery = Number(live.delivery_fee) || 0;
+        const grand = Math.max(0, subtotal + service + delivery - discount);
+        const paid = Number(live.paid_total) || 0;
+        orderRepository.update(orderId, {
+          discount_total: discount,
+          grand_total: grand,
+          due_total: Math.max(0, grand - paid)
+        });
+        try {
+          orderMetadataRepository.setMeta(orderId, 'receipt_paid_stamp', input.print_paid ? 'true' : 'false');
+        } catch { /* optional */ }
+      }
+    }
+
     const order = this._hydrateOrder(orderId);
     paymentValidationService.validateOrderIsPayable(order);
 

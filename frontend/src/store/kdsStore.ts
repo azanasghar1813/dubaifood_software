@@ -58,6 +58,7 @@ interface KdsState {
   fetchTickets: () => Promise<void>
   updateTicketStatus: (ticketId: string, status: KitchenStatus) => Promise<void>
   updateItemStatus: (ticketId: string, itemId: string, status: KitchenStatus) => Promise<void>
+  clearFailedTickets: (ticketIds: string[]) => Promise<void>
   setFilter: (key: keyof KdsState['filters'], value: string) => void
 }
 
@@ -201,6 +202,15 @@ export const useKdsStore = create<KdsState>((set, get) => ({
       console.error('Failed to update item status', error)
       // Rollback optimism could go here
     }
+  },
+
+  clearFailedTickets: async (ticketIds) => {
+    if (!ticketIds.length) return
+    await kitchenService.clearFailed(ticketIds)
+    set(state => ({
+      tickets: state.tickets.filter(t => !ticketIds.includes(t.id))
+    }))
+    await get().fetchTickets()
   },
 
   setFilter: (key, value) => {

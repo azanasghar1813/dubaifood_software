@@ -67,20 +67,39 @@ class PrintService {
   async printReceipt(orderId, cashierUserId, options = {}) {
     const order = this._loadOrder(orderId);
     const receipts = paymentReceiptRepository.findByOrderId(orderId);
+    const printerConfig = configService.getReceiptConfig() || {};
+    const printer = printerManagerService.getDefaultPrinterForJobType(PrintJobType.CUSTOMER_RECEIPT);
+    const paidStamp = options.printPaid === true
+      || order?.metadata?.receipt_paid_stamp === 'true'
+      || order?.metadata?.receipt_paid_stamp === true;
 
+    let payload;
     if (receipts.length === 0) {
-      throw new Error('No receipt found for this order. Payment may not be complete.');
+      const payment = {
+        id: 'unpaid-preview',
+        payment_method: paidStamp ? 'CASH' : 'UNPAID',
+        payment_method_label: paidStamp ? 'PAID' : 'UNPAID',
+        amount: order.grand_total,
+        amount_received: paidStamp ? order.grand_total : 0,
+        change_returned: 0,
+        cashier_user_id: cashierUserId,
+        created_at: new Date().toISOString()
+      };
+      payload = receiptGeneratorService.buildFromOrder(order, payment, {
+        printerWidth: printer?.paper_width || 80,
+        copies: printerConfig.copies || 1,
+        cashDrawer: false,
+      });
+    } else {
+      const receipt = receipts[receipts.length - 1];
+      payload = receiptGeneratorService.buildPrintPayload(receipt, {
+        printerWidth: printer?.paper_width || 80,
+        copies: printerConfig.copies || 1,
+        cashDrawer: false,
+      });
     }
 
-    const receipt = receipts[receipts.length - 1]; // most recent
-    const printerConfig = configService.getReceiptConfig() || {};
-
-    const printer = printerManagerService.getDefaultPrinterForJobType(PrintJobType.CUSTOMER_RECEIPT);
-    const payload  = receiptGeneratorService.buildPrintPayload(receipt, {
-      printerWidth: printer?.paper_width || 80,
-      copies:       printerConfig.copies || 1,
-      cashDrawer:   false,
-    });
+    if (payload.order) payload.order.receipt_paid_stamp = paidStamp;
 
     const jobId = printQueueService.enqueue(
       PrintJobType.CUSTOMER_RECEIPT,
@@ -96,11 +115,9 @@ class PrintService {
       }
     );
 
-    setImmediate(() => {
-      printEngineService.processPendingJobs().catch(() => {});
-    });
+    await printEngineService.processPendingJobs();
 
-    return { job_id: jobId, status: 'ENQUEUED' };
+    return { job_id: jobId, status: 'PRINTED' };
   }
 
   /**
@@ -323,6 +340,11 @@ class PrintService {
     if (!order) throw new Error(`Order ${orderId} not found.`);
     order.items = orderItemRepository.findItemsByOrderId(orderId);
     order.payments = orderPaymentRepository.findByOrderId(orderId);
+    try {
+      order.metadata = orderMetadataRepository.getAllMeta(orderId);
+    } catch {
+      order.metadata = {};
+    }
     return order;
   }
 }

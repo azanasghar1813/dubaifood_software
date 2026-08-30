@@ -156,7 +156,18 @@ class SyncWorker {
     try {
       const syncConfig = configService.getSyncConfig();
       const terminalId = syncConfig.device_id || 'UNKNOWN_DEVICE';
-      const pendingEvents = syncService.getPendingEvents(50); // Batch of 50
+      try {
+        dbEngine.prepare(`UPDATE sync_queue SET status = 'SYNCED' WHERE status = 'CONFLICT' AND entity_type = 'USER' AND entity_id = ?`).run(SYSTEM_USER_ID);
+        dbEngine.prepare(`UPDATE sync_queue SET status = 'PENDING', payload_version = COALESCE(payload_version, 1) + 1, error_details = NULL WHERE status = 'CONFLICT'`).run();
+      } catch { /* optional */ }
+
+      const pendingEvents = syncService.getPendingEvents(50).filter((event) => {
+        if (event.entity_type === 'USER' && event.entity_id === SYSTEM_USER_ID) {
+          syncService.markEventSynced(event.id);
+          return false;
+        }
+        return true;
+      });
 
       if (pendingEvents.length > 0) {
         this.currentPhase = 'PUSHING';
@@ -200,6 +211,11 @@ class SyncWorker {
                          delete record.deleted_at;
                          delete record.locked_by;
                      }
+                     try {
+                       dbEngine.prepare(`UPDATE ${tableName} SET payload_version = COALESCE(payload_version, 1) + 1 WHERE id = ?`).run(event.entity_id);
+                       record.payload_version = (Number(record.payload_version) || 1) + 1;
+                     } catch { /* payload_version may be missing */ }
+                     event.payload_version = record.payload_version || event.payload_version || 1;
                      event.payload = JSON.stringify(record);
                  } else {
                      // If record is gone, convert to DELETE
@@ -255,19 +271,21 @@ class SyncWorker {
           }
         }
 
-        // Handle conflicts
+        // Handle conflicts — keep this PC for orders/payments, ignore System User, catalog uses cloud.
         for (const conflict of data.conflicts) {
-          const event = dbEngine.prepare("SELECT entity_type FROM sync_queue WHERE id = ?").get(conflict.eventId);
+          const event = dbEngine.prepare("SELECT entity_type, entity_id FROM sync_queue WHERE id = ?").get(conflict.eventId);
           const entityType = event ? event.entity_type : null;
           const isCatalogEntity = ['PRODUCT', 'CATEGORY', 'DEAL'].includes(entityType);
+          const isSystemUser = entityType === 'USER' && event?.entity_id === SYSTEM_USER_ID;
           
-          if (isCatalogEntity) {
-            // Server-wins is correct for catalog data — discard local, will be overwritten by next pull.
+          if (isCatalogEntity || isSystemUser) {
             syncService.markEventSynced(conflict.eventId);
           } else {
-            // Orders, kitchen status, users, etc: do NOT silently discard.
-            // Flag as a real conflict requiring resolution.
-            syncService.markEventConflicted(conflict.eventId, conflict);
+            try {
+              dbEngine.prepare(`UPDATE sync_queue SET status='PENDING', payload_version = COALESCE(payload_version, 1) + 1, error_details = NULL WHERE id = ?`).run(conflict.eventId);
+            } catch {
+              syncService.markEventConflicted(conflict.eventId, conflict);
+            }
           }
         }
 
@@ -285,144 +303,181 @@ class SyncWorker {
       // --- PULL LOGIC BEGIN ---
       let lastSyncRecord = dbEngine.prepare("SELECT value FROM application_settings WHERE key = 'last_sync_timestamp'").get();
       let lastSyncTimestamp = lastSyncRecord ? parseInt(lastSyncRecord.value, 10) : 0;
-      
-      let offset = 0;
+      const pullFix = dbEngine.prepare("SELECT value FROM application_settings WHERE key = 'last_sync_fixed_v2'").get();
+      if (!pullFix) {
+        lastSyncTimestamp = 0;
+        dbEngine.prepare("INSERT INTO application_settings (key, value, description) VALUES ('last_sync_fixed_v2', '1', 'One-time full cloud pull after order sync fix') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
+        this.logActivity('Re-pulling full order history from cloud (one-time repair).');
+      }
       const limit = 50;
-      let hasMore = true;
-      let finalTimestamp = null;
+      let maxUpdatedMs = lastSyncTimestamp || 0;
       let totalPulled = 0;
 
       this.currentPhase = 'PULLING';
       this.logActivity(`Pulling new data from cloud... (Since: ${lastSyncTimestamp})`);
 
-      while (hasMore) {
+      const pullPage = async (offset) => {
         const pullController = new AbortController();
         const pullTimeout = setTimeout(() => pullController.abort(), 30000);
-        let pullResponse;
-        
         try {
-          pullResponse = await fetch(`${config.sync.apiUrl}/sync/pull?last_sync_timestamp=${lastSyncTimestamp}&limit=${limit}&offset=${offset}`, {
-            headers: { 
+          const pullResponse = await fetch(`${config.sync.apiUrl}/sync/pull?last_sync_timestamp=${lastSyncTimestamp}&limit=${limit}&offset=${offset}`, {
+            headers: {
               'x-device-secret': config.sync.deviceSecret,
               'x-terminal-id': terminalId
             },
             signal: pullController.signal
           });
+          if (!pullResponse.ok) {
+            throw new Error(`Cloud API Pull responded with status: ${pullResponse.status}`);
+          }
+          return await pullResponse.json();
         } finally {
           clearTimeout(pullTimeout);
         }
+      };
 
-        if (!pullResponse.ok) {
-           throw new Error(`Cloud API Pull responded with status: ${pullResponse.status}`);
+      const bumpTimestamp = (rows) => {
+        for (const row of rows || []) {
+          const ms = Date.parse(row.updated_at || '');
+          if (Number.isFinite(ms) && ms > maxUpdatedMs) maxUpdatedMs = ms;
         }
+      };
 
-        const pullData = await pullResponse.json();
-        const { products, categories, orders, order_items, customers, users, deals, order_payments, dining_tables, application_settings } = pullData.data;
+      const existsId = (table, id) => {
+        if (!id) return false;
+        try {
+          return !!dbEngine.prepare(`SELECT 1 FROM ${table} WHERE id = ? LIMIT 1`).get(id);
+        } catch {
+          return false;
+        }
+      };
 
-        const itemsCount = (products?.length || 0) + (categories?.length || 0) + (orders?.length || 0) + 
-                           (order_items?.length || 0) + (customers?.length || 0) + (users?.length || 0) +
-                           (deals?.length || 0) + (order_payments?.length || 0) + (dining_tables?.length || 0) +
-                           (application_settings?.length || 0);
-        
-        totalPulled += itemsCount;
+      const gathered = {
+        products: [],
+        categories: [],
+        orders: [],
+        order_items: [],
+        customers: [],
+        users: [],
+        deals: [],
+        order_payments: [],
+        dining_tables: [],
+        application_settings: []
+      };
 
-        if (itemsCount > 0) {
-          dbEngine.transaction(() => {
-            const upsertData = (tableName, items) => {
-              if (!items || items.length === 0) return;
-              
-              const tableInfo = dbEngine.prepare(`PRAGMA table_info(${tableName})`).all();
-              const validColumns = new Set(tableInfo.map(c => c.name));
-              const columnMeta = {};
-              tableInfo.forEach(c => { columnMeta[c.name] = c; });
-              
-              const keys = Object.keys(items[0]).filter(k => validColumns.has(k));
-              if (validColumns.has('sync_status') && !keys.includes('sync_status')) {
-                keys.push('sync_status');
+      let offset = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const pullData = await pullPage(offset);
+        const page = pullData.data || {};
+        let pageCount = 0;
+        for (const key of Object.keys(gathered)) {
+          const rows = Array.isArray(page[key]) ? page[key] : [];
+          gathered[key].push(...rows);
+          pageCount += rows.length;
+          bumpTimestamp(rows);
+        }
+        totalPulled += pageCount;
+        hasMore = Object.values(page).some((arr) => Array.isArray(arr) && arr.length === limit);
+        offset += limit;
+        if (offset > 20000) break;
+      }
+
+      if (totalPulled > 0) {
+        dbEngine.transaction(() => {
+          const upsertData = (tableName, items) => {
+            if (!items || items.length === 0) return;
+
+            const tableInfo = dbEngine.prepare(`PRAGMA table_info(${tableName})`).all();
+            const validColumns = new Set(tableInfo.map(c => c.name));
+            const columnMeta = {};
+            tableInfo.forEach(c => { columnMeta[c.name] = c; });
+
+            const keys = Object.keys(items[0]).filter(k => validColumns.has(k));
+            if (validColumns.has('sync_status') && !keys.includes('sync_status')) {
+              keys.push('sync_status');
+            }
+
+            tableInfo.forEach(meta => {
+              if (meta.notnull && meta.dflt_value === null && !keys.includes(meta.name)) {
+                keys.push(meta.name);
               }
-              
-              // Ensure ALL NOT NULL columns without defaults are in `keys` so our fallback logic can handle them
-              tableInfo.forEach(meta => {
-                if (meta.notnull && meta.dflt_value === null && !keys.includes(meta.name)) {
-                  keys.push(meta.name);
-                }
-              });
-              
-              const placeholders = keys.map(() => '?').join(', ');
-              const updateSet = keys.filter(k => k !== 'id').map(k => `${k} = excluded.${k}`).join(', ');
-              const stmt = dbEngine.prepare(`INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${updateSet}`);
-              
-              for (const item of items) {
-                const values = keys.map(k => {
-                  if (k === 'sync_status') return 'SYNCED';
-                  
-                  let val = item[k];
-                  const meta = columnMeta[k];
-                  
-                  if (val === undefined || val === null) {
-                    if (meta && meta.notnull) {
-                       // Try to use default value from schema
-                       if (meta.dflt_value !== null) {
-                         // dflt_value comes back as a string, e.g., '0', 'DINE_IN', or "DEFAULT_BRANCH"
-                         // Remove surrounding quotes if they exist
-                         return meta.dflt_value.replace(/^['"](.*)['"]$/, '$1');
-                       }
-                       // Fallbacks for known non-defaultable foreign keys
-                       if (k === 'shift_id') return SYSTEM_SHIFT_ID;
-                       if (k === 'cashier_user_id') return SYSTEM_USER_ID;
-                       if (meta.type.includes('INT') || meta.type.includes('REAL')) return 0;
-                       return '';
+            });
+
+            const conflictCol = tableName === 'application_settings' && validColumns.has('key') ? 'key' : 'id';
+            const placeholders = keys.map(() => '?').join(', ');
+            const updateSet = keys.filter(k => k !== conflictCol).map(k => `${k} = excluded.${k}`).join(', ');
+            const stmt = dbEngine.prepare(`INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${placeholders}) ON CONFLICT(${conflictCol}) DO UPDATE SET ${updateSet}`);
+
+            for (const rawItem of items) {
+              const item = { ...rawItem };
+              if (tableName === 'users' && (item.id === SYSTEM_USER_ID || String(item.username || '').toLowerCase() === 'system_user')) {
+                continue;
+              }
+              if (tableName === 'orders') {
+                if (item.table_id && !existsId('dining_tables', item.table_id) && !existsId('tables', item.table_id)) item.table_id = null;
+                if (item.waiter_id && !existsId('users', item.waiter_id)) item.waiter_id = null;
+                if (item.rider_id && !existsId('users', item.rider_id)) item.rider_id = null;
+                if (item.customer_id && !existsId('customers', item.customer_id)) item.customer_id = null;
+                if (item.cashier_user_id && !existsId('users', item.cashier_user_id)) item.cashier_user_id = SYSTEM_USER_ID;
+                if (item.shift_id && !existsId('cashier_sessions', item.shift_id)) item.shift_id = SYSTEM_SHIFT_ID;
+              }
+              if (tableName === 'order_items' && item.order_id && !existsId('orders', item.order_id)) continue;
+              if (tableName === 'order_payments' && item.order_id && !existsId('orders', item.order_id)) continue;
+
+              const values = keys.map(k => {
+                if (k === 'sync_status') return 'SYNCED';
+                let val = item[k];
+                const meta = columnMeta[k];
+                if (val === undefined || val === null) {
+                  if (meta && meta.notnull) {
+                    if (meta.dflt_value !== null) {
+                      return meta.dflt_value.replace(/^['"](.*)['"]$/, '$1');
                     }
-                    return null;
+                    if (k === 'shift_id') return SYSTEM_SHIFT_ID;
+                    if (k === 'cashier_user_id') return SYSTEM_USER_ID;
+                    if (meta.type.includes('INT') || meta.type.includes('REAL')) return 0;
+                    return '';
                   }
-                  
-                  return val;
-                });
-                try {
-                  stmt.run(...values);
-                } catch (err) {
-                  // Catch both FK and UNIQUE constraints
-                  if (err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY' || err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.message.includes('FOREIGN KEY constraint failed') || err.message.includes('UNIQUE constraint failed')) {
-                    console.warn(`[Pull] Deferred/skipped ${tableName} row ${item.id} — ${err.code}: ${err.message}`);
-                    continue;
-                  }
-                  throw err;
+                  return null;
                 }
-              }
-            };
-
-            // Upsert dependencies first
-            upsertData('categories', categories);
-            upsertData('products', products);
-            upsertData('users', users);
-            upsertData('customers', customers);
-            upsertData('deals', deals);
-            upsertData('dining_tables', dining_tables);
-            upsertData('application_settings', application_settings);
-            
-            // Ensure SYSTEM fallbacks exist for orders that reference them to prevent Foreign Key constraint failures
-            if (orders && orders.length > 0) {
-              const anyRole = dbEngine.prepare('SELECT id, name FROM roles LIMIT 1').get();
-              if (anyRole) {
-                 dbEngine.prepare(`INSERT OR IGNORE INTO users (id, username, password_hash, pin_code, first_name, last_name, role_id, force_pin_change, is_active, created_at, updated_at) VALUES (?, 'system_user', 'system_hash', '0000', 'System', 'User', ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(SYSTEM_USER_ID, anyRole.id);
-                 try {
-                   dbEngine.prepare(`UPDATE users SET show_on_login = 0, is_active = 0 WHERE id = ?`).run(SYSTEM_USER_ID);
-                 } catch { /* show_on_login may be missing */ }
-                 dbEngine.prepare(`INSERT OR IGNORE INTO cashier_sessions (id, user_id, terminal_id, status, opening_float, opened_at, created_at, updated_at) VALUES (?, ?, 'System Sync', 'CLOSED', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(SYSTEM_SHIFT_ID, SYSTEM_USER_ID);
+                return val;
+              });
+              try {
+                stmt.run(...values);
+              } catch (err) {
+                if (err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY' || err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.message.includes('FOREIGN KEY constraint failed') || err.message.includes('UNIQUE constraint failed')) {
+                  console.warn(`[Pull] Deferred/skipped ${tableName} row ${item.id} — ${err.code}: ${err.message}`);
+                  continue;
+                }
+                throw err;
               }
             }
-            
-            // Upsert orders and items
-            upsertData('orders', orders);
-            upsertData('order_items', order_items);
-            upsertData('order_payments', order_payments);
-          });
-        }
+          };
 
-        const hasAnyTableReachedLimit = [products, categories, orders, order_items, customers, users, deals, order_payments, dining_tables, application_settings].some(arr => arr && arr.length === limit);
-        hasMore = hasAnyTableReachedLimit;
-        offset += limit;
-        if (!finalTimestamp) finalTimestamp = pullData.timestamp;
+          upsertData('categories', gathered.categories);
+          upsertData('products', gathered.products);
+          upsertData('users', gathered.users);
+          upsertData('customers', gathered.customers);
+          upsertData('deals', gathered.deals);
+          upsertData('dining_tables', gathered.dining_tables);
+          upsertData('application_settings', gathered.application_settings);
+
+          if (gathered.orders.length > 0) {
+            const anyRole = dbEngine.prepare('SELECT id, name FROM roles LIMIT 1').get();
+            if (anyRole) {
+              dbEngine.prepare(`INSERT OR IGNORE INTO users (id, username, password_hash, pin_code, first_name, last_name, role_id, force_pin_change, is_active, created_at, updated_at) VALUES (?, 'system_user', 'system_hash', '0000', 'System', 'User', ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(SYSTEM_USER_ID, anyRole.id);
+              try {
+                dbEngine.prepare(`UPDATE users SET show_on_login = 0, is_active = 0 WHERE id = ?`).run(SYSTEM_USER_ID);
+              } catch { /* show_on_login may be missing */ }
+              dbEngine.prepare(`INSERT OR IGNORE INTO cashier_sessions (id, user_id, terminal_id, status, opening_float, opened_at, created_at, updated_at) VALUES (?, ?, 'System Sync', 'CLOSED', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(SYSTEM_SHIFT_ID, SYSTEM_USER_ID);
+            }
+          }
+
+          upsertData('orders', gathered.orders);
+          upsertData('order_items', gathered.order_items);
+          upsertData('order_payments', gathered.order_payments);
+        });
       }
 
       if (totalPulled > 0) {
@@ -431,9 +486,8 @@ class SyncWorker {
         this.logActivity(`Pull complete. No new items found.`);
       }
 
-      // Update timestamp unconditionally if full paginated pull succeeded without throwing
-      if (finalTimestamp) {
-        dbEngine.prepare("INSERT INTO application_settings (key, value, description) VALUES ('last_sync_timestamp', ?, 'Last successful cloud pull timestamp') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(finalTimestamp.toString());
+      if (maxUpdatedMs > 0) {
+        dbEngine.prepare("INSERT INTO application_settings (key, value, description) VALUES ('last_sync_timestamp', ?, 'Last successful cloud pull timestamp') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(maxUpdatedMs));
       }
       // --- PULL LOGIC END ---
 

@@ -4,6 +4,8 @@ import { historySearchService } from './historySearchService.js';
 import { historyCacheService } from './historyCacheService.js';
 import { auditService } from './auditService.js';
 import { syncStatusService } from './syncStatusService.js';
+import { dbEngine } from '../database/sqlite.js';
+import { kitchenQueueService } from './kitchenQueueService.js';
 
 /**
  * OrderHistoryService — The Central History Orchestrator
@@ -187,19 +189,31 @@ class OrderHistoryService {
    * Irreversible action.
    */
   wipeOutHistory() {
-    import('../database/sqlite.js').then(({ dbEngine }) => {
-      dbEngine.transaction(() => {
-        dbEngine.prepare('DELETE FROM orders').run();
-        dbEngine.prepare('DELETE FROM order_number_sequences').run();
-        dbEngine.prepare('DELETE FROM payment_receipts').run();
-        dbEngine.prepare('DELETE FROM order_audit_trail').run();
-        dbEngine.prepare('DELETE FROM reprint_log').run();
-        dbEngine.prepare("DELETE FROM activity_logs WHERE entity_type = 'ORDER'").run();
-        dbEngine.prepare("DELETE FROM sync_queue WHERE entity_type IN ('ORDER', 'ORDER_ITEM', 'ORDER_PAYMENT')").run();
-      });
-      historyCacheService.clearAll();
-      console.log('[OrderHistoryService] All order history wiped out successfully.');
+    const run = (sql) => {
+      try { dbEngine.prepare(sql).run(); } catch { /* table may not exist */ }
+    };
+    dbEngine.transaction(() => {
+      run('DELETE FROM order_combo_components');
+      run('DELETE FROM order_item_modifiers');
+      run('DELETE FROM order_item_addons');
+      run('DELETE FROM order_item_variants');
+      run('DELETE FROM order_items');
+      run('DELETE FROM order_payments');
+      run('DELETE FROM payment_receipts');
+      run('DELETE FROM order_timeline');
+      run('DELETE FROM order_metadata');
+      run('DELETE FROM order_audit_trail');
+      run('DELETE FROM reprint_log');
+      run('DELETE FROM print_jobs');
+      run('DELETE FROM print_queue');
+      run('DELETE FROM orders');
+      run('DELETE FROM order_number_sequences');
+      run("DELETE FROM activity_logs WHERE entity_type = 'ORDER'");
+      run("DELETE FROM sync_queue WHERE entity_type IN ('ORDER', 'ORDER_ITEM', 'ORDER_PAYMENT', 'PAYMENT')");
     });
+    historyCacheService.clearAll();
+    try { kitchenQueueService.invalidate(); } catch { /* optional */ }
+    console.log('[OrderHistoryService] All order history wiped out successfully.');
   }
 
   /**

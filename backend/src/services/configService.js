@@ -9,7 +9,14 @@ import { SerialPort } from 'serialport';
 import crypto from 'crypto';
 import os from 'os';
 
-const isLegacyTillPrefix = (prefix) => /^T[0-9A-F]{2}$/i.test(String(prefix || '').trim());
+export const ALLOWED_DEVICE_PREFIXES = ['PC-A', 'PC-B', 'PC-C', 'PC-D', 'PC-F'];
+
+const isLegacyTillPrefix = (prefix) => {
+  const value = String(prefix || '').trim().toUpperCase();
+  if (!value) return false;
+  if (ALLOWED_DEVICE_PREFIXES.includes(value)) return false;
+  return /^(T[0-9A-F]{2}|PC[1-5]|PC-[1-5]|PCA|PCB|PCC|PCD|PCE|PCF)$/i.test(value);
+};
 
 const execAsync = promisify(exec);
 
@@ -36,7 +43,7 @@ class ConfigService {
       console.log(`[ConfigService] Generated persistent device_id: ${deviceId}`);
     }
     
-    // Txx prefixes (e.g. T93) were auto-generated — wipe so the till can pick PC1/PC2.
+    // Legacy prefixes (T93, PC1, …) are wiped so the till can pick PC-A / PC-B.
     try {
       const legacy = dbEngine.prepare(
         "SELECT value FROM application_settings WHERE key = 'order_prefix'"
@@ -44,7 +51,7 @@ class ConfigService {
       if (legacy && isLegacyTillPrefix(legacy.value)) {
         dbEngine.prepare("DELETE FROM application_settings WHERE key = 'order_prefix'").run();
         this.refreshCache();
-        console.log(`[ConfigService] Removed legacy till prefix ${legacy.value}. Choose PC1–PC5 on login.`);
+        console.log(`[ConfigService] Removed legacy till prefix ${legacy.value}. Choose PC-A–PC-F on login.`);
       }
     } catch { /* settings table may not exist yet */ }
 
@@ -129,9 +136,9 @@ class ConfigService {
     if (current && !isLegacyTillPrefix(current)) {
       throw new Error('Device ID is already set and cannot be changed.');
     }
-    const clean = String(prefix || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (!['PC1', 'PC2', 'PC3', 'PC4', 'PC5'].includes(clean)) {
-      throw new Error('Device ID must be PC1, PC2, PC3, PC4 or PC5.');
+    const clean = String(prefix || '').trim().toUpperCase();
+    if (!ALLOWED_DEVICE_PREFIXES.includes(clean)) {
+      throw new Error('Device ID must be PC-A, PC-B, PC-C, PC-D or PC-F.');
     }
     this.updateApplicationCategory('SYSTEM', 'SYNC', { order_prefix: clean });
     return clean;

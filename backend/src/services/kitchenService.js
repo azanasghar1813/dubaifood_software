@@ -352,6 +352,28 @@ class KitchenService {
     });
   }
 
+  clearFailedTickets(orderIds = [], userId) {
+    const ids = Array.isArray(orderIds) ? orderIds.filter(Boolean) : [];
+    return dbEngine.transaction(() => {
+      for (const orderId of ids) {
+        const items = orderItemRepository.findItemsByOrderId(orderId) || [];
+        const now = new Date().toISOString();
+        for (const item of items) {
+          if ([KitchenState.SERVED, KitchenState.COMPLETED, KitchenState.CANCELLED].includes(item.kitchen_state)) {
+            continue;
+          }
+          orderItemRepository.updateItem(item.id, {
+            kitchen_state: KitchenState.SERVED,
+            kitchen_served_at: item.kitchen_served_at || now,
+            updated_at: now
+          });
+        }
+        this._reconcileOrder(orderId, userId, 'clear_failed_tickets');
+      }
+      return { cleared: ids.length };
+    });
+  }
+
   setPriority(orderId, userId, priority) {
     return dbEngine.transaction(() => {
       if (!this._isManagerOrAbove(userId)) {

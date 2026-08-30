@@ -5,7 +5,6 @@ import { PrintTemplates } from "./components/PrintTemplates"
 import { KDS } from "./pages/KDS"
 import { KeyboardShortcutsModal } from "./components/KeyboardShortcutsModal"
 import { usePrinterStore } from "./store/printerStore"
-import { useOrderStore } from "./store/orderStore"
 
 function App() {
   const [printerManagerOpen, setPrinterManagerOpen] = useState(false)
@@ -32,15 +31,7 @@ function App() {
         setPrinterManagerOpen(prev => !prev)
       }
       
-      // Ctrl + P -> Print Last Receipt
-      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'p') {
-        e.preventDefault()
-        const orders = useOrderStore.getState().orders
-        if (orders.length > 0) {
-          const last = orders[orders.length - 1]
-          usePrinterStore.getState().printReceipt(last.id, 'cashier')
-        }
-      }
+      // Ctrl+P on POS is the Paid stamp toggle. Do not steal it here.
       
       // Esc -> Close Modals
       if (e.key === 'Escape') {

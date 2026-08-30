@@ -76,5 +76,12 @@ export const cartService = {
     const config = idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}
     const res = await apiClient.post(`${PAYMENT_BASE_URL}/order/${orderId}`, paymentData, config) as any
     return res
+  },
+
+  async applyDiscount(orderId: string, discountTotal: number, printPaid = false) {
+    return apiClient.post(`/orders/${orderId}/discount`, {
+      discount_total: discountTotal,
+      print_paid: printPaid
+    }) as any
   }
 }

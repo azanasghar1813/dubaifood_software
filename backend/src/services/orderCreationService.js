@@ -240,7 +240,10 @@ class OrderCreationService {
       // ── 3b. Calculate cart-level financial totals ──────────────────────────
       let subtotal = 0;
       let taxTotal = 0;
-      let discountTotal = Number(cart.totals?.discount_total) || 0;
+      let discountTotal = Number(options.discount_total);
+      if (!Number.isFinite(discountTotal) || discountTotal < 0) {
+        discountTotal = Number(cart.totals?.discount_total) || 0;
+      }
       const isTaxEnabled = false;
       const deliveryCharges = Number(options.delivery_charges) || Number(options.metadata?.delivery_charges) || 0;
       const serviceCharge = Number(options.service_charge) || Number(options.metadata?.service_charge) || 0;

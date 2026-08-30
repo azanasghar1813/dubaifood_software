@@ -53,5 +53,9 @@ export const kitchenService = {
 
   setPriority: async (orderId: string, priority: string): Promise<{ success: boolean; data: any }> => {
     return apiClient.patch(`/kitchen/orders/${orderId}/priority`, { priority })
+  },
+
+  clearFailed: async (orderIds: string[]): Promise<{ success: boolean; data: any }> => {
+    return apiClient.post('/kitchen/clear-failed', { orderIds })
   }
 }

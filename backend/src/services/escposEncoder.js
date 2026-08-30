@@ -113,6 +113,9 @@ class EscPosEncoder {
         parts.push(this._encodeText(`Table: ${o.table_id}`, iconvEncoding));
         parts.push(this._lf());
       }
+      const paidLabel = o.receipt_paid_stamp ? 'Paid' : 'Unpaid';
+      parts.push(this._encodeText(`Status: ${paidLabel}`, iconvEncoding));
+      parts.push(this._lf());
       parts.push(this._encodeText(`Date : ${o.business_date || ''}`, iconvEncoding));
       parts.push(this._lf());
       if (o.cashier_user_id) {

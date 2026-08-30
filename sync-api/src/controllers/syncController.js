@@ -235,31 +235,29 @@ export const pushSyncEvents = async (req, res) => {
             let hasConflict = false;
             
             if (existing && primaryEvent) {
-              if (existing.payload_version >= u.payload_version) {
-                const existingHash = hashPayload(existing);
-                const incomingHash = hashPayload(u);
-                
-                if (existingHash === incomingHash) {
-                  // Exact match, no conflict, but skip DB write since it's already there
-                  continue;
-                } else {
-                  results.conflicts.push({
-                    eventId: primaryEvent.id,
-                    entityId: identity,
-                    serverVersion: existing.payload_version,
-                    clientVersion: u.payload_version,
-                    needsPull: true
-                  });
-                  hasConflict = true;
-                }
-              } else if (tableName === 'orders' && (existing.lifecycle_state === 'COMPLETED' || existing.status === 'COMPLETED')) {
-                results.conflicts.push({
-                  eventId: primaryEvent.id,
-                  entityId: identity,
-                  error: 'Order is completed and cannot be mutated.',
-                  needsPull: true
-                });
-                hasConflict = true;
+              const existingHash = hashPayload(existing);
+              const incomingHash = hashPayload(u);
+              if (existingHash === incomingHash) {
+                continue;
+              }
+
+              const isSystemUser = tableName === 'users' && (
+                identity === '00000000-0000-4000-a000-000000000001' ||
+                String(u.username || existing.username || '').toLowerCase() === 'system_user'
+              );
+              if (isSystemUser) {
+                continue;
+              }
+
+              const incomingTs = Date.parse(u.updated_at || '') || 0;
+              const existingTs = Date.parse(existing.updated_at || '') || 0;
+              const incomingVersion = Number(u.payload_version || 1);
+              const existingVersion = Number(existing.payload_version || 1);
+              const incomingIsNewer = incomingTs >= existingTs || incomingVersion >= existingVersion;
+
+              // Last write wins so tills can share the same orders/users without stuck conflicts.
+              if (!incomingIsNewer && existingVersion > incomingVersion) {
+                continue;
               }
             }
             if (!hasConflict) validUpserts.push(u);

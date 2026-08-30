@@ -23,6 +23,17 @@ class KitchenQueueService {
     this.cache.clear();
   }
 
+  _businessDate() {
+    const startHour = Number(String((configService.getBusinessDay().start_time || '06:00').split(':')[0]));
+    const cutoff = Number.isFinite(startHour) ? startHour : 6;
+    const d = new Date();
+    if (d.getHours() < cutoff) d.setDate(d.getDate() - 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
   _loadItemChildren(itemIds = []) {
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
       return {
@@ -146,13 +157,8 @@ class KitchenQueueService {
     `;
 
     if (filters.monitorMode) {
-      const now = new Date();
-      const [startHour] = (configService.getBusinessDay().start_time || '06:00').split(':').map(Number);
-      if (now.getHours() < startHour) now.setDate(now.getDate() - 1);
-      const today = now.toISOString().split('T')[0];
-
-      sql += ` AND (o.business_date = ? OR i.kitchen_state = 'PENDING')`;
-      params.push(today);
+      sql += ` AND o.business_date = ?`;
+      params.push(this._businessDate());
     } else {
       sql += ` AND o.lifecycle_state IN (${activeOrderStates.map(() => '?').join(',')})`;
       sql += ` AND i.kitchen_state IN (${activeItemStates.map(() => '?').join(',')})`;

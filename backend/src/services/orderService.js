@@ -141,6 +141,28 @@ class OrderService {
     });
   }
 
+  applyOrderDiscount(orderId, discountTotal, printPaid = false) {
+    const order = orderRepository.findById(orderId);
+    if (!order) throw new Error('Order not found.');
+    const discount = Math.max(0, Number(discountTotal) || 0);
+    const subtotal = Number(order.subtotal) || 0;
+    const service = Number(order.service_charge) || 0;
+    const delivery = Number(order.delivery_fee) || 0;
+    const grand = Math.max(0, subtotal + service + delivery - discount);
+    const paid = Number(order.paid_total) || 0;
+    const updated = orderRepository.update(orderId, {
+      discount_total: discount,
+      grand_total: grand,
+      due_total: Math.max(0, grand - paid)
+    });
+    try {
+      orderMetadataRepository.setMeta(orderId, 'receipt_paid_stamp', printPaid ? 'true' : 'false');
+    } catch { /* optional */ }
+    orderCacheService.upsertOrder(updated);
+    syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', { discount_total: discount });
+    return this._hydrateOrder(updated);
+  }
+
   /**
    * Opens a new Draft Order.
    */
@@ -506,7 +528,6 @@ class OrderService {
    */
   deleteOrder(orderId, userId, terminalId = 'SYSTEM') {
     return dbEngine.transaction(() => {
-      this._enforceLock(orderId, terminalId);
       const order = orderRepository.findById(orderId);
       if (!order) throw new Error('Order not found.');
 

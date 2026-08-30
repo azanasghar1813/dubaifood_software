@@ -36,8 +36,9 @@ export default function Login() {
     }
     fetchUsers()
     apiClient.get('/health').then((res: any) => {
-      const prefix = res?.order_prefix || res?.data?.order_prefix
-      if (!prefix) setNeedsDeviceId(true)
+      const prefix = String(res?.order_prefix || res?.data?.order_prefix || '').trim().toUpperCase()
+      const allowed = ['PC-A', 'PC-B', 'PC-C', 'PC-D', 'PC-F']
+      if (!prefix || !allowed.includes(prefix)) setNeedsDeviceId(true)
     }).catch(() => {})
   }, [])
 
@@ -98,10 +99,10 @@ export default function Login() {
           <div className="w-full max-w-md bg-card border border-border rounded-3xl p-8 shadow-2xl">
             <h2 className="text-2xl font-black mb-2">Set this till’s device ID</h2>
             <p className="text-sm text-muted-foreground font-bold mb-6">
-              Choose this counter’s ID once (PC1–PC5). Waiter tablets do not need their own ID — they connect to this laptop. Orders will look like PC1-1, PC2-1.
+              Choose this counter’s ID once (PC-A to PC-F). Waiter tablets do not need their own ID — they connect to this laptop. Orders will look like PC-A-1, PC-B-1.
             </p>
             <div className="grid grid-cols-3 gap-3 mb-4">
-              {['PC1', 'PC2', 'PC3', 'PC4', 'PC5'].map((id) => (
+              {['PC-A', 'PC-B', 'PC-C', 'PC-D', 'PC-F'].map((id) => (
                 <button
                   key={id}
                   type="button"
@@ -118,7 +119,7 @@ export default function Login() {
             </div>
             <button
               type="button"
-              disabled={!['PC1', 'PC2', 'PC3', 'PC4', 'PC5'].includes(deviceIdInput) || deviceSaving}
+              disabled={!['PC-A', 'PC-B', 'PC-C', 'PC-D', 'PC-F'].includes(deviceIdInput) || deviceSaving}
               onClick={saveDeviceId}
               className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-black uppercase disabled:opacity-50"
             >

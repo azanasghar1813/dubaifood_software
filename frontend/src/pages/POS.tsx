@@ -14,9 +14,7 @@ import {
   Hash, Phone, Edit, Edit2,
   Store, UtensilsCrossed, Truck, CircleDot,
   QrCode, Banknote, Clock, Building2, Percent, X, ShoppingCart, Keyboard,
-  Pause, Play
 } from "lucide-react"
-import { toast } from "../store/toastStore"
 import ReceiptPreview from "./ReceiptPreview"
 import KitchenTicketPreview from "./KitchenTicketPreview"
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
@@ -158,9 +156,6 @@ export default function POS() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [printOrder, setPrintOrder] = useState<any>(null)
   const [kotPreview, setKotPreview] = useState<any>(null)
-  const [heldModalOpen, setHeldModalOpen] = useState(false)
-  const [heldOrders, setHeldOrders] = useState<any[]>([])
-  const [holdBusy, setHoldBusy] = useState(false)
 
   // Checkout modal keyboard navigation
   // focusZone: 'methods' | 'discount' | 'amount' | 'quickcash' | 'discountpct' | 'confirm'
@@ -185,57 +180,12 @@ export default function POS() {
     editingOrderId, clearEditMode, completeOrder,
     deliveryCharges, setDeliveryCharges,
     fetchDraftOrder, financeConfig, activeOrderId, activeOrder, isVipOrder,
-    holdOrder, resumeOrder, previewOrderNumber
+    previewOrderNumber
   } = usePosStore()
 
   const { orderCounter } = useOrderStore()
 
   const { user } = useAuthStore()
-
-  const handleHoldCurrent = async () => {
-    if (cart.length === 0) return
-    setHoldBusy(true)
-    try {
-      const holdName = `Hold ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-      await holdOrder(holdName)
-      toast.success('Order held', holdName)
-    } catch (e: any) {
-      toast.error('Could not hold order', e?.response?.data?.message || e?.message || 'Hold failed')
-    } finally {
-      setHoldBusy(false)
-    }
-  }
-
-  const handleOpenHeldOrders = async () => {
-    setHoldBusy(true)
-    try {
-      const res: any = await cartService.getHeldOrders()
-      const list = res?.data || res || []
-      setHeldOrders(Array.isArray(list) ? list : [])
-      setHeldModalOpen(true)
-    } catch (e: any) {
-      toast.error('Could not load held orders', e?.response?.data?.message || e?.message || 'Failed')
-    } finally {
-      setHoldBusy(false)
-    }
-  }
-
-  const handleResumeHeld = async (orderId: string) => {
-    if (cart.length > 0) {
-      toast.warning('Cart is not empty', 'Hold or clear the current cart before resuming.')
-      return
-    }
-    setHoldBusy(true)
-    try {
-      await resumeOrder(orderId)
-      setHeldModalOpen(false)
-      toast.success('Order resumed')
-    } catch (e: any) {
-      toast.error('Could not resume order', e?.response?.data?.message || e?.message || 'Resume failed')
-    } finally {
-      setHoldBusy(false)
-    }
-  }
 
   const handleProceedToPay = () => {
     if (cart.length === 0) return
@@ -1948,22 +1898,6 @@ export default function POS() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 mb-2">
-                      <button
-                        onClick={handleHoldCurrent}
-                        disabled={cart.length === 0 || holdBusy}
-                        className="w-full py-2 bg-secondary hover:bg-secondary/80 text-foreground font-black text-xs rounded-xl border border-border transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                      >
-                        <Pause className="w-3.5 h-3.5" /> Hold
-                      </button>
-                      <button
-                        onClick={handleOpenHeldOrders}
-                        disabled={holdBusy}
-                        className="w-full py-2 bg-secondary hover:bg-secondary/80 text-foreground font-black text-xs rounded-xl border border-border transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                      >
-                        <Play className="w-3.5 h-3.5" /> Resume
-                      </button>
-                    </div>
                     <div className="grid grid-cols-1 gap-2 mb-2">
                       <button
                         onClick={handleProceedToPay}
@@ -2345,41 +2279,6 @@ export default function POS() {
         }}
       />
 
-      <AnimatePresence>
-        {heldModalOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setHeldModalOpen(false)} className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-md bg-card border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden">
-              <div className="p-4 border-b border-border bg-secondary/30 flex items-center justify-between">
-                <h2 className="text-lg font-black text-foreground">Held Orders</h2>
-                <button onClick={() => setHeldModalOpen(false)} className="p-1 rounded-lg hover:bg-secondary"><X className="w-5 h-5" /></button>
-              </div>
-              <div className="p-3 max-h-[60vh] overflow-y-auto space-y-2">
-                {heldOrders.length === 0 && (
-                  <p className="text-sm font-bold text-muted-foreground text-center py-8">No held orders.</p>
-                )}
-                {heldOrders.map((held: any) => (
-                  <button
-                    key={held.id}
-                    onClick={() => handleResumeHeld(held.id)}
-                    disabled={holdBusy}
-                    className="w-full text-left p-3 rounded-xl border border-border bg-secondary/40 hover:border-orange-500 transition-all disabled:opacity-50"
-                  >
-                    <div className="flex justify-between font-black text-sm">
-                      <span>{held.hold_name || 'Held'}</span>
-                      <span>Rs {Number(held.grand_total || 0).toLocaleString()}</span>
-                    </div>
-                    <div className="text-[11px] font-bold text-muted-foreground mt-1">
-                      {held.order_number || 'Draft'} · {held.held_at ? new Date(held.held_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
       {/* Checkout Modal */}
       <AnimatePresence>
         {checkoutModalOpen && (() => {
@@ -2598,7 +2497,7 @@ export default function POS() {
                         notes: orderType !== 'Dine In' ? (customer?.notes || null) : null,
                         status: 'Completed',
                         kitchenStatus: 'Completed',
-                        paymentStatus: 'Paid',
+                        paymentStatus: isPaidPrint ? 'Paid' : 'Unpaid',
                         total: totalToPay,
                         subtotal: getSubtotal(),
                         serviceCharge: getServiceCharge(),
@@ -2630,7 +2529,8 @@ export default function POS() {
                           cashier: user?.name || 'Cashier',
                           status: 'Completed'
                         }] : [],
-                        discountVal
+                        discountVal,
+                        isPaidPrint
                       )
 
                       if (!success) {
@@ -2649,22 +2549,19 @@ export default function POS() {
                           (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
                         )
                         if (finalOrderId) {
-                          // 1. Kitchen Sending Logic
-                          if (isKdsAutoSend) {
-                             await ps.printKitchen(finalOrderId, user?.id || user?.name || 'cashier')
-                          } else {
-                             if (window.confirm("Send this order to the Kitchen now?")) {
-                               await ps.printKitchen(finalOrderId, user?.id || user?.name || 'cashier')
-                             }
-                          }
-                          
-                          // 2. Customer Receipt Logic
                           if (hasThermal) {
                             const result = await ps.printReceipt(finalOrderId, user?.id || user?.name || 'cashier')
                             if (result?.job_id) {
                               thermalPrintQueued = true
-                              alert("Order Completed & Receipt Queued to Thermal Printer!")
                             }
+                          }
+                          if (isKdsAutoSend) {
+                            await ps.printKitchen(finalOrderId, user?.id || user?.name || 'cashier')
+                          }
+                          if (thermalPrintQueued) {
+                            alert(isKdsAutoSend
+                              ? "Order completed. Customer receipt printed, then kitchen ticket."
+                              : "Order completed. Customer receipt printed.")
                           }
                         }
                       } catch { /* fallback */ }
@@ -2676,7 +2573,12 @@ export default function POS() {
                           const res = await fetchOrderDetail(finalOrderId)
                           if (res.success && res.data) {
                             const fullOrder = mapHistoryDetailToOrder(res.data, res.data)
-                            setPrintOrder(fullOrder)
+                            setPrintOrder({
+                              ...fullOrder,
+                              paymentStatus: isPaidPrint ? 'Paid' : 'Unpaid',
+                              discount: discountVal || fullOrder.discount || 0,
+                              total: totalToPay || fullOrder.total
+                            })
                           } else {
                             setPrintOrder({ ...fullOrderData, id: finalOrderId })
                           }
@@ -2692,6 +2594,7 @@ export default function POS() {
                       setSelectedPaymentMethod(null)
                       setAmountReceived('')
                       setDiscountAmount('')
+                      setIsPaidPrint(false)
                       setCheckoutFocusZone('methods')
                       setCheckoutMethodIndex(0)
                       setIsProcessing(false)

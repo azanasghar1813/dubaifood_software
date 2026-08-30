@@ -81,9 +81,9 @@ export const AllowedLifecycleTransitions = Object.freeze({
 });
 
 export const AllowedKitchenTransitions = Object.freeze({
-  [KitchenState.PENDING]: [KitchenState.SENT, KitchenState.PREPARING, KitchenState.CANCELLED],
-  [KitchenState.SENT]: [KitchenState.PREPARING, KitchenState.READY, KitchenState.CANCELLED],
-  [KitchenState.PREPARING]: [KitchenState.READY, KitchenState.SERVED, KitchenState.CANCELLED],
+  [KitchenState.PENDING]: [KitchenState.SENT, KitchenState.PREPARING, KitchenState.READY, KitchenState.SERVED, KitchenState.COMPLETED, KitchenState.CANCELLED],
+  [KitchenState.SENT]: [KitchenState.PREPARING, KitchenState.READY, KitchenState.SERVED, KitchenState.COMPLETED, KitchenState.CANCELLED],
+  [KitchenState.PREPARING]: [KitchenState.READY, KitchenState.SERVED, KitchenState.COMPLETED, KitchenState.CANCELLED],
   [KitchenState.READY]: [KitchenState.SERVED, KitchenState.COMPLETED, KitchenState.CANCELLED],
   [KitchenState.SERVED]: [KitchenState.COMPLETED],
   [KitchenState.COMPLETED]: [],

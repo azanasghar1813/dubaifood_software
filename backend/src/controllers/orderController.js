@@ -167,6 +167,21 @@ export const orderController = {
     }
   },
 
+  applyDiscount: (req, res) => {
+    const ctx = resolveSessionContext(req, res, { requireShift: false });
+    if (!ctx) return;
+    try {
+      const order = orderService.applyOrderDiscount(
+        req.params.orderId,
+        req.body?.discount_total,
+        !!req.body?.print_paid
+      );
+      sendSuccess(res, order, 'Discount applied');
+    } catch (error) {
+      sendError(res, 400, error.message);
+    }
+  },
+
   deleteOrder: (req, res) => {
     const ctx = resolveSessionContext(req, res, { requireShift: false });
     if (!ctx) return;

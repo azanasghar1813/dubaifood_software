@@ -96,7 +96,7 @@ interface POSState {
   duplicateItem: (cartItemId: string) => Promise<void>
   holdOrder: (holdName: string) => Promise<void>
   resumeOrder: (orderId: string) => Promise<void>
-  completeOrder: (payments?: any[], discountTotal?: number) => Promise<{ success: boolean; orderId?: string }>
+  completeOrder: (payments?: any[], discountTotal?: number, printPaid?: boolean) => Promise<{ success: boolean; orderId?: string }>
   clearCart: () => void
   
   // Legacy accessors
@@ -513,7 +513,7 @@ export const usePosStore = create<POSState>()(
     }
   },
 
-  completeOrder: async (payments: any[] = [], discountTotal: number = 0): Promise<{ success: boolean; orderId?: string }> => {
+  completeOrder: async (payments: any[] = [], discountTotal: number = 0, printPaid: boolean = false): Promise<{ success: boolean; orderId?: string }> => {
     const state = get()
     if (!state.activeOrder) return { success: false }
     
@@ -564,6 +564,14 @@ export const usePosStore = create<POSState>()(
         set({ activeOrder: order, cart: (order?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] })) })
       }
 
+      if (order?.id) {
+        try {
+          await cartService.applyDiscount(order.id, discountTotal || 0, printPaid)
+        } catch (e) {
+          console.warn('Could not apply discount before payment', e)
+        }
+      }
+
       const paymentKeys = get().paymentIdempotencyKeys;
       const updatedPaymentKeys = { ...paymentKeys };
 
@@ -583,7 +591,9 @@ export const usePosStore = create<POSState>()(
           amount_received: p.received ?? p.amount,
           transaction_reference: p.transaction_reference || p.reference || null,
           approval_code: p.approval_code || null,
-          notes: p.notes || null
+          notes: p.notes || null,
+          discount_total: discountTotal,
+          print_paid: printPaid
         }, paymentKey)
       }
       

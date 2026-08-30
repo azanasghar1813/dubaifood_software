@@ -14,6 +14,7 @@ import { useAuthStore } from "../store/authStore"
 import { fetchOrderDetail } from "../api/historyApi"
 import { apiClient } from "../api/client"
 import ReceiptPreview from "../pages/ReceiptPreview"
+import KitchenTicketPreview from "../pages/KitchenTicketPreview"
 
 interface ActiveOrdersSidebarProps {
   isOpen: boolean
@@ -54,6 +55,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
   const [selectedActionIndex, setSelectedActionIndex] = useState(0)
   const [kotStatus, setKotStatus] = useState<Record<string, 'loading' | 'success' | 'error' | undefined>>({})
   const [printOrder, setPrintOrder] = useState<Order | null>(null)
+  const [kotPreview, setKotPreview] = useState<Order | null>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   // Use a ref to keep latest activeOrders/selectedIndex in the keydown handler
   const activeOrdersRef = useRef<Order[]>([])
@@ -191,10 +193,15 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     setKotStatus(prev => ({ ...prev, [order.id]: 'loading' }))
     try {
       const { usePrinterStore } = await import('../store/printerStore')
-      await usePrinterStore.getState().printKitchen(order.id, user?.id || user?.name || 'cashier')
+      const result = await usePrinterStore.getState().printKitchen(order.id, user?.id || user?.name || 'cashier')
       syncOrdersFromBackend()
-      
-      setKotStatus(prev => ({ ...prev, [order.id]: 'success' }))
+      if (result) {
+        setPrintOrder(null)
+        setKotPreview(order)
+        setKotStatus(prev => ({ ...prev, [order.id]: 'success' }))
+      } else {
+        setKotStatus(prev => ({ ...prev, [order.id]: 'error' }))
+      }
       setTimeout(() => {
         setKotStatus(prev => ({ ...prev, [order.id]: undefined }))
       }, 2000)
@@ -216,10 +223,15 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
       const { useOrderStore } = await import('../store/orderStore')
       useOrderStore.getState().updateOrder(order.id, { status: 'Completed' })
 
-      await apiClient.post(`/payments/order/${order.id}`, { amount_received: order.total, payment_method: 'CASH' })
+      await apiClient.post(
+        `/payments/order/${order.id}`,
+        { amount_received: order.total, payment_method: 'CASH' },
+        { headers: { 'Idempotency-Key': crypto.randomUUID() } }
+      )
       syncOrdersFromBackend()
-    } catch (e) {
+    } catch (e: any) {
       console.error(e)
+      alert(e?.response?.data?.message || e?.message || 'Could not complete this order.')
     }
   }
 
@@ -452,7 +464,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                         ) : (
                            <Printer className="w-3.5 h-3.5" />
                         )}
-                        {kotStatus[order.id] === 'loading' ? 'Sending...' : kotStatus[order.id] === 'success' ? 'Sent!' : kotStatus[order.id] === 'error' ? 'Failed' : 'Send KOT'}
+                        {kotStatus[order.id] === 'loading' ? 'Printing...' : kotStatus[order.id] === 'success' ? 'Printed!' : kotStatus[order.id] === 'error' ? 'Failed' : 'Print KT'}
                       </button>
 
                       <button 
@@ -476,6 +488,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
       )}
       
       {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
+      {kotPreview && <KitchenTicketPreview order={kotPreview} autoPrint={true} onClose={() => setKotPreview(null)} />}
     </AnimatePresence>
   )
 }

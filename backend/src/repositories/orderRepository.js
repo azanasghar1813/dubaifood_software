@@ -94,6 +94,12 @@ class OrderRepository {
       if (!params.sync_version) {
         fields.push('sync_version = sync_version + 1');
       }
+      if (!params.payload_version) {
+        try {
+          const hasPv = dbEngine.prepare("PRAGMA table_info(orders)").all().some((c) => c.name === 'payload_version');
+          if (hasPv) fields.push('payload_version = COALESCE(payload_version, 1) + 1');
+        } catch { /* column may not exist */ }
+      }
 
       dbEngine.prepare(`
         UPDATE orders 
@@ -146,13 +152,21 @@ class OrderRepository {
 
   delete(id) {
     return dbEngine.transaction(() => {
-      dbEngine.prepare('DELETE FROM order_item_modifiers WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').run(id);
-      dbEngine.prepare('DELETE FROM order_item_addons WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').run(id);
-      dbEngine.prepare('DELETE FROM order_item_variants WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').run(id);
-      dbEngine.prepare('DELETE FROM order_items WHERE order_id = ?').run(id);
-      dbEngine.prepare('DELETE FROM order_payments WHERE order_id = ?').run(id);
-      dbEngine.prepare('DELETE FROM order_timeline WHERE order_id = ?').run(id);
-      dbEngine.prepare('DELETE FROM order_metadata WHERE order_id = ?').run(id);
+      const run = (sql) => {
+        try { dbEngine.prepare(sql).run(id); } catch { /* table may not exist */ }
+      };
+      run('DELETE FROM order_combo_components WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)');
+      run('DELETE FROM order_item_modifiers WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)');
+      run('DELETE FROM order_item_addons WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)');
+      run('DELETE FROM order_item_variants WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)');
+      run('DELETE FROM order_items WHERE order_id = ?');
+      run('DELETE FROM order_payments WHERE order_id = ?');
+      run('DELETE FROM payment_receipts WHERE order_id = ?');
+      run('DELETE FROM order_timeline WHERE order_id = ?');
+      run('DELETE FROM order_metadata WHERE order_id = ?');
+      run('DELETE FROM order_audit_trail WHERE order_id = ?');
+      run('DELETE FROM reprint_log WHERE order_id = ?');
+      run('DELETE FROM print_jobs WHERE order_id = ?');
       const res = dbEngine.prepare('DELETE FROM orders WHERE id = ?').run(id);
       return res.changes > 0;
     });

@@ -19,5 +19,6 @@ router.post('/items/:itemId/return-to-preparing', kitchenController.returnItemTo
 router.patch('/orders/:orderId/note', kitchenController.addOrderNote);
 router.patch('/items/:itemId/note', kitchenController.addItemNote);
 router.patch('/orders/:orderId/priority', kitchenController.setPriority);
+router.post('/clear-failed', kitchenController.clearFailed);
 
 export default router;

@@ -7,7 +7,7 @@ import {
 import { configApi } from '../api/configApi'
 
 export const KDS: React.FC = () => {
-  const { tickets, updateTicketStatus, fetchTickets } = useKdsStore()
+  const { tickets, updateTicketStatus, fetchTickets, clearFailedTickets } = useKdsStore()
   
   const [activeTab, setActiveTab] = useState<"Active" | "Sent" | "Failed" | "Completed">("Active")
   const [searchQuery, setSearchQuery] = useState("")
@@ -186,13 +186,12 @@ export const KDS: React.FC = () => {
   const handleClearFailed = async () => {
     const failedTickets = mappedTickets.filter(t => t.displayStatus === "PRINT_FAILED")
     if (failedTickets.length === 0) return alert("No failed prints to clear.")
-    if (!window.confirm(`Clear ${failedTickets.length} failed kitchen ticket(s) from this screen?`)) return
-    for (const t of failedTickets) {
-      try {
-        await updateTicketStatus(t.id, "Served")
-      } catch (e) {
-        console.error(`Failed to clear ticket ${t.id}`, e)
-      }
+    if (!window.confirm(`Clear ${failedTickets.length} failed kitchen ticket(s) from this screen? They will leave the Failed list.`)) return
+    try {
+      await clearFailedTickets(failedTickets.map(t => t.id))
+    } catch (e) {
+      console.error(e)
+      alert("Could not clear failed tickets. Try again.")
     }
   }
 
@@ -223,6 +222,7 @@ export const KDS: React.FC = () => {
                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Live
               </span>
             </h1>
+            <p className="text-[11px] font-bold text-muted-foreground mt-1">Today 6:00 AM – 6:00 AM</p>
           </div>
         </div>
 

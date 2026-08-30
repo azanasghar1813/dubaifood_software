@@ -40,6 +40,8 @@ router.post('/:orderId/transition', validate(transitionStateSchema), orderContro
 router.post('/:orderId/lock', orderController.lockOrder);
 router.post('/:orderId/unlock', orderController.unlockOrder);
 
+router.post('/:orderId/discount', orderController.applyDiscount);
+
 // Delete order
 router.delete('/:orderId', orderController.deleteOrder);
 
