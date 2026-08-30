@@ -28,7 +28,15 @@ const tempStorage = multer.diskStorage({
     cb(null, `upload_${Date.now()}${path.extname(file.originalname)}`);
   }
 });
-const upload = multer({ storage: tempStorage });
+const upload = multer({
+  storage: tempStorage,
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Invalid file type. Only JPEG, PNG, and WEBP are allowed.'), false);
+  },
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
 
 // Apply authentication to all catalog routes
 router.use(authenticate);

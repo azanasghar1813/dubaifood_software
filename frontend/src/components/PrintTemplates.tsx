@@ -8,7 +8,7 @@ import { QRCodeSVG } from 'qrcode.react'
 
 export const PrintTemplates: React.FC = () => {
   const { printQueue } = usePrinterStore()
-  const printingJobs = printQueue.filter(j => j.status === ('Printing' as any))
+  const printingJobs = printQueue.filter(j => j.status === 'PROCESSING' || j.status === 'PENDING')
 
   return (
     <div className="hidden print:block absolute inset-0 bg-white z-[9999] w-full">

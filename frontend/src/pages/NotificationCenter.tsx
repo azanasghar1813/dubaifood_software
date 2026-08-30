@@ -1,11 +1,6 @@
 import {  Info, AlertTriangle, CheckCircle, X } from "lucide-react"
 
-const NOTIFICATIONS = [
-  { id: 1, type: "alert", title: "Low Stock Warning", message: "Burger Buns are running low (12 remaining).", time: "10 mins ago", unread: true },
-  { id: 2, type: "success", title: "Sync Completed", message: "Cloud synchronization finished successfully.", time: "2 hrs ago", unread: true },
-  { id: 3, type: "info", title: "New Shift Started", message: "Ahmed has opened Register #1.", time: "5 hrs ago", unread: false },
-  { id: 4, type: "alert", title: "Failed Transaction", message: "Payment failed for Order #10230.", time: "1 day ago", unread: false },
-]
+const NOTIFICATIONS: { id: number, type: string, title: string, message: string, time: string, unread: boolean }[] = []
 
 export default function NotificationCenter() {
   return (
@@ -22,6 +17,9 @@ export default function NotificationCenter() {
 
       <div className="bg-card/60 backdrop-blur-md border border-border/50 rounded-xl overflow-hidden shadow-sm">
         <div className="divide-y divide-border/50">
+          {NOTIFICATIONS.length === 0 && (
+            <div className="p-8 text-center text-sm text-muted-foreground">No notifications yet.</div>
+          )}
           {NOTIFICATIONS.map((notif) => (
             <div key={notif.id} className={`p-4 flex gap-4 transition-colors hover:bg-secondary/30 ${notif.unread ? "bg-secondary/10" : ""}`}>
               <div className="shrink-0 mt-1">

@@ -309,7 +309,7 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   syncOrdersFromBackend: async (filters = {}) => {
     set({ isSyncingFromBackend: true })
     try {
-      const listResult = await fetchOrders(filters, { page: 1, limit: 1000, sort_by: 'NEWEST' })
+      const listResult = await fetchOrders(filters, { page: 1, limit: 100, sort_by: 'NEWEST' })
       const rows = listResult.data || []
       const detailedOrders = []
       const chunkSize = 10

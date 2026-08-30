@@ -57,9 +57,9 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
         logout()
       } finally {
         setIsInitializing(false)
-        if (location.pathname === '/' || location.pathname === '/dashboard') {
+        if (location.pathname === '/') {
           const lastRoute = localStorage.getItem('df_last_route')
-          if (lastRoute && lastRoute !== '/' && lastRoute !== '/login') {
+          if (lastRoute && lastRoute !== '/' && lastRoute !== '/login' && lastRoute !== '/dashboard') {
             navigate(lastRoute, { replace: true })
           }
         }

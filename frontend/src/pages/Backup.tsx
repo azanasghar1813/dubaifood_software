@@ -4,7 +4,7 @@ import {
   Database, RefreshCw, Trash2, HardDrive, Clock
 } from "lucide-react"
 import { backupApi, type BackupRecord } from "../api/backupApi"
-import toast from "react-hot-toast"
+import { toast } from "../store/toastStore"
 
 export default function Backup() {
   const [backups, setBackups] = useState<BackupRecord[]>([])

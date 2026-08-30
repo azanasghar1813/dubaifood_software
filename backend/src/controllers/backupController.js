@@ -113,7 +113,7 @@ const performRestore = async (zipFilePath, isTempUpload = false) => {
     const integrityCheck = tempDb.pragma('integrity_check', { simple: true });
     tempDb.close();
 
-    const isOk = integrityCheck[0].integrity_check === 'ok';
+    const isOk = integrityCheck === 'ok' || integrityCheck?.integrity_check === 'ok' || integrityCheck?.[0]?.integrity_check === 'ok';
     if (!isOk) {
       fs.rmSync(tempExtractDir, { recursive: true, force: true });
       if (isTempUpload) fs.unlinkSync(zipFilePath);

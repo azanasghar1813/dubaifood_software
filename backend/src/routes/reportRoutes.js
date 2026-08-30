@@ -5,6 +5,8 @@ import { authorize } from '../middleware/authorize.js';
 
 const router = express.Router();
 
+router.use(authenticate);
+
 router.get('/summary', reportController.getSummary);
 router.get('/detailed-sales', reportController.getDetailedSales);
 router.get('/recent-items', reportController.getRecentItems);

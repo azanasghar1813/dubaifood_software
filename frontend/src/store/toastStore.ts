@@ -48,16 +48,22 @@ export const useToastStore = create<ToastState>((set) => ({
 
 // Helper object for easy access anywhere in the app (outside React components)
 export const toast = {
-  success: (title: string, message?: string, duration?: number) => {
-    useToastStore.getState().addToast({ title, message, type: 'success', duration })
+  success: (title: string, message?: any, duration?: number) => {
+    const msg = typeof message === 'string' ? message : undefined
+    useToastStore.getState().addToast({ title, message: msg, type: 'success', duration })
   },
-  error: (title: string, message?: string, duration?: number) => {
-    useToastStore.getState().addToast({ title, message, type: 'error', duration })
+  error: (title: string, message?: any, duration?: number) => {
+    const msg = typeof message === 'string' ? message : undefined
+    useToastStore.getState().addToast({ title, message: msg, type: 'error', duration })
   },
   warning: (title: string, message?: string, duration?: number) => {
     useToastStore.getState().addToast({ title, message, type: 'warning', duration })
   },
   info: (title: string, message?: string, duration?: number) => {
     useToastStore.getState().addToast({ title, message, type: 'info', duration })
+  },
+  loading: (title: string) => {
+    useToastStore.getState().addToast({ title, type: 'info', duration: 4000 })
+    return title
   }
 }

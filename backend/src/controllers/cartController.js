@@ -5,7 +5,7 @@ import { cashierSessionRepository } from '../repositories/cashierSessionReposito
 
 const resolveCartContext = (req, res) => {
   let sessionId = req.headers['x-cashier-session-id'];
-  const userId = req.headers['x-user-id'] || req.user?.userId;
+  const userId = req.user?.userId || req.headers['x-user-id'];
   const branchId = req.headers['x-branch-id'] || 'DEFAULT_BRANCH';
 
   if (!sessionId) {
@@ -157,6 +157,7 @@ export const cartController = {
     const ctx = resolveCartContext(req, res);
     if (!ctx) return;
     const idempotencyKey = req.headers['idempotency-key'];
+    if (!idempotencyKey) return sendError(res, 400, 'Idempotency-Key header is required.');
 
     try {
       const order = orderCreationService.checkoutCart(ctx.sessionId, ctx.userId, req.body || {}, idempotencyKey);

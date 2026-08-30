@@ -79,8 +79,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static storage (images, etc)
-app.use('/storage', express.static(config.paths.root));
+// Serve product/category/user images only — never the live database or backups
+app.use('/storage/images', express.static(path.join(config.paths.root, 'images')));
+app.use('/storage/templates', express.static(path.join(config.paths.root, 'templates')));
 
 // --- ROUTES ---
 

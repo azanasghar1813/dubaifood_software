@@ -170,13 +170,6 @@ class OrderCreationService {
    * @returns {Object} Hydrated Order Draft with all sub-entities
    */
   checkoutCart(sessionId, cashierUserId, options = {}, idempotencyKey = null) {
-    if (idempotencyKey) {
-      const existingOrder = dbEngine.prepare('SELECT id FROM orders WHERE idempotency_key = ?').get(idempotencyKey);
-      if (existingOrder) {
-        return this._hydrateOrder(existingOrder.id);
-      }
-    }
-
     // 1. Retrieve working cart from memory / crash-recovery cache
     this._assertActiveSession(sessionId);
     this._assertCheckoutPermission(cashierUserId);
@@ -206,6 +199,13 @@ class OrderCreationService {
 
     // 3. Atomic SQLite transaction: create all order records
     const { orderId, orderNumber } = dbEngine.transaction(() => {
+      if (idempotencyKey) {
+        const existingOrder = dbEngine.prepare('SELECT id, order_number FROM orders WHERE idempotency_key = ?').get(idempotencyKey);
+        if (existingOrder) {
+          return { orderId: existingOrder.id, orderNumber: existingOrder.order_number, alreadyExisted: true };
+        }
+      }
+
       const businessDate = requestedBusinessDate;
       const orderType = options.order_type || cart.order_type || 'DINE_IN';
       
@@ -226,6 +226,11 @@ class OrderCreationService {
         } catch (e) {
           console.warn("Failed to auto-create dining table:", e);
         }
+        try {
+          dbEngine.prepare(`UPDATE tables SET status = 'Occupied' WHERE id = ? OR name = ?`).run(tableId, tableId);
+        } catch (e) {
+          console.warn("Failed to mark floor table occupied:", e.message);
+        }
       }
       
       const orderNotes = options.notes !== undefined ? options.notes : (cart.notes || null);
@@ -241,26 +246,15 @@ class OrderCreationService {
       let subtotal = 0;
       let taxTotal = 0;
       let discountTotal = Number(cart.totals?.discount_total) || 0;
-      const isTaxEnabled = options.is_tax_enabled !== false;
+      const isTaxEnabled = false;
       const deliveryCharges = Number(options.delivery_charges) || Number(options.metadata?.delivery_charges) || 0;
       const serviceCharge = Number(options.service_charge) || Number(options.metadata?.service_charge) || 0;
 
       for (const cartItem of cart.items) {
         subtotal += Number(cartItem.subtotal) || 0;
-        if (isTaxEnabled) {
-          taxTotal += Number(cartItem.tax_amount) || 0;
-        }
-        // Do not accumulate line item discounts here if cart.totals.discount_total already has it,
-        // but let's be safe and accumulate it ONLY if we aren't relying on cart.totals.
       }
 
-      const financeConfig = configService.getFinanceConfig() || {};
-      const isTaxInclusive = financeConfig.tax_inclusive === true || financeConfig.tax_inclusive === 1;
-
-      let grandTotal = isTaxInclusive 
-        ? subtotal - discountTotal 
-        : subtotal + taxTotal - discountTotal;
-        
+      let grandTotal = subtotal - discountTotal;
       grandTotal += deliveryCharges;
       grandTotal += serviceCharge;
 

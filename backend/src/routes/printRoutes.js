@@ -24,11 +24,9 @@ router.use(authenticate);
 // ─── Queue Monitoring ─────────────────────────────────────────────────────────
 router.get('/queue',                     getQueue);
 router.get('/queue/stats',               getQueueStats);
+router.get('/queue/order/:orderId',      getJobsByOrder);
 router.get('/queue/:jobId',              getJobById);
 router.delete('/queue/:jobId',           cancelJob);
-
-// ─── Order-based Print Operations ────────────────────────────────────────────
-router.get('/queue/order/:orderId',      getJobsByOrder);
 router.post('/receipt/:orderId',         printReceipt);
 router.post('/kitchen/:orderId',         printKitchenTickets);
 router.get('/reprint-log/:orderId',      getReprintLog);

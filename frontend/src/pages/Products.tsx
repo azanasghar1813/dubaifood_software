@@ -3,7 +3,7 @@ import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Search, Filter, Plus, Edit2, Trash2,
-  Package, Download, Grid, List, Eye, Copy, RefreshCw, EyeOff, Sparkles, BarChart2,
+  Package, Download, Grid, List, Eye, Copy, RefreshCw, EyeOff, Sparkles,
   Trash, X
 }
   from "lucide-react"
@@ -1172,27 +1172,6 @@ export default function Products() {
                         )}
                       </div>
                     </div>
-
-                    {/* MOCK Product Statistics (Popularity) */}
-                    {drawerMode === "view" && (
-                      <div className="border-t border-border pt-4 space-y-3">
-                        <h4 className="text-xs uppercase font-black tracking-wider text-muted-foreground flex items-center gap-1"><BarChart2 className="w-3.5 h-3.5 text-primary" /> Sales Statistics</h4>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="p-3 bg-secondary/55 border border-border rounded-xl text-center">
-                            <span className="text-[9px] text-muted-foreground uppercase font-black">Today's Sales count</span>
-                            <p className="text-lg font-black text-foreground mt-1">
-                              {selectedProduct.isPopular ? "42 units" : "12 units"}
-                            </p>
-                          </div>
-                          <div className="p-3 bg-secondary/55 border border-border rounded-xl text-center">
-                            <span className="text-[9px] text-muted-foreground uppercase font-black">Estimated Revenue</span>
-                            <p className="text-lg font-black text-primary mt-1">
-                              Rs. {selectedProduct.isPopular ? (selectedProduct.price * 42).toLocaleString() : (selectedProduct.price * 12).toLocaleString()}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
 
                   </div>
 

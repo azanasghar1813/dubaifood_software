@@ -28,9 +28,12 @@ export interface ActiveOrder {
   tax_total: number
   discount_total: number
   grand_total: number
+  service_charge?: number
   items: OrderItem[]
   totals?: any
   hold_name?: string | null
+  notes?: string | null
+  customer_notes?: string | null
 }
 
 export type CartItem = OrderItem & { 
@@ -172,9 +175,10 @@ export const usePosStore = create<POSState>()(
         let config = get().financeConfig
         if (!config) {
           try {
-            const confRes = await configApi.getAllConfig()
-            if (confRes.data?.data?.business?.finance) {
-              config = confRes.data.data.business.finance
+            const confRes: any = await configApi.getAllConfig()
+            const confData = confRes?.data?.data || confRes?.data || confRes
+            if (confData?.business?.finance) {
+              config = confData.business.finance
               set({ financeConfig: config })
             }
           } catch (e) {
@@ -383,7 +387,11 @@ export const usePosStore = create<POSState>()(
   updateItemModifiers: async (cartItemId, modifiers) => {
     set({ isLoadingOrder: true })
     try {
-      const res = await cartService.updateItemDetails(cartItemId, { modifiers })
+      const state = get()
+      const current = state.cart.find(i => i.cartItemId === cartItemId || i.id === cartItemId)
+      const res = state.editingOrderId
+        ? await apiClient.put(`/orders/${state.editingOrderId}/items/${cartItemId}`, { quantity: current?.quantity || 1, modifiers })
+        : await cartService.updateItemDetails(cartItemId, { modifiers })
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
@@ -400,7 +408,11 @@ export const usePosStore = create<POSState>()(
   updateItemNotes: async (cartItemId, notes) => {
     set({ isLoadingOrder: true })
     try {
-      const res = await cartService.updateItemDetails(cartItemId, { notes })
+      const state = get()
+      const current = state.cart.find(i => i.cartItemId === cartItemId || i.id === cartItemId)
+      const res = state.editingOrderId
+        ? await apiClient.put(`/orders/${state.editingOrderId}/items/${cartItemId}`, { quantity: current?.quantity || 1, notes })
+        : await cartService.updateItemDetails(cartItemId, { notes })
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
@@ -417,7 +429,19 @@ export const usePosStore = create<POSState>()(
   duplicateItem: async (cartItemId) => {
     set({ isLoadingOrder: true })
     try {
-      const res = await cartService.duplicateItem(cartItemId)
+      const state = get()
+      const current = state.cart.find(i => i.cartItemId === cartItemId || i.id === cartItemId)
+      let res: any
+      if (state.editingOrderId && current) {
+        res = await apiClient.post(`/orders/${state.editingOrderId}/items`, {
+          product_id: current.product_id,
+          quantity: current.quantity,
+          modifiers: current.selectedModifiers || current.modifiers || [],
+          notes: current.notes
+        })
+      } else {
+        res = await cartService.duplicateItem(cartItemId)
+      }
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
@@ -443,12 +467,13 @@ export const usePosStore = create<POSState>()(
     try {
       const res = await cartService.holdOrder(holdName)
       if ((res as any).success) {
-        // Clear active order because it's held
         set({ activeOrder: null, cart: [], checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
-        await get().fetchDraftOrder() // create new draft
+        await get().fetchDraftOrder()
       }
+      return res
     } catch (e) {
       console.error(e)
+      throw e
     } finally {
       set({ isLoadingOrder: false })
     }
@@ -466,8 +491,10 @@ export const usePosStore = create<POSState>()(
           cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] }))
         })
       }
+      return res
     } catch (e) {
       console.error(e)
+      throw e
     } finally {
       set({ isLoadingOrder: false })
     }
@@ -489,7 +516,7 @@ export const usePosStore = create<POSState>()(
 
       if (!order.order_number) {
         const checkoutResult = await cartService.checkout({
-          order_type: state.orderType === 'Delivery' ? 'DELIVERY' : state.orderType === 'Takeaway' ? 'TAKEAWAY' : 'DINE_IN',
+          order_type: state.orderType === 'Delivery' ? 'DELIVERY' : state.orderType === 'Takeaway' ? 'TAKEAWAY' : state.orderType === 'Drive Through' ? 'DRIVE_THROUGH' : 'DINE_IN',
           customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || order.customer_id || null,
           customer_name: state.customer?.name || null,
           customer_phone: state.customer?.phone || null,
@@ -498,12 +525,12 @@ export const usePosStore = create<POSState>()(
           table_id: state.tableNumber || order.table_id || null,
           waiter_id: state.waiterId || order.waiter_id || null,
           rider_id: state.riderId || order.rider_id || null,
-          notes: order.notes || null,
+          notes: order.notes || order.customer_notes || null,
           branch_id: order.branch_id || 'DEFAULT_BRANCH',
           business_date: order.business_date,
           delivery_charges: state.orderType === 'Delivery' ? state.deliveryCharges : 0,
           service_charge: state.getServiceCharge(),
-          is_tax_enabled: state.isTaxEnabled,
+          is_tax_enabled: false,
           discount_total: discountTotal
         }, checkoutKey)
 
@@ -521,6 +548,8 @@ export const usePosStore = create<POSState>()(
 
       for (let i = 0; i < payments.length; i++) {
         const p = payments[i];
+        const method = String(p.method || p.paymentMethod || 'CASH').toUpperCase().replace(/ /g, '_')
+        if (method === 'LATER' || method === 'UNPAID') continue;
         let paymentKey = updatedPaymentKeys[i];
         if (!paymentKey) {
           paymentKey = crypto.randomUUID();
@@ -528,7 +557,7 @@ export const usePosStore = create<POSState>()(
         }
 
         await cartService.addPayment(order.id, {
-          payment_method: String(p.method || p.paymentMethod || 'CASH').toUpperCase().replace(/ /g, '_'),
+          payment_method: method,
           amount: p.amount,
           amount_received: p.received ?? p.amount,
           transaction_reference: p.transaction_reference || p.reference || null,
@@ -569,8 +598,15 @@ export const usePosStore = create<POSState>()(
   },
   getServiceCharge: () => {
     if (!get().isTaxEnabled || get().orderType !== 'Dine In') return 0;
+    const active = get().activeOrder
+    if (active?.service_charge != null && Number(active.service_charge) > 0) {
+      return Number(active.service_charge)
+    }
     
-    // Only calculate service charge on Restaurant items (exclude deals, fast food, etc)
+    const cfg = get().financeConfig || {};
+    const raw = Number(cfg.service_charge_percent ?? cfg.service_charge_rate ?? 7);
+    const rate = !Number.isFinite(raw) || raw <= 0 ? 0.07 : (raw > 1 ? raw / 100 : raw);
+
     const cart = get().cart;
     let applicableSubtotal = 0;
     cart.forEach(item => {
@@ -580,7 +616,7 @@ export const usePosStore = create<POSState>()(
       }
     });
 
-    return Math.round(applicableSubtotal * 0.07);
+    return Math.round(applicableSubtotal * rate);
   },
   getGrandTotal: () => {
     const sub = get().getSubtotal();
@@ -614,7 +650,7 @@ export const usePosStore = create<POSState>()(
   setOrderType: async (orderType) => {
     set({ orderType })
     try {
-      const typeStr = orderType === 'Dine In' ? 'DINE_IN' : orderType === 'Takeaway' ? 'TAKEAWAY' : 'DELIVERY';
+      const typeStr = orderType === 'Dine In' ? 'DINE_IN' : orderType === 'Takeaway' ? 'TAKEAWAY' : orderType === 'Drive Through' ? 'DRIVE_THROUGH' : 'DELIVERY';
       const state = get();
       if (state.editingOrderId && state.activeOrder && state.activeOrder.order_number) {
         // If editing a placed order, we must call the meta update endpoint (which we will create)
@@ -740,7 +776,12 @@ export const usePosStore = create<POSState>()(
     }
     set({ editingOrderId: null })
   },
-  switchOrder: (orderId) => console.log('switchOrder stub called', orderId)
+  switchOrder: (orderId) => {
+    const existing = useOrderStore.getState().orders.find((o: any) => o.id === orderId)
+    if (existing) {
+      void get().loadOrderForEdit(existing)
+    }
+  }
     }),
     {
       name: 'pos-storage',

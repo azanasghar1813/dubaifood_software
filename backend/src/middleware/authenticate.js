@@ -29,7 +29,8 @@ export const authenticate = (req, res, next) => {
       roleId: decoded.roleId,
       permissions: decoded.permissions || []
     };
-    req.sessionId = session.id;
+    req.tokenId = decoded.jti;
+    req.sessionId = decoded.jti;
     
     next();
   } catch (error) {

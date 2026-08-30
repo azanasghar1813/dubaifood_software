@@ -32,7 +32,10 @@ export function WaiterSelectorModal({ isOpen, onClose }: WaiterSelectorModalProp
       const res = await employeeService.getEmployees()
       const data = res.data || res || []
       // Filter by role Name "Waiter" or role_id mapping if applicable. 
-      const waitersList = data.filter((u: any) => (u.role === 'Waiter' || u.role_name === 'Waiter' || u.role?.name === 'Waiter' || u.role_id === '4' || u.role_id === 4 || u.role_id === 'b62206fb-c641-40c7-bfe3-70bbf4c049fa'))
+      const waitersList = data.filter((u: any) => {
+        const role = String(u.role || u.role_name || u.role?.name || '').toLowerCase()
+        return role === 'waiter'
+      })
       setWaiters(waitersList)
     } catch (e) {
       console.error(e)

@@ -122,8 +122,27 @@ class PaymentService {
 
     // ── 3. Atomic transaction ──────────────────────────────────────────────
     const { payment, updatedOrder, receipt } = dbEngine.transaction(() => {
+      if (idempotencyKey) {
+        const existingPayment = orderPaymentRepository.findByIdempotencyKey(idempotencyKey);
+        if (existingPayment) {
+          const replayOrder = this._hydrateOrder(orderId);
+          return {
+            payment: existingPayment,
+            updatedOrder: replayOrder,
+            receipt: this.getReceipt(existingPayment.id)
+          };
+        }
+      }
+
+      const liveOrder = this._hydrateOrder(orderId);
+      paymentValidationService.validateOrderIsPayable(liveOrder);
+      const liveDue = Number(liveOrder.due_total) > 0 ? liveOrder.due_total : liveOrder.grand_total;
+      if (normalizedInput.amount - liveDue > 0.005 && input.payment_method !== 'CASH') {
+        throw new Error('Payment amount exceeds remaining due.');
+      }
+
       const paymentId    = crypto.randomUUID();
-      const businessDate = order.business_date ||
+      const businessDate = liveOrder.business_date ||
                            new Date().toISOString().split('T')[0];
 
       // ── 3a. Insert payment record ────────────────────────────────────────
@@ -146,19 +165,19 @@ class PaymentService {
       });
 
       // ── 3b. Recalculate order financials ────────────────────────────────
-      const newPaidTotal = Number(order.paid_total || 0) + normalizedInput.amount;
-      const newDueTotal  = Math.max(0, Number(order.grand_total) - newPaidTotal);
+      const newPaidTotal = Number(liveOrder.paid_total || 0) + normalizedInput.amount;
+      const newDueTotal  = Math.max(0, Number(liveOrder.grand_total) - newPaidTotal);
       const isFullyPaid  = newDueTotal <= 0.005; // float tolerance
 
       const newPaymentState = isFullyPaid
         ? PaymentState.PAID
         : PaymentState.UNPAID; // PARTIALLY_PAID was removed per user request
 
-      let newLifecycleState = order.lifecycle_state;
+      let newLifecycleState = liveOrder.lifecycle_state;
       if (isFullyPaid) {
-        if (order.kitchen_state === 'COMPLETED' || order.kitchen_state === 'SERVED') {
+        if (liveOrder.kitchen_state === 'COMPLETED' || liveOrder.kitchen_state === 'SERVED') {
           newLifecycleState = OrderLifecycleState.COMPLETED;
-        } else if (order.lifecycle_state === OrderLifecycleState.DRAFT || order.lifecycle_state === OrderLifecycleState.HELD) {
+        } else if (liveOrder.lifecycle_state === OrderLifecycleState.DRAFT || liveOrder.lifecycle_state === OrderLifecycleState.HELD) {
           newLifecycleState = OrderLifecycleState.ACTIVE;
         }
       }
@@ -171,7 +190,7 @@ class PaymentService {
         updated_at:    new Date().toISOString()
       };
 
-      if (newLifecycleState !== order.lifecycle_state) {
+      if (newLifecycleState !== liveOrder.lifecycle_state) {
         orderUpdates.lifecycle_state = newLifecycleState;
         if (newLifecycleState === OrderLifecycleState.COMPLETED) {
           orderUpdates.completed_at = new Date().toISOString();
@@ -182,19 +201,19 @@ class PaymentService {
 
       // ── 3d. Generate + save receipt payload ─────────────────────────────
       // Build hydrated order for the receipt (items already loaded above)
-      const orderForReceipt = { ...updatedRawOrder, items: order.items };
+      const orderForReceipt = { ...updatedRawOrder, items: liveOrder.items };
       const receiptPayload  = receiptService.generateReceiptPayload(orderForReceipt, newPayment);
       const savedReceipt    = receiptService.saveReceipt(
         paymentId,
         orderId,
-        order.order_number,
+        liveOrder.order_number,
         receiptPayload
       );
 
       // ── 3e. Timeline event ───────────────────────────────────────────────
       orderTimelineService.recordEvent(orderId, cashierUserId, 'PAYMENT_COMPLETED', {
         to_state:    newPaymentState,
-        description: `Payment of ${normalizedInput.amount.toFixed(2)} via ${method.name} processed for order ${order.order_number}`,
+        description: `Payment of ${normalizedInput.amount.toFixed(2)} via ${method.name} processed for order ${liveOrder.order_number}`,
         metadata: {
           payment_id:            paymentId,
           payment_method:        normalizedInput.payment_method,
@@ -211,7 +230,7 @@ class PaymentService {
       // ── 3f. Activity log ─────────────────────────────────────────────────
       activityLogService.logActivity(cashierUserId, 'PAYMENT_COMPLETED', 'PAYMENT', paymentId, {
         order_id:       orderId,
-        order_number:   order.order_number,
+        order_number:   liveOrder.order_number,
         payment_method: normalizedInput.payment_method,
         amount:         normalizedInput.amount,
         is_fully_paid:  isFullyPaid
@@ -220,7 +239,7 @@ class PaymentService {
       // ── 3g. Sync queue ───────────────────────────────────────────────────
       syncService.queueSyncEvent('PAYMENT', paymentId, 'PAYMENT_COMPLETED', {
         order_id:       orderId,
-        order_number:   order.order_number,
+        order_number:   liveOrder.order_number,
         payment_method: normalizedInput.payment_method,
         amount:         normalizedInput.amount,
         business_date:  businessDate
@@ -228,7 +247,7 @@ class PaymentService {
 
       if (isFullyPaid) {
         syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', {
-          order_number:   order.order_number,
+          order_number:   liveOrder.order_number,
           lifecycle_state: newLifecycleState,
           payment_state:  newPaymentState
         });
@@ -238,7 +257,7 @@ class PaymentService {
       orderCacheService.invalidate(orderId);
 
       kitchenService.onOrderLifecycleChange(updatedRawOrder, {
-        fromLifecycle: order.lifecycle_state,
+        fromLifecycle: liveOrder.lifecycle_state,
         toLifecycle: updatedRawOrder.lifecycle_state,
         userId: cashierUserId,
         context: {

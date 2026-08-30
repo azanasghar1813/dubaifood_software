@@ -1,6 +1,10 @@
 import { supabase } from '../config/supabaseClient.js';
 import crypto from 'crypto';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const rowKey = (tableName, row) => (tableName === 'application_settings' ? row.key : row.id);
+
 const hashPayload = (obj) => {
   if (!obj) return '';
   const clean = { ...obj };
@@ -107,17 +111,34 @@ export const pushSyncEvents = async (req, res) => {
             entityData.order_number = `FALLBACK-${entity_id.substring(0, 8)}`;
           }
           
-          // Sanitize corrupt UUID fields that were populated with strings during local testing
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           const potentialUuidFields = ['shift_id', 'cashier_user_id', 'table_id', 'waiter_id', 'rider_id', 'customer_id', 'kitchen_station_id', 'kitchen_printer_id', 'parent_id', 'category_id'];
           for (const field of potentialUuidFields) {
-            if (entityData[field] && typeof entityData[field] === 'string' && !uuidRegex.test(entityData[field])) {
+            if (entityData[field] && typeof entityData[field] === 'string' && !UUID_RE.test(entityData[field])) {
               entityData[field] = null;
             }
           }
 
-          const upsertObj = { ...entityData, id: entity_id, payload_version };
-          const existingIndex = tableGroups[tableName].upserts.findIndex(u => u.id === entity_id);
+          let upsertObj;
+          if (tableName === 'application_settings') {
+            delete entityData.id;
+            upsertObj = {
+              key: entityData.key || entity_id,
+              value: entityData.value ?? null,
+              description: entityData.description ?? null,
+              category: entityData.category || 'GENERAL',
+              updated_at: entityData.updated_at || new Date().toISOString(),
+              payload_version: payload_version || 1
+            };
+          } else {
+            if (typeof entity_id === 'string' && !UUID_RE.test(entity_id)) {
+              results.failed.push({ eventId: event.id, error: `Invalid UUID for ${tableName}.id: ${entity_id}` });
+              continue;
+            }
+            upsertObj = { ...entityData, id: entity_id, payload_version };
+          }
+
+          const identity = rowKey(tableName, upsertObj);
+          const existingIndex = tableGroups[tableName].upserts.findIndex(u => rowKey(tableName, u) === identity);
           if (existingIndex !== -1) {
             tableGroups[tableName].upserts[existingIndex] = upsertObj;
           } else {
@@ -175,10 +196,11 @@ export const pushSyncEvents = async (req, res) => {
       
       try {
         if (group.deletes.length > 0) {
-          const { error } = await supabase.from(tableName).delete().in('id', group.deletes);
+          const deleteCol = tableName === 'application_settings' ? 'key' : 'id';
+          const { error } = await supabase.from(tableName).delete().in(deleteCol, group.deletes);
           if (error) {
              for (const id of group.deletes) {
-               const { error: singleError } = await supabase.from(tableName).delete().eq('id', id);
+               const { error: singleError } = await supabase.from(tableName).delete().eq(deleteCol, id);
                if (singleError) {
                  const events = group.eventMap[id] || [];
                  for (const event of events) {
@@ -192,23 +214,24 @@ export const pushSyncEvents = async (req, res) => {
 
         if (group.upserts.length > 0) {
           // Check for conflicts in bulk
-          const ids = group.upserts.map(u => u.id);
+          const conflictCol = tableName === 'application_settings' ? 'key' : 'id';
+          const ids = group.upserts.map(u => rowKey(tableName, u));
           const { data: existingEntities } = await supabase
             .from(tableName)
             .select('*')
-            .in('id', ids);
+            .in(conflictCol, ids);
             
           const existingMap = {};
           if (existingEntities) {
-            existingEntities.forEach(e => { existingMap[e.id] = e; });
+            existingEntities.forEach(e => { existingMap[rowKey(tableName, e)] = e; });
           }
           
           const validUpserts = [];
           for (const u of group.upserts) {
-            // We use the first event for conflict reporting, but all apply to this entity
-            const eventsForEntity = group.eventMap[u.id] || [];
+            const identity = rowKey(tableName, u);
+            const eventsForEntity = group.eventMap[identity] || group.eventMap[u.id] || [];
             const primaryEvent = eventsForEntity[0];
-            const existing = existingMap[u.id];
+            const existing = existingMap[identity];
             let hasConflict = false;
             
             if (existing && primaryEvent) {
@@ -222,7 +245,7 @@ export const pushSyncEvents = async (req, res) => {
                 } else {
                   results.conflicts.push({
                     eventId: primaryEvent.id,
-                    entityId: u.id,
+                    entityId: identity,
                     serverVersion: existing.payload_version,
                     clientVersion: u.payload_version,
                     needsPull: true
@@ -232,7 +255,7 @@ export const pushSyncEvents = async (req, res) => {
               } else if (tableName === 'orders' && (existing.lifecycle_state === 'COMPLETED' || existing.status === 'COMPLETED')) {
                 results.conflicts.push({
                   eventId: primaryEvent.id,
-                  entityId: u.id,
+                  entityId: identity,
                   error: 'Order is completed and cannot be mutated.',
                   needsPull: true
                 });
@@ -271,14 +294,14 @@ export const pushSyncEvents = async (req, res) => {
 
             const { error: upsertError } = await supabase
               .from(tableName)
-              .upsert(validUpserts, { onConflict: 'id' });
+              .upsert(validUpserts, { onConflict: conflictCol });
               
             if (upsertError) {
-              // Fallback to one-by-one insertion if batch fails due to a constraint or data type violation
               for (const u of validUpserts) {
-                const { error: singleError } = await supabase.from(tableName).upsert([u], { onConflict: 'id' });
+                const { error: singleError } = await supabase.from(tableName).upsert([u], { onConflict: conflictCol });
                 if (singleError) {
-                  const events = group.eventMap[u.id] || [];
+                  const identity = rowKey(tableName, u);
+                  const events = group.eventMap[identity] || group.eventMap[u.id] || [];
                   for (const event of events) {
                     results.failed.push({ eventId: event.id, error: singleError.message });
                   }
@@ -368,20 +391,37 @@ export const pullSyncEvents = async (req, res) => {
     };
 
     // Pull all updated data for all relevant tables
+    const fetchTableSafe = async (tableName) => {
+      try {
+        return await fetchTable(tableName);
+      } catch (err) {
+        console.warn(`[Pull] Skipping ${tableName}:`, err.message);
+        return [];
+      }
+    };
+
     const [
       products,
       categories,
       orders,
       order_items,
       customers,
-      users
+      users,
+      deals,
+      order_payments,
+      dining_tables,
+      application_settings
     ] = await Promise.all([
-      fetchTable('products'),
-      fetchTable('categories'),
-      fetchTable('orders'),
-      fetchTable('order_items'),
-      fetchTable('customers'),
-      fetchTable('users')
+      fetchTableSafe('products'),
+      fetchTableSafe('categories'),
+      fetchTableSafe('orders'),
+      fetchTableSafe('order_items'),
+      fetchTableSafe('customers'),
+      fetchTableSafe('users'),
+      fetchTableSafe('deals'),
+      fetchTableSafe('order_payments'),
+      fetchTableSafe('dining_tables'),
+      fetchTableSafe('application_settings')
     ]);
 
     // Return the batched updates
@@ -393,7 +433,11 @@ export const pullSyncEvents = async (req, res) => {
         orders,
         order_items,
         customers,
-        users
+        users,
+        deals,
+        order_payments,
+        dining_tables,
+        application_settings
       }
     });
   } catch (error) {

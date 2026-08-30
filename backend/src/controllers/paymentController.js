@@ -22,7 +22,7 @@ export const paymentController = {
    */
   processPayment: (req, res) => {
     const sessionId     = req.headers['x-cashier-session-id'];
-    const cashierUserId = req.headers['x-user-id'] || req.user?.userId;
+    const cashierUserId = req.user?.userId;
     const idempotencyKey = req.headers['idempotency-key'];
     const { orderId }   = req.params;
 

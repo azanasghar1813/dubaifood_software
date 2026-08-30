@@ -55,9 +55,9 @@ export default function Settings() {
   const fetchConfig = async () => {
     setIsLoading(true)
     try {
-      const res = await configApi.getAllConfig()
-      if (!res?.data?.data) return
-      const data = res.data.data
+      const res: any = await configApi.getAllConfig()
+      const data = res?.data?.data || res?.data || res
+      if (!data) return
       
       if (data?.business?.order) setOrderConfig(data.business.order)
       if (data?.printers) setPrinters(data.printers)
@@ -69,31 +69,23 @@ export default function Settings() {
   }
 
   useEffect(() => {
-    const w = window as any;
-    if (w.require) {
-      const { ipcRenderer } = w.require('electron');
-      ipcRenderer.invoke('get-app-version').then(setAppVersion);
+    const api = window.electronAPI;
+    if (!api) return;
+    api.getAppVersion().then(setAppVersion);
 
-      const handleAvailable = (_: any, info: any) => { setUpdateStatus("available"); setUpdateInfo(info); };
-      const handleNotAvailable = () => setUpdateStatus("up-to-date");
-      const handleError = (_: any, err: any) => { setUpdateStatus("error"); setUpdateError(err); };
-      const handleProgress = (_: any, progressObj: any) => { setUpdateStatus("downloading"); setDownloadProgress(progressObj); };
-      const handleDownloaded = () => setUpdateStatus("downloaded");
+    const offAvailable = api.onUpdateAvailable((info: any) => { setUpdateStatus("available"); setUpdateInfo(info); });
+    const offNotAvailable = api.onUpdateNotAvailable(() => setUpdateStatus("up-to-date"));
+    const offError = api.onUpdateError((err: string) => { setUpdateStatus("error"); setUpdateError(err); });
+    const offProgress = api.onDownloadProgress((progressObj: any) => { setUpdateStatus("downloading"); setDownloadProgress(progressObj); });
+    const offDownloaded = api.onUpdateDownloaded(() => setUpdateStatus("downloaded"));
 
-      ipcRenderer.on('update-available', handleAvailable);
-      ipcRenderer.on('update-not-available', handleNotAvailable);
-      ipcRenderer.on('update-error', handleError);
-      ipcRenderer.on('download-progress', handleProgress);
-      ipcRenderer.on('update-downloaded', handleDownloaded);
-
-      return () => {
-        ipcRenderer.removeListener('update-available', handleAvailable);
-        ipcRenderer.removeListener('update-not-available', handleNotAvailable);
-        ipcRenderer.removeListener('update-error', handleError);
-        ipcRenderer.removeListener('download-progress', handleProgress);
-        ipcRenderer.removeListener('update-downloaded', handleDownloaded);
-      };
-    }
+    return () => {
+      offAvailable();
+      offNotAvailable();
+      offError();
+      offProgress();
+      offDownloaded();
+    };
   }, []);
 
   const getFriendlyErrorMessage = (err: string) => {
@@ -114,45 +106,41 @@ export default function Settings() {
   };
 
   const checkForUpdates = async () => {
-    const w = window as any;
-    if (w.require) {
-      setUpdateStatus("checking");
-      setUpdateError("");
-      const res = await w.require('electron').ipcRenderer.invoke('check-for-updates');
-      if (res?.error) {
-        setUpdateStatus("error");
-        setUpdateError(res.error);
-      }
+    const api = window.electronAPI;
+    if (!api) return;
+    setUpdateStatus("checking");
+    setUpdateError("");
+    const res = await api.checkForUpdates();
+    if (res?.error) {
+      setUpdateStatus("error");
+      setUpdateError(res.error);
     }
   };
 
   const startDownload = async () => {
-    const w = window as any;
-    if (w.require) {
-      setUpdateStatus("downloading");
-      setUpdateError("");
-      const res = await w.require('electron').ipcRenderer.invoke('download-update');
-      if (res?.error) {
-        setUpdateStatus("error");
-        setUpdateError(res.error);
-      }
+    const api = window.electronAPI;
+    if (!api) return;
+    setUpdateStatus("downloading");
+    setUpdateError("");
+    const res = await api.downloadUpdate();
+    if (res?.error) {
+      setUpdateStatus("error");
+      setUpdateError(res.error);
     }
   };
 
   const cancelDownload = async () => {
-    const w = window as any;
-    if (w.require) {
-      await w.require('electron').ipcRenderer.invoke('cancel-update');
-      setUpdateStatus("idle");
-      setDownloadProgress(null);
-    }
+    const api = window.electronAPI;
+    if (!api) return;
+    await api.cancelUpdate();
+    setUpdateStatus("idle");
+    setDownloadProgress(null);
   };
 
   const installUpdate = async () => {
-    const w = window as any;
-    if (w.require) {
-      await w.require('electron').ipcRenderer.invoke('install-update');
-    }
+    const api = window.electronAPI;
+    if (!api) return;
+    await api.installUpdate();
   };
 
   const handleSaveBusiness = async (e: React.FormEvent) => {

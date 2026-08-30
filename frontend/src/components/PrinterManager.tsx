@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Printer, RefreshCw, XCircle, CheckCircle2, AlertCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { usePrinterStore } from '../store/printerStore'
@@ -9,7 +9,14 @@ interface PrinterManagerProps {
 }
 
 export const PrinterManager: React.FC<PrinterManagerProps> = ({ isOpen, onClose }) => {
-  const { printers, printQueue, reprintJob, cancelJob } = usePrinterStore()
+  const { printers, printQueue, reprintJob, cancelJob, fetchPrinters, fetchQueue } = usePrinterStore()
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchPrinters()
+      fetchQueue()
+    }
+  }, [isOpen, fetchPrinters, fetchQueue])
 
   if (!isOpen) return null
 

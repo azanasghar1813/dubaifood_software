@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import './index.css'
 import DashboardLayout from './layouts/DashboardLayout.tsx'
 import Login from './pages/Login.tsx'
@@ -18,7 +18,6 @@ const Products = lazy(() => import('./pages/Products.tsx'))
 const Categories = lazy(() => import('./pages/Categories.tsx'))
 const Customers = lazy(() => import('./pages/Customers.tsx'))
 const Reports = lazy(() => import('./pages/Reports.tsx'))
-const Employees = lazy(() => import('./pages/Employees.tsx'))
 const CashierManagement = lazy(() => import('./pages/CashierManagement.tsx'))
 const Settings = lazy(() => import('./pages/Settings.tsx'))
 const Synchronization = lazy(() => import('./pages/Synchronization.tsx'))
@@ -67,7 +66,7 @@ const router = createBrowserRouter([
           { path: "/categories", element: <SuspenseWrapper><Categories /></SuspenseWrapper> },
           { path: "/customers", element: <SuspenseWrapper><Customers /></SuspenseWrapper> },
           { path: "/reports", element: <SuspenseWrapper><Reports /></SuspenseWrapper> },
-          { path: "/employees", element: <SuspenseWrapper><Employees /></SuspenseWrapper> },
+          { path: "/employees", element: <Navigate to="/permissions" replace /> },
           { path: "/cashier", element: <SuspenseWrapper><CashierManagement /></SuspenseWrapper> },
           { path: "/settings", element: <SuspenseWrapper><Settings /></SuspenseWrapper> },
           { path: "/sync", element: <SuspenseWrapper><Synchronization /></SuspenseWrapper> },

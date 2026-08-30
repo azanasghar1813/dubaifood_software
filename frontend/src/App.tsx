@@ -37,11 +37,8 @@ function App() {
         e.preventDefault()
         const orders = useOrderStore.getState().orders
         if (orders.length > 0) {
-          usePrinterStore.getState().enqueuePrintJob({
-            type: 'Receipt',
-            printerType: 'Receipt',
-            content: JSON.stringify({ orderId: orders[orders.length - 1].id })
-          })
+          const last = orders[orders.length - 1]
+          usePrinterStore.getState().printReceipt(last.id, 'cashier')
         }
       }
       
@@ -58,30 +55,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>
-
-    const handleMouseMove = () => {
-      document.body.style.cursor = 'default'
-      clearTimeout(timeoutId)
-      timeoutId = setTimeout(() => {
-        document.body.style.cursor = 'none'
-      }, 5000)
-    }
-
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mousedown', handleMouseMove)
-    window.addEventListener('wheel', handleMouseMove, { passive: true })
-    
-    // Initialize the timeout
-    handleMouseMove()
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mousedown', handleMouseMove)
-      window.removeEventListener('wheel', handleMouseMove)
-      clearTimeout(timeoutId)
-      document.body.style.cursor = 'default'
-    }
+    usePrinterStore.getState().fetchPrinters()
   }, [])
 
   return (

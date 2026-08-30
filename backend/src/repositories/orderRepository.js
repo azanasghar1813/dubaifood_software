@@ -7,13 +7,13 @@ class OrderRepository {
         id, order_number, business_date, branch_id, cashier_user_id, shift_id,
         customer_id, table_id, waiter_id, waiter_name_snapshot, rider_id, rider_name_snapshot, order_type, lifecycle_state, kitchen_state, payment_state, delivery_state,
         subtotal, tax_total, discount_total, tip_total, delivery_fee, service_charge, grand_total,
-        paid_total, due_total, hold_name, held_at, notes, sync_status, sync_version,
+        paid_total, due_total, hold_name, held_at, notes, sync_status, sync_version, idempotency_key,
         created_at, updated_at
       ) VALUES (
         @id, @order_number, @business_date, @branch_id, @cashier_user_id, @shift_id,
         @customer_id, @table_id, @waiter_id, @waiter_name_snapshot, @rider_id, @rider_name_snapshot, @order_type, @lifecycle_state, @kitchen_state, @payment_state, @delivery_state,
         @subtotal, @tax_total, @discount_total, @tip_total, @delivery_fee, @service_charge, @grand_total,
-        @paid_total, @due_total, @hold_name, @held_at, @notes, @sync_status, @sync_version,
+        @paid_total, @due_total, @hold_name, @held_at, @notes, @sync_status, @sync_version, @idempotency_key,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       )
     `).run({
@@ -47,7 +47,8 @@ class OrderRepository {
       held_at: orderData.held_at || null,
       notes: orderData.notes || null,
       sync_status: orderData.sync_status || 'PENDING',
-      sync_version: orderData.sync_version || 1
+      sync_version: orderData.sync_version || 1,
+      idempotency_key: orderData.idempotency_key || null
     });
 
     return this.findById(orderData.id);

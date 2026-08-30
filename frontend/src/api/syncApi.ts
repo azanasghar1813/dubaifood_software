@@ -36,7 +36,7 @@ export interface SyncQueueItem {
 export const syncApi = {
   getStatus: () => apiClient.get('/sync/status') as Promise<SyncStatus>,
   
-  triggerSync: () => apiClient.post('/sync/trigger') as Promise<{ message: string, pushed?: number, pulled?: number }>,
+  triggerSync: () => apiClient.post('/sync/trigger', {}, { timeout: 60000 }) as Promise<{ message: string, pushed?: number, pulled?: number }>,
   
   getActiveDevices: () => apiClient.get('/sync/devices') as Promise<ActiveDevice[]>,
 
@@ -51,5 +51,8 @@ export const syncApi = {
   
   clearQueue: () => apiClient.delete(`/sync/clear-queue`) as Promise<{ message: string }>,
 
-  reassignIdentity: () => apiClient.post(`/sync/reassign-identity`) as Promise<{ message: string, newDeviceId: string }>
+  reassignIdentity: () => apiClient.post(`/sync/reassign-identity`) as Promise<{ message: string, newDeviceId: string }>,
+
+  resolveConflict: (id: string, resolution: 'keep_local' | 'keep_cloud') =>
+    apiClient.post(`/sync/resolve/${id}`, { resolution }) as Promise<{ message: string }>
 };

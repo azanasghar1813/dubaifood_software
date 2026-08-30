@@ -98,6 +98,17 @@ export const reportService = {
 
     const summary = dbEngine.get(summaryQuery, ...params);
     const items = dbEngine.get(itemQuery, ...params);
+
+    const paymentSplit = dbEngine.get(`
+      SELECT
+        SUM(CASE WHEN UPPER(op.payment_method) = 'CASH' THEN op.amount ELSE 0 END) as cashSales,
+        SUM(CASE WHEN UPPER(op.payment_method) != 'CASH' THEN op.amount ELSE 0 END) as digitalSales,
+        SUM(CASE WHEN o.payment_state = 'PAID' THEN 1 ELSE 0 END) as paidCount,
+        SUM(CASE WHEN o.payment_state != 'PAID' THEN 1 ELSE 0 END) as unpaidCount
+      FROM orders o
+      LEFT JOIN order_payments op ON op.order_id = o.id AND op.status = 'COMPLETED'
+      WHERE ${where}
+    `, ...params);
     
     const netSales = summary.netSales || 0;
     const refunds = summary.refunds || 0;
@@ -111,10 +122,14 @@ export const reportService = {
       ordersCount: ordersCount,
       itemsSold: items.itemsSold || 0,
       discounts: summary.discounts || 0,
-      tax: summary.tax || 0,
+      tax: 0,
       serviceCharges: summary.serviceCharges || 0,
       deliveryCharges: summary.deliveryCharges || 0,
       refunds: refunds,
+      cashSales: paymentSplit?.cashSales || 0,
+      digitalSales: paymentSplit?.digitalSales || 0,
+      paidCount: paymentSplit?.paidCount || 0,
+      unpaidCount: paymentSplit?.unpaidCount || 0,
       averageOrderValue: ordersCount > 0 ? (actualNet / ordersCount) : 0
     };
   },

@@ -13,11 +13,15 @@ import {
   Tag, XOctagon, Receipt, FileText, XCircle,
   Hash, Phone, Edit, Edit2,
   Store, UtensilsCrossed, Truck, CircleDot,
-  QrCode, Banknote, Clock, Building2, Percent, X, ShoppingCart, Keyboard
+  QrCode, Banknote, Clock, Building2, Percent, X, ShoppingCart, Keyboard,
+  Pause, Play
 } from "lucide-react"
+import { toast } from "../store/toastStore"
 import ReceiptPreview from "./ReceiptPreview"
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
 import { menuService } from "../services/menuService"
+import { cartService } from "../services/posServices/cartService"
+import { authService } from "../services/authService"
 import { CustomerPanelModal } from "../components/CustomerPanelModal"
 import { TableSelectorModal } from "../components/TableSelectorModal"
 import { WaiterSelectorModal } from "../components/WaiterSelectorModal"
@@ -152,6 +156,9 @@ export default function POS() {
   const [isKdsAutoSend, setIsKdsAutoSend] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
   const [printOrder, setPrintOrder] = useState<any>(null)
+  const [heldModalOpen, setHeldModalOpen] = useState(false)
+  const [heldOrders, setHeldOrders] = useState<any[]>([])
+  const [holdBusy, setHoldBusy] = useState(false)
 
   // Checkout modal keyboard navigation
   // focusZone: 'methods' | 'discount' | 'amount' | 'quickcash' | 'discountpct' | 'confirm'
@@ -175,12 +182,58 @@ export default function POS() {
     isTaxEnabled, toggleTax, menuContext, setMenuContext,
     editingOrderId, clearEditMode, completeOrder,
     deliveryCharges, setDeliveryCharges,
-    fetchDraftOrder, financeConfig, activeOrderId, activeOrder, isVipOrder
+    fetchDraftOrder, financeConfig, activeOrderId, activeOrder, isVipOrder,
+    holdOrder, resumeOrder
   } = usePosStore()
 
   const { orderCounter } = useOrderStore()
 
   const { user } = useAuthStore()
+
+  const handleHoldCurrent = async () => {
+    if (cart.length === 0) return
+    setHoldBusy(true)
+    try {
+      const holdName = `Hold ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+      await holdOrder(holdName)
+      toast.success('Order held', holdName)
+    } catch (e: any) {
+      toast.error('Could not hold order', e?.response?.data?.message || e?.message || 'Hold failed')
+    } finally {
+      setHoldBusy(false)
+    }
+  }
+
+  const handleOpenHeldOrders = async () => {
+    setHoldBusy(true)
+    try {
+      const res: any = await cartService.getHeldOrders()
+      const list = res?.data || res || []
+      setHeldOrders(Array.isArray(list) ? list : [])
+      setHeldModalOpen(true)
+    } catch (e: any) {
+      toast.error('Could not load held orders', e?.response?.data?.message || e?.message || 'Failed')
+    } finally {
+      setHoldBusy(false)
+    }
+  }
+
+  const handleResumeHeld = async (orderId: string) => {
+    if (cart.length > 0) {
+      toast.warning('Cart is not empty', 'Hold or clear the current cart before resuming.')
+      return
+    }
+    setHoldBusy(true)
+    try {
+      await resumeOrder(orderId)
+      setHeldModalOpen(false)
+      toast.success('Order resumed')
+    } catch (e: any) {
+      toast.error('Could not resume order', e?.response?.data?.message || e?.message || 'Resume failed')
+    } finally {
+      setHoldBusy(false)
+    }
+  }
 
   const handleProceedToPay = () => {
     if (cart.length === 0) return
@@ -210,12 +263,11 @@ export default function POS() {
     }
   }, [user, waiterId, setWaiterId, setWaiterName])
 
-  // Clear edit lock on unmount
   useEffect(() => {
     return () => {
-      clearEditMode();
+      // Keep edit mode if the cashier is still on this ticket; only unlock on explicit cancel.
     }
-  }, [clearEditMode])
+  }, [])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -245,9 +297,13 @@ export default function POS() {
           const primaryImage = p.images?.find((img: any) => img.is_primary === 1)?.image_path || p.images?.[0]?.image_path || null;
           let imagePath = p.image || primaryImage;
           if (imagePath && !imagePath.startsWith('http')) {
-            let baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1').replace('/api/v1', '');
-            if (typeof window !== 'undefined' && window.location.port !== '5173') {
-              baseUrl = `${window.location.protocol}//${window.location.host}`;
+            let baseUrl = (import.meta.env.VITE_API_URL || '').replace('/api/v1', '');
+            if (typeof window !== 'undefined') {
+              if (window.location.port !== '5173') {
+                baseUrl = `${window.location.protocol}//${window.location.host}`;
+              } else {
+                baseUrl = 'http://localhost:5000';
+              }
             }
             imagePath = `${baseUrl}${imagePath}`;
           }
@@ -1770,13 +1826,14 @@ export default function POS() {
                                 </div>
                                 <div className="flex items-center gap-3 mt-2">
                                   <div className={`flex items-center border border-border rounded-lg bg-secondary ${item.editState === 'removed' ? 'opacity-50 pointer-events-none' : ''}`}>
-                                    <button onClick={() => {
+                                    <button onClick={async () => {
                                       if (item.quantity > 1) {
                                         updateQuantity(item.cartItemId, item.quantity - 1)
                                       } else {
                                         if (editingOrderId && item.editState !== 'new') {
-                                          const pin = prompt("Voiding an existing item requires Authorization. Enter PIN (1234):")
-                                          if (pin !== '1234') { alert("Unauthorized."); return }
+                                          const pin = prompt("Voiding an existing item requires Authorization. Enter manager PIN:")
+                                          const ok = pin ? await authService.verifyManagerPin(pin) : false
+                                          if (!ok) { alert("Unauthorized."); return }
                                           setRemovingCartItemId(item.cartItemId)
                                         } else {
                                           removeFromCart(item.cartItemId)
@@ -1857,7 +1914,7 @@ export default function POS() {
 
                       {orderType === 'Dine In' && isTaxEnabled && getServiceCharge() > 0 && (
                         <div className="flex justify-between text-xs font-black text-foreground border-l-2 border-orange-500 pl-2 p-1 -mx-1">
-                          <span>Service Charges ({financeConfig?.tax_rate ? (Number(financeConfig.tax_rate) * 100) : 7}%)</span>
+                          <span>Service Charges ({financeConfig?.service_charge_percent || financeConfig?.service_charge_rate || 7}%)</span>
                           <span>Rs {getServiceCharge().toLocaleString()}</span>
                         </div>
                       )}
@@ -1889,6 +1946,22 @@ export default function POS() {
                       </div>
                     </div>
 
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <button
+                        onClick={handleHoldCurrent}
+                        disabled={cart.length === 0 || holdBusy}
+                        className="w-full py-2 bg-secondary hover:bg-secondary/80 text-foreground font-black text-xs rounded-xl border border-border transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                      >
+                        <Pause className="w-3.5 h-3.5" /> Hold
+                      </button>
+                      <button
+                        onClick={handleOpenHeldOrders}
+                        disabled={holdBusy}
+                        className="w-full py-2 bg-secondary hover:bg-secondary/80 text-foreground font-black text-xs rounded-xl border border-border transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                      >
+                        <Play className="w-3.5 h-3.5" /> Resume
+                      </button>
+                    </div>
                     <div className="grid grid-cols-1 gap-2 mb-2">
                       <button
                         onClick={handleProceedToPay}
@@ -1908,7 +1981,11 @@ export default function POS() {
                         type="text"
                         placeholder="Add Order Notes (Ctrl+N)"
                         value={orderNotes}
-                        onChange={(e) => setOrderNotes(e.target.value)}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setOrderNotes(value)
+                          void cartService.setNotes({ notes: value })
+                        }}
                         className="w-full pl-10 pr-4 h-10 bg-secondary/60 hover:bg-secondary border border-border/50 rounded-xl text-sm font-bold text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#fcb47c]/50 transition-colors"
                       />
                     </div>
@@ -1965,10 +2042,13 @@ export default function POS() {
                             }
 
                             if (currentOrderId) {
-                              await usePrinterStore.getState().printKitchen(currentOrderId, user?.id || user?.name || 'cashier')
-                              alert("KOT Sent to Kitchen!")
+                              const kot = await usePrinterStore.getState().printKitchen(currentOrderId, user?.id || user?.name || 'cashier')
+                              if (kot) alert("KOT Sent to Kitchen!")
+                              else alert("KOT could not be sent. Check kitchen printer.")
                             }
-                          } catch { /* fallback */ }
+                          } catch {
+                            alert("KOT could not be sent. Check kitchen printer.")
+                          }
                         }}
                         disabled={cart.length === 0}
                         className="p-1 bg-white hover:bg-red-50 text-red-600 border border-red-200 hover:border-red-400 font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors shadow-sm"
@@ -2226,6 +2306,41 @@ export default function POS() {
         }}
       />
 
+      <AnimatePresence>
+        {heldModalOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setHeldModalOpen(false)} className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-md bg-card border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden">
+              <div className="p-4 border-b border-border bg-secondary/30 flex items-center justify-between">
+                <h2 className="text-lg font-black text-foreground">Held Orders</h2>
+                <button onClick={() => setHeldModalOpen(false)} className="p-1 rounded-lg hover:bg-secondary"><X className="w-5 h-5" /></button>
+              </div>
+              <div className="p-3 max-h-[60vh] overflow-y-auto space-y-2">
+                {heldOrders.length === 0 && (
+                  <p className="text-sm font-bold text-muted-foreground text-center py-8">No held orders.</p>
+                )}
+                {heldOrders.map((held: any) => (
+                  <button
+                    key={held.id}
+                    onClick={() => handleResumeHeld(held.id)}
+                    disabled={holdBusy}
+                    className="w-full text-left p-3 rounded-xl border border-border bg-secondary/40 hover:border-orange-500 transition-all disabled:opacity-50"
+                  >
+                    <div className="flex justify-between font-black text-sm">
+                      <span>{held.hold_name || 'Held'}</span>
+                      <span>Rs {Number(held.grand_total || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="text-[11px] font-bold text-muted-foreground mt-1">
+                      {held.order_number || 'Draft'} · {held.held_at ? new Date(held.held_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Checkout Modal */}
       <AnimatePresence>
         {checkoutModalOpen && (() => {
@@ -2464,8 +2579,9 @@ export default function POS() {
                         isVip: isVipOrder || customer?.is_vip || customer?.isVip
                       }
 
+                      const shouldPay = String(method) !== 'Later'
                       const { success, orderId: generatedOrderId } = await completeOrder(
-                        isPaidPrint ? [{
+                        shouldPay ? [{
                           id: `pay-${Date.now()}`,
                           method: method,
                           amount: totalToPay,

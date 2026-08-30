@@ -3,7 +3,7 @@ import { sendSuccess, sendError } from '../utils/responseHandler.js';
 
 const resolveSessionContext = (req, res, { requireShift = true } = {}) => {
   const shiftId = req.headers['x-cashier-session-id'];
-  const userId = req.headers['x-user-id'] || req.user?.userId;
+  const userId = req.user?.userId || req.headers['x-user-id'];
   const terminalId = req.headers['x-terminal-id'] || 'DEFAULT_DEVICE';
 
   if (requireShift && !shiftId) {

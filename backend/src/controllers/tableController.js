@@ -1,6 +1,21 @@
 import { dbEngine } from '../database/sqlite.js';
 import crypto from 'crypto';
 
+export function releaseTableIfIdle(tableRef) {
+  if (!tableRef) return;
+  try {
+    const active = dbEngine.prepare(`
+      SELECT COUNT(*) as c FROM orders
+      WHERE table_id = ? AND lifecycle_state IN ('ACTIVE', 'DRAFT', 'HELD')
+    `).get(tableRef);
+    if (!active || Number(active.c) === 0) {
+      dbEngine.prepare(`UPDATE tables SET status = 'Available' WHERE id = ? OR name = ?`).run(tableRef, tableRef);
+    }
+  } catch (e) {
+    console.warn('Failed to release floor table:', e.message);
+  }
+}
+
 export class TableController {
   // --- CATEGORIES ---
   static getCategories(req, res) {

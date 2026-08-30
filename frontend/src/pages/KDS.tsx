@@ -37,9 +37,10 @@ export const KDS: React.FC = () => {
 
   const fetchPrinters = async () => {
     try {
-      const res = await configApi.getAllConfig()
-      if (res.data?.data?.printers) {
-        setSystemPrinters(res.data.data.printers)
+      const res: any = await configApi.getAllConfig()
+      const data = res?.data?.data || res?.data || res
+      if (data?.printers) {
+        setSystemPrinters(data.printers)
       }
     } catch (e) { console.error(e) }
   }
@@ -47,8 +48,8 @@ export const KDS: React.FC = () => {
   const discoverHardware = async () => {
     setIsDiscovering(true)
     try {
-      const res = await configApi.discoverPrinters()
-      setDiscoveredHardware(res.data?.data || [])
+      const res: any = await configApi.discoverPrinters()
+      setDiscoveredHardware(res.data?.data || res.data || res || [])
     } catch (e) {
       console.error(e)
     } finally {

@@ -29,9 +29,11 @@ export default function GlobalErrorBoundary() {
           </p>
         </div>
 
-        <div className="bg-muted/50 p-4 rounded-xl text-left overflow-auto max-h-48 text-xs font-mono text-muted-foreground border border-border/50">
-          {error?.stack ? error.stack : "No stack trace available."}
-        </div>
+        {import.meta.env.DEV && (
+          <div className="bg-muted/50 p-4 rounded-xl text-left overflow-auto max-h-48 text-xs font-mono text-muted-foreground border border-border/50">
+            {error?.stack ? error.stack : "No stack trace available."}
+          </div>
+        )}
 
         <div className="flex gap-3 pt-4">
           <button 

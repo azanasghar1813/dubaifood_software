@@ -100,7 +100,8 @@ const startServer = async () => {
     // Cheap no-op checks every 15 min; only does real work if WAL > 64MB.
     dbEngine.startAutoCheckpointTimer(15 * 60 * 1000);
 
-    server = app.listen(config.server.port, () => {
+    // Default 0.0.0.0 so tablets on LAN can reach this till. Set HOST=127.0.0.1 for a single-PC site.
+    server = app.listen(config.server.port, config.server.host, () => {
       const startupTimeMs = Date.now() - startTime;
       printStartupSummary(storageResults, dbInfo, startupTimeMs);
     });

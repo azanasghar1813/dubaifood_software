@@ -3,7 +3,7 @@ import {
   RefreshCw, AlertTriangle, History, Trash2, Plus, MonitorSmartphone, Wifi, Database
 } from "lucide-react"
 import { syncApi, type SyncStatus, type ActiveDevice, type SyncQueueItem } from "../api/syncApi"
-import toast from "react-hot-toast"
+import { toast } from "../store/toastStore"
 import { AnimatePresence, motion } from "framer-motion"
 
 export default function Synchronization() {
@@ -67,16 +67,18 @@ export default function Synchronization() {
   const fetchSyncData = async () => {
     try {
       setIsLoading(true);
-      const [statusData, devicesData, failedData, syncedData] = await Promise.all([
+      const [statusData, devicesData, failedData, syncedData, conflictData] = await Promise.all([
         syncApi.getStatus(),
         syncApi.getActiveDevices(),
         syncApi.getQueue('FAILED', 10000), // Show virtually all failed items
-        syncApi.getQueue('SYNCED', 10)
+        syncApi.getQueue('SYNCED', 10),
+        syncApi.getQueue('CONFLICT', 100)
       ]);
       setStatus(statusData);
       setDevices(devicesData);
       setFailedQueue(failedData);
       setSyncedQueue(syncedData);
+      setConflicts(conflictData || []);
     } catch (err) {
       toast.error("Failed to fetch sync status");
     } finally {
@@ -143,9 +145,16 @@ export default function Synchronization() {
     }
   }
 
-  const handleResolveConflict = (conflictId: string, resolution: "local" | "cloud" | "merge") => {
-    setConflicts(conflicts.filter(c => c.id !== conflictId))
-    toast.success(`Conflict resolved using "${resolution}" strategy.`);
+  const handleResolveConflict = async (conflictId: string, resolution: "local" | "cloud" | "merge") => {
+    try {
+      const mapped = resolution === 'local' ? 'keep_local' : 'keep_cloud'
+      await syncApi.resolveConflict(conflictId, mapped)
+      setConflicts(conflicts.filter(c => c.id !== conflictId))
+      toast.success(`Conflict resolved using "${resolution}" strategy.`);
+      fetchSyncData();
+    } catch {
+      toast.error('Failed to resolve conflict');
+    }
   }
 
   const handleRetryEvent = async (id: string) => {

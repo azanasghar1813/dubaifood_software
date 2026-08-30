@@ -13,16 +13,18 @@ export const envSchema = z.object({
   
   // Server
   PORT: z.string().transform(Number).default('5000'),
+  HOST: z.string().default('0.0.0.0'),
   API_PREFIX: z.string().default('/api/v1'),
+  DEFAULT_ADMIN_PIN: z.string().min(4).optional(),
   
   // Storage (Relative to backend root)
   STORAGE_ROOT: z.string().default('../../storage'),
-  JWT_SECRET: z.string().min(16).default('development-secret-key-do-not-use-in-prod'),
+  JWT_SECRET: z.string().min(16),
   
   // Logging
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly']).default('info'),
 
   // Sync API
   SYNC_API_URL: z.string().url().default('http://localhost:3000/api/v1'),
-  DEVICE_SECRET: z.string().min(16).default('development-device-secret-do-not-use-in-prod'),
+  DEVICE_SECRET: z.string().min(16),
 });

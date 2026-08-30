@@ -44,5 +44,14 @@ export const authService = {
    */
   getUsers: async (): Promise<{ data: { id: string, username: string, firstName: string, lastName: string, role_name?: string }[] }> => {
     return apiClient.get('/auth/users')
+  },
+
+  verifyManagerPin: async (pin: string): Promise<boolean> => {
+    try {
+      const res: any = await apiClient.post('/auth/verify-manager-pin', { pin })
+      return !!(res?.success || res?.data?.verified)
+    } catch {
+      return false
+    }
   }
 }

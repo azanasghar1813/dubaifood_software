@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import toast from "react-hot-toast"
+import { toast } from "../store/toastStore"
+import { authService } from "../services/authService"
+import { kitchenService } from "../services/kitchenService"
 import { motion, AnimatePresence } from "framer-motion"
 import jsPDF from "jspdf"
 import ReceiptPreview from "./ReceiptPreview"
@@ -144,7 +146,9 @@ export default function Orders() {
         try {
           await apiClient.post(`/payments/order/${id}`, { amount_received: order.total, payment_method: 'CASH' })
           updateOrder(id, { paymentStatus: 'Paid' })
-        } catch (e) { }
+        } catch (e) {
+          toast.error('Bulk pay failed', 'One or more payments could not be recorded.')
+        }
       }
     }
     syncOrdersFromBackend()
@@ -161,7 +165,9 @@ export default function Orders() {
         try {
           await apiClient.post(`/orders/${id}/transition`, { targetState: 'COMPLETED' })
           updateOrder(id, { status: 'Completed', kitchenStatus: 'Served' })
-        } catch (e) { }
+        } catch (e) {
+          toast.error('Bulk complete failed', 'One or more orders could not be completed.')
+        }
       }
     }
     syncOrdersFromBackend()
@@ -170,8 +176,9 @@ export default function Orders() {
 
   const handleBulkDelete = async () => {
     if (selectedOrderIds.size === 0) return
-    const pin = prompt("Deleting orders requires Authorization. Enter PIN (1234):")
-    if (pin !== '1234') { alert("Unauthorized."); return }
+    const pin = prompt("Deleting orders requires Authorization. Enter manager PIN:")
+    const pinOk = pin ? await authService.verifyManagerPin(pin) : false
+    if (!pinOk) { alert("Unauthorized."); return }
 
     if (!confirm(`Permanently delete ${selectedOrderIds.size} order(s)? This action cannot be undone.`)) return
 
@@ -250,6 +257,18 @@ export default function Orders() {
 
   const handleKitchenStatusChange = async (order: Order, newStatus: string) => {
     try {
+      const items = (order.items || []).filter((item) => item?.id)
+      const apply = async (itemId: string) => {
+        if (newStatus === 'Preparing') return kitchenService.startPreparingItem(itemId)
+        if (newStatus === 'Ready') return kitchenService.markItemReady(itemId)
+        if (newStatus === 'Served' || newStatus === 'Completed') return kitchenService.markItemServed(itemId)
+        if (newStatus === 'Cancelled') return kitchenService.cancelItem(itemId)
+      }
+      const results = await Promise.allSettled(items.map((item) => apply(item.id)))
+      const failed = results.filter((r) => r.status === 'rejected').length
+      if (failed > 0) {
+        toast.error('Kitchen status', `Updated ${items.length - failed} of ${items.length} items. ${failed} failed.`)
+      }
       updateOrder(order.id, { kitchenStatus: newStatus as any })
       addTimelineEvent(order.id, { event: "Kitchen Status Changed", remarks: `Changed to ${newStatus}`, cashier: user?.name || "Ahmed" })
       addAuditLog(order.id, { actionType: "Kitchen Status Changed", who: user?.name || "Ahmed", oldValue: order.kitchenStatus, newValue: newStatus, reason: "Manual change from badge" })
@@ -272,11 +291,12 @@ export default function Orders() {
   }
 
 
-  const exportToPDF = () => {
+  const exportToPDF = async () => {
     const doc = new jsPDF('landscape')
     doc.text("Enterprise Order History", 14, 15)
 
     const headers = [["Order #", "Date", "Cashier", "Order Type", "Customer", "Table", "Subtotal", "Discount", "Service Charge", "Total", "Pay Method", "Pay Status", "Status", "Items"]]
+    const { default: autoTable } = await import('jspdf-autotable')
     const data = filteredAndSortedOrders.map(o => [
       o.orderNumber,
       new Date(o.timestamp).toLocaleString(),
@@ -294,7 +314,6 @@ export default function Orders() {
       o.items.map(i => `${i.quantity}x ${i.name}`).join('\n')
     ])
 
-    // @ts-ignore
     autoTable(doc, {
       head: headers,
       body: data,
@@ -460,8 +479,9 @@ export default function Orders() {
   }
 
   const handleDeleteOrder = async (order: Order) => {
-    const pin = prompt("Deleting an order requires Authorization. Enter PIN (1234):")
-    if (pin !== '1234') { alert("Unauthorized."); return }
+    const pin = prompt("Deleting an order requires Authorization. Enter manager PIN:")
+    const pinOk = pin ? await authService.verifyManagerPin(pin) : false
+    if (!pinOk) { alert("Unauthorized."); return }
 
 
     if (!confirm(`Are you absolutely sure you want to permanently delete order ${order.orderNumber}? This action cannot be undone.`)) return

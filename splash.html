@@ -204,10 +204,10 @@
     </div>
 
     <script>
-        const { ipcRenderer } = require('electron');
-        
         document.getElementById('btnCloseTop').addEventListener('click', () => {
-            ipcRenderer.send('app-quit');
+            if (window.electronAPI && window.electronAPI.appQuit) {
+                window.electronAPI.appQuit();
+            }
         });
         // main.js will use executeJavaScript to update this
         window.updateStatus = (message, isError = false, errorLog = '') => {

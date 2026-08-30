@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import bcrypt from 'bcryptjs';
 
 /**
@@ -61,7 +63,6 @@ export const runAuthSeeder = (db) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    // Using the user-approved default credentials
     const hashedPassword = bcrypt.hashSync('admin123', 10);
     const hashedPin = bcrypt.hashSync('1234', 10);
 
@@ -76,6 +77,30 @@ export const runAuthSeeder = (db) => {
       1
     );
     if (res.changes > 0) inserted++;
+
+    // Rotate the well-known default PIN on first boot after this change.
+    const admin = db.prepare("SELECT id, pin_code FROM users WHERE username = 'admin'").get();
+    if (admin && bcrypt.compareSync('1234', admin.pin_code)) {
+      const newPin = process.env.DEFAULT_ADMIN_PIN && process.env.DEFAULT_ADMIN_PIN.length >= 4
+        ? process.env.DEFAULT_ADMIN_PIN
+        : String(crypto.randomInt(100000, 1000000));
+      db.prepare('UPDATE users SET pin_code = ?, force_pin_change = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(bcrypt.hashSync(newPin, 10), admin.id);
+
+      try {
+        const dbPath = typeof db.name === 'string' ? db.name : null;
+        if (dbPath) {
+          const pinFile = path.join(path.dirname(dbPath), 'ADMIN_PIN.txt');
+          fs.writeFileSync(pinFile, `${newPin}\n`, { encoding: 'utf8' });
+          console.log(`[Auth] Default admin PIN 1234 was rotated. New PIN written to ${pinFile}`);
+        } else {
+          console.log(`[Auth] Default admin PIN 1234 was rotated. New PIN: ${newPin}`);
+        }
+      } catch (err) {
+        console.log(`[Auth] Default admin PIN 1234 was rotated. New PIN: ${newPin}`);
+        console.warn('[Auth] Could not write ADMIN_PIN.txt:', err.message);
+      }
+    }
   }
 
   return { name: 'Auth', inserted };

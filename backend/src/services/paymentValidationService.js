@@ -1,6 +1,7 @@
 import { paymentMethodRepository } from '../repositories/paymentMethodRepository.js';
 import { orderPaymentRepository } from '../repositories/orderPaymentRepository.js';
 import { OrderLifecycleState, PaymentState } from '../constants/orderStates.js';
+import { dbEngine } from '../database/sqlite.js';
 
 /**
  * PaymentValidationService
@@ -126,6 +127,13 @@ class PaymentValidationService {
     }
     if (!cashierUserId) {
       throw new Error('Cashier user ID is required to process a payment.');
+    }
+    const session = dbEngine.prepare('SELECT * FROM cashier_sessions WHERE id = ?').get(sessionId);
+    if (!session) {
+      throw new Error('Cashier session was not found.');
+    }
+    if (session.status !== 'OPEN') {
+      throw new Error('Cashier session must be open to process a payment.');
     }
   }
 }

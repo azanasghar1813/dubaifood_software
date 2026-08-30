@@ -3,7 +3,7 @@ import { shiftService } from '../services/shiftService.js';
 export const shiftController = {
   getActiveShift: (req, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.userId;
       const shift = shiftService.getActiveShift(userId);
       res.json(shift);
     } catch (err) {
@@ -14,7 +14,7 @@ export const shiftController = {
 
   startShift: (req, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.userId;
       const { openingFloat, terminalId } = req.body;
 
       if (openingFloat === undefined || openingFloat === null) {
@@ -34,7 +34,7 @@ export const shiftController = {
 
   closeShift: (req, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.userId;
       const { sessionId, countedCash, discrepancyNotes } = req.body;
 
       if (!sessionId || countedCash === undefined) {
@@ -51,7 +51,7 @@ export const shiftController = {
 
   addCashDrop: (req, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.userId;
       const { sessionId, amount, reason, destination } = req.body;
 
       if (!sessionId || !amount) {
@@ -68,7 +68,7 @@ export const shiftController = {
 
   addPaidOut: (req, res) => {
     try {
-      const userId = req.user.id;
+      const userId = req.user.userId;
       const { sessionId, amount, purpose, approvedBy } = req.body;
 
       if (!sessionId || !amount || !purpose) {

@@ -1,7 +1,10 @@
+import fs from 'fs';
+import path from 'path';
 import config from '../config/index.js';
 import { syncService } from '../services/syncService.js';
 import { dbEngine } from '../database/sqlite.js';
 import { configService } from '../services/configService.js';
+import { SYSTEM_USER_ID, SYSTEM_SHIFT_ID } from './syncIdentities.js';
 
 class SyncWorker {
   constructor() {
@@ -13,6 +16,88 @@ class SyncWorker {
     
     this.currentPhase = 'IDLE';
     this.logs = [];
+  }
+
+  _resolveLocalImage(relPath) {
+    if (!relPath || typeof relPath !== 'string') return null;
+    if (/^https?:\/\//i.test(relPath)) return null;
+    const name = path.basename(relPath);
+    const candidates = [
+      path.join(config.paths.images.products, name),
+      path.join(config.paths.images.categories, name),
+      path.join(config.paths.images.business, name),
+      path.join(config.paths.root, relPath.replace(/^[/\\]?storage[/\\]?/, '')),
+    ];
+    return candidates.find((p) => fs.existsSync(p)) || null;
+  }
+
+  _guessMime(filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.png') return 'image/png';
+    if (ext === '.webp') return 'image/webp';
+    if (ext === '.gif') return 'image/gif';
+    return 'image/jpeg';
+  }
+
+  async _uploadLocalImage(relPath, terminalId) {
+    const abs = this._resolveLocalImage(relPath);
+    if (!abs) return relPath;
+    try {
+      const buf = fs.readFileSync(abs);
+      const form = new FormData();
+      form.append('image', new Blob([buf], { type: this._guessMime(abs) }), path.basename(abs));
+      form.append('folder', 'pos_images');
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30000);
+      let response;
+      try {
+        response = await fetch(`${config.sync.apiUrl}/sync/upload-image`, {
+          method: 'POST',
+          headers: {
+            'x-device-secret': config.sync.deviceSecret,
+            'x-terminal-id': terminalId
+          },
+          body: form,
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!response.ok) {
+        this.logActivity(`Image upload failed (${response.status}) for ${path.basename(abs)}`, 'error');
+        return relPath;
+      }
+      const data = await response.json();
+      return data.url || relPath;
+    } catch (err) {
+      this.logActivity(`Image upload error for ${path.basename(abs)}: ${err.message}`, 'error');
+      return relPath;
+    }
+  }
+
+  async _attachCloudImages(event, terminalId) {
+    if (!event) return;
+    let payload = event.payload;
+    if (typeof payload === 'string') {
+      try { payload = JSON.parse(payload); } catch { payload = null; }
+    }
+    if (payload && payload.image_path) {
+      payload.image_path = await this._uploadLocalImage(payload.image_path, terminalId);
+      event.payload = JSON.stringify(payload);
+    }
+    if (event.entity_type === 'PRODUCT' && event.entity_id) {
+      try {
+        const images = dbEngine.prepare('SELECT id, image_path FROM product_images WHERE product_id = ?').all(event.entity_id);
+        for (const img of images) {
+          const url = await this._uploadLocalImage(img.image_path, terminalId);
+          if (url && url !== img.image_path) {
+            dbEngine.prepare('UPDATE product_images SET image_path = ? WHERE id = ?').run(url, img.id);
+          }
+        }
+      } catch (err) {
+        this.logActivity(`product_images upload skipped: ${err.message}`, 'error');
+      }
+    }
   }
 
   logActivity(message, level = 'info') {
@@ -100,12 +185,15 @@ class SyncWorker {
                'ORDER': 'orders',
                'ORDER_ITEM': 'order_items',
                'ORDER_PAYMENT': 'order_payments',
+               'PAYMENT': 'order_payments',
                'DINING_TABLE': 'dining_tables',
                'SETTING': 'application_settings'
              };
              const tableName = tableMap[event.entity_type];
              if (tableName) {
-                 const record = dbEngine.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(event.entity_id);
+                 const record = tableName === 'application_settings'
+                   ? dbEngine.prepare('SELECT * FROM application_settings WHERE key = ?').get(event.entity_id)
+                   : dbEngine.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(event.entity_id);
                  if (record) {
                      // Strip columns that don't exist in Supabase yet to prevent schema cache errors
                      if (tableName === 'orders' || tableName === 'order_items') {
@@ -118,6 +206,12 @@ class SyncWorker {
                      event.action = 'DELETE';
                  }
              }
+          }
+        }
+
+        for (const event of pendingEvents) {
+          if (event.entity_type === 'PRODUCT' || event.entity_type === 'CATEGORY') {
+            await this._attachCloudImages(event, terminalId);
           }
         }
 
@@ -223,10 +317,12 @@ class SyncWorker {
         }
 
         const pullData = await pullResponse.json();
-        const { products, categories, orders, order_items, customers, users } = pullData.data;
+        const { products, categories, orders, order_items, customers, users, deals, order_payments, dining_tables, application_settings } = pullData.data;
 
         const itemsCount = (products?.length || 0) + (categories?.length || 0) + (orders?.length || 0) + 
-                           (order_items?.length || 0) + (customers?.length || 0) + (users?.length || 0);
+                           (order_items?.length || 0) + (customers?.length || 0) + (users?.length || 0) +
+                           (deals?.length || 0) + (order_payments?.length || 0) + (dining_tables?.length || 0) +
+                           (application_settings?.length || 0);
         
         totalPulled += itemsCount;
 
@@ -272,8 +368,8 @@ class SyncWorker {
                          return meta.dflt_value.replace(/^['"](.*)['"]$/, '$1');
                        }
                        // Fallbacks for known non-defaultable foreign keys
-                       if (k === 'shift_id') return 'SYSTEM_SHIFT';
-                       if (k === 'cashier_user_id') return 'SYSTEM_USER';
+                       if (k === 'shift_id') return SYSTEM_SHIFT_ID;
+                       if (k === 'cashier_user_id') return SYSTEM_USER_ID;
                        if (meta.type.includes('INT') || meta.type.includes('REAL')) return 0;
                        return '';
                     }
@@ -300,23 +396,27 @@ class SyncWorker {
             upsertData('products', products);
             upsertData('users', users);
             upsertData('customers', customers);
+            upsertData('deals', deals);
+            upsertData('dining_tables', dining_tables);
+            upsertData('application_settings', application_settings);
             
             // Ensure SYSTEM fallbacks exist for orders that reference them to prevent Foreign Key constraint failures
             if (orders && orders.length > 0) {
               const anyRole = dbEngine.prepare('SELECT id, name FROM roles LIMIT 1').get();
               if (anyRole) {
-                 dbEngine.prepare(`INSERT OR IGNORE INTO users (id, username, password_hash, pin_code, first_name, last_name, role_id, force_pin_change, is_active, created_at, updated_at) VALUES ('SYSTEM_USER', 'system_user', 'system_hash', '0000', 'System', 'User', ?, 0, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(anyRole.id);
-                 dbEngine.prepare(`INSERT OR IGNORE INTO cashier_sessions (id, user_id, terminal_id, status, opening_float, opened_at, created_at, updated_at) VALUES ('SYSTEM_SHIFT', 'SYSTEM_USER', 'System Sync', 'CLOSED', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run();
+                 dbEngine.prepare(`INSERT OR IGNORE INTO users (id, username, password_hash, pin_code, first_name, last_name, role_id, force_pin_change, is_active, created_at, updated_at) VALUES (?, 'system_user', 'system_hash', '0000', 'System', 'User', ?, 0, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(SYSTEM_USER_ID, anyRole.id);
+                 dbEngine.prepare(`INSERT OR IGNORE INTO cashier_sessions (id, user_id, terminal_id, status, opening_float, opened_at, created_at, updated_at) VALUES (?, ?, 'System Sync', 'CLOSED', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(SYSTEM_SHIFT_ID, SYSTEM_USER_ID);
               }
             }
             
             // Upsert orders and items
             upsertData('orders', orders);
             upsertData('order_items', order_items);
+            upsertData('order_payments', order_payments);
           });
         }
 
-        const hasAnyTableReachedLimit = [products, categories, orders, order_items, customers, users].some(arr => arr && arr.length === limit);
+        const hasAnyTableReachedLimit = [products, categories, orders, order_items, customers, users, deals, order_payments, dining_tables, application_settings].some(arr => arr && arr.length === limit);
         hasMore = hasAnyTableReachedLimit;
         offset += limit;
         if (!finalTimestamp) finalTimestamp = pullData.timestamp;

@@ -9,6 +9,7 @@ import {
   X, Search, Keyboard, Shield
 } from "lucide-react"
 import { useAuthStore, hasPermission } from "../store/authStore"
+import { authService } from "../services/authService"
 
 // Constants & Types
 
@@ -264,7 +265,8 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
       alert("Please enter a valid payout amount.")
       return
     }
-    if (poManagerPin !== "1234") {
+    const poPinOk = await authService.verifyManagerPin(poManagerPin)
+    if (!poPinOk) {
       alert("Invalid Manager Authorization PIN.")
       return
     }
@@ -283,7 +285,8 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
   }
 
   const executeCloseShift = async () => {
-    if (closeManagerPin !== "1234") {
+    const closePinOk = await authService.verifyManagerPin(closeManagerPin)
+    if (!closePinOk) {
       alert("Invalid Manager Authorization PIN.")
       return
     }
@@ -703,7 +706,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                 )}
 
                 <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-black text-muted-foreground">Manager Auth PIN (Demo: 1234)</label>
+                  <label className="text-[10px] uppercase font-black text-muted-foreground">Manager Auth PIN</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"><Key className="w-3.5 h-3.5" /></span>
                     <input
@@ -1005,7 +1008,7 @@ Status: UNCLOSED ACCRUALS PREVIEW`)
                     <div>
                       <h4 className="font-black text-sm text-foreground">Step 5: Manager override PIN authorization</h4>
                       <p className="text-xs text-muted-foreground font-bold mt-1">
-                        Requires a valid Manager Override PIN signature to finalize register session closing (PIN: 1234).
+                        Requires a valid Manager Override PIN signature to finalize register session closing.
                       </p>
                     </div>
 

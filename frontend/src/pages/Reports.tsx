@@ -146,6 +146,7 @@ export default function Reports() {
       };
 
       if ((timeRange === 'Custom Date' || timeRange === 'Custom Range') && (!customDateFrom || !customDateTo)) {
+        setLoadingDetailedSales(false)
         return; // Don't fetch if custom dates are incomplete
       }
 
@@ -446,9 +447,8 @@ export default function Reports() {
     // Net Sales usually = Subtotal + Tax - Discount. The user requested Net sale to NOT include Service Charges.
     const netSales = reportSummary.netSales || 0;
     
-    // Estimate cash/digital split since backend doesn't provide it yet in summary
-    const cashSales = Math.round(grossSales * 0.7) // Mocked 70% cash 
-    const digitalSales = grossSales - cashSales
+    const cashSales = reportSummary.cashSales ?? 0
+    const digitalSales = reportSummary.digitalSales ?? Math.max(0, grossSales - cashSales)
 
     return {
       totalOrdersCount: reportSummary.ordersCount || 0, 
@@ -458,14 +458,14 @@ export default function Reports() {
       totalService,
       totalDiscount: reportSummary.discounts || 0, 
       totalDelivery, 
-      paidCount: reportSummary.ordersCount || 0, 
-      unpaidCount: 0, 
-      refundsCount: 0, 
+      paidCount: reportSummary.paidCount || 0, 
+      unpaidCount: reportSummary.unpaidCount || 0, 
+      refundsCount: reportSummary.refunds || 0, 
       cashSales,
       cardSales: digitalSales, 
       digitalSales, 
       avgBill: reportSummary.averageOrderValue || 0, 
-      netEstimatedProfit: Math.round(netSales * 0.45), 
+      netEstimatedProfit: netSales, 
       restaurantSales, 
       fastFoodSales, 
       dealsSales, 
@@ -553,7 +553,7 @@ export default function Reports() {
       return productSalesData
         .filter(p => p.is_deal)
         .map(d => {
-        const discountCost = Math.round(d.rev * 0.2) // Mock 20% average discount given on deals vs à la carte
+        const discountCost = 0
         return { ...d, discountCost, netContribution: d.rev - discountCost }
       })
   }, [productSalesData])

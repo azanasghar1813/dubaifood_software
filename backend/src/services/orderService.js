@@ -15,6 +15,9 @@ import { activityLogService } from './activityLogService.js';
 import { syncService } from './syncService.js';
 import { auditService } from './auditService.js';
 import { OrderLifecycleState } from '../constants/orderStates.js';
+import { releaseTableIfIdle } from '../controllers/tableController.js';
+import { cartService } from './cartService.js';
+import { orderCreationService } from './orderCreationService.js';
 import crypto from 'crypto';
 
 class OrderService {
@@ -389,14 +392,25 @@ class OrderService {
    * Places an active draft order on hold.
    */
   holdOrder(shiftId, userId, holdName) {
-    return dbEngine.transaction(() => {
-      const draft = orderRepository.findDraftBySession(shiftId);
-      if (!draft) throw new Error('No active draft order found to hold.');
-
-      return orderLifecycleService.transition(draft.id, OrderLifecycleState.HELD, {
-        userId,
-        holdName
+    const draft = orderRepository.findDraftBySession(shiftId);
+    if (draft) {
+      return dbEngine.transaction(() => {
+        return orderLifecycleService.transition(draft.id, OrderLifecycleState.HELD, {
+          userId,
+          holdName
+        });
       });
+    }
+
+    const cart = cartService.getCart(shiftId);
+    if (!cart || !cart.items?.length) {
+      throw new Error('No active cart or draft order to hold.');
+    }
+
+    const order = orderCreationService.checkoutCart(shiftId, userId, {}, crypto.randomUUID());
+    return orderLifecycleService.transition(order.id, OrderLifecycleState.HELD, {
+      userId,
+      holdName
     });
   }
 
@@ -508,7 +522,8 @@ class OrderService {
       if (!success) throw new Error('Failed to delete order.');
 
       orderCacheService.invalidate(orderId);
-      syncService.queueSyncEvent('ORDER_DELETED', orderId, { order_number: order.order_number });
+      syncService.queueSyncEvent('ORDER', orderId, 'DELETE', { order_number: order.order_number });
+      releaseTableIfIdle(order.table_id);
       return { success: true, message: 'Order deleted successfully' };
     });
   }

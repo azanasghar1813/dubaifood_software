@@ -27,7 +27,7 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
     status: t.status
   }))
 
-  const { openOrders, switchOrder, setTableNumber, activeOrderId } = usePosStore()
+  const { openOrders, switchOrder, setTableNumber, activeOrderId, loadOrderForEdit } = usePosStore()
   const { orders } = useOrderStore()
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -150,16 +150,15 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
   }, [isOpen, filteredTables, selectedIndex, searchQuery, onClose])
 
   const handleSelect = (table: Table) => {
-    // If we click a table, we check if an order exists for it
-    const orderForTable = Object.values(openOrders).find(o => o.tableNumber === table.label)
+    const liveOrder = orders.find((o: any) =>
+      (o.tableNumber === table.label || o.tableNumber === table.id) &&
+      o.status !== 'Completed' && o.status !== 'Cancelled'
+    )
 
-    if (orderForTable) {
-      switchOrder(orderForTable.id)
+    if (liveOrder) {
+      loadOrderForEdit(liveOrder)
     } else {
-      // Create a new order ID specifically for this table instance
-      const newOrderId = `ORD-${table.label}-${Date.now()}`
-      switchOrder(newOrderId)
-      setTableNumber(table.label)
+      setTableNumber(table.label || table.id)
     }
     onClose()
   }

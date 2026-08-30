@@ -21,6 +21,11 @@ if (!parsedEnv.success) {
 
 const env = parsedEnv.data;
 
+if (env.NODE_ENV === 'production' && (!env.JWT_SECRET || env.JWT_SECRET === 'development-secret-key-do-not-use-in-prod')) {
+  console.error('❌ JWT_SECRET must be set to a unique value in production.');
+  process.exit(1);
+}
+
 // 3. Assemble unified configuration object
 const config = {
   app: {
@@ -32,6 +37,7 @@ const config = {
   },
   server: {
     port: env.PORT,
+    host: env.HOST,
     apiPrefix: env.API_PREFIX,
   },
   security: {

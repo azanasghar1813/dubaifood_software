@@ -123,8 +123,18 @@ class ShiftService {
       SELECT * FROM orders 
       WHERE created_at >= ? 
       AND (created_at <= ? OR ? IS NULL)
-      AND cashier_id = ?
+      AND cashier_user_id = ?
+      AND lifecycle_state NOT IN ('DRAFT', 'HELD')
     `).all(session.opened_at, session.closed_at, session.closed_at, session.user_id);
+
+    const payments = dbEngine.prepare(`
+      SELECT op.* FROM order_payments op
+      JOIN orders o ON o.id = op.order_id
+      WHERE o.cashier_user_id = ?
+        AND o.created_at >= ?
+        AND (o.created_at <= ? OR ? IS NULL)
+        AND op.status = 'COMPLETED'
+    `).all(session.user_id, session.opened_at, session.closed_at, session.closed_at);
 
     let cashSales = 0;
     let onlineSales = 0;
@@ -132,16 +142,19 @@ class ShiftService {
     let discounts = 0;
 
     orders.forEach(order => {
-      if (order.status === 'Refunded' || order.status === 'Cancelled') {
-        refunds += order.total_amount || 0;
-      } else {
-        if (order.payment_method === 'Cash') {
-          cashSales += order.total_amount || 0;
-        } else {
-          onlineSales += order.total_amount || 0;
-        }
+      if (order.lifecycle_state === 'REFUNDED' || order.lifecycle_state === 'CANCELLED') {
+        refunds += Number(order.grand_total) || 0;
       }
-      discounts += order.discount_total || 0;
+      discounts += Number(order.discount_total) || 0;
+    });
+
+    payments.forEach(payment => {
+      const amount = Number(payment.amount) || 0;
+      if (String(payment.payment_method).toUpperCase() === 'CASH') {
+        cashSales += amount;
+      } else {
+        onlineSales += amount;
+      }
     });
 
     const totalCashDrops = cashDrops.reduce((acc, cd) => acc + cd.amount, 0);
@@ -190,10 +203,10 @@ class ShiftService {
         time: o.created_at,
         orderNo: o.order_number,
         customer: o.customer_name || 'Guest',
-        paymentMethod: o.payment_method,
-        amount: o.total_amount,
+        paymentMethod: o.payment_state || 'UNPAID',
+        amount: o.grand_total,
         cashier: session.user_id,
-        status: o.status
+        status: o.lifecycle_state
       })),
       shiftActivities: shiftActivities.map(act => ({
         id: act.id,

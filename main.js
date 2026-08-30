@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import http from 'http';
 import pkg from 'electron-updater';
@@ -79,6 +80,43 @@ const envPath = app.isPackaged
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
 }
+
+const ensureSecrets = () => {
+  const secretsPath = path.join(userDataPath, 'secrets.json');
+  let secrets = {};
+  try {
+    if (fs.existsSync(secretsPath)) {
+      secrets = JSON.parse(fs.readFileSync(secretsPath, 'utf8'));
+    }
+  } catch {
+    secrets = {};
+  }
+
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET.length >= 16) {
+    secrets.jwtSecret = process.env.JWT_SECRET;
+  } else if (!secrets.jwtSecret || String(secrets.jwtSecret).length < 16) {
+    secrets.jwtSecret = crypto.randomBytes(32).toString('hex');
+  }
+
+  if (process.env.DEVICE_SECRET && process.env.DEVICE_SECRET.length >= 16) {
+    secrets.deviceSecret = process.env.DEVICE_SECRET;
+  } else if (!secrets.deviceSecret || String(secrets.deviceSecret).length < 16) {
+    secrets.deviceSecret = crypto.randomBytes(24).toString('hex');
+  }
+
+  try {
+    fs.writeFileSync(secretsPath, JSON.stringify(secrets, null, 2));
+  } catch (err) {
+    console.error('Failed to persist secrets:', err.message);
+  }
+
+  process.env.JWT_SECRET = secrets.jwtSecret;
+  if (secrets.deviceSecret) {
+    process.env.DEVICE_SECRET = secrets.deviceSecret;
+  }
+};
+
+ensureSecrets();
 const BACKEND_PORT = process.env.PORT || 5000;
 
 
@@ -98,8 +136,10 @@ const createSplashWindow = () => {
     resizable: false,
     alwaysOnTop: true,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
     }
   });
   splashWindow.loadFile('splash.html');
@@ -121,8 +161,10 @@ const createWindow = () => {
     show: false,
     frame: false,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
     }
   });
 
@@ -174,8 +216,15 @@ const startBackendProcess = async () => {
     backendEnv.NODE_ENV = 'production';
   }
 
+  if (app.isPackaged) {
+    backendEnv.NODE_PATH = path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules');
+  }
+
   backendProcess = spawn(nodeExe, [serverScript], {
     env: backendEnv,
+    cwd: app.isPackaged
+      ? path.join(process.resourcesPath, 'app.asar.unpacked')
+      : __dirname,
     windowsHide: true,
     // 'ipc' channel added — required for backendProcess.send()/process.on('message')
     // to work at all. Without this, graceful shutdown messages silently fail.
@@ -208,6 +257,10 @@ const startBackendProcess = async () => {
     if (code !== 0 && splashWindow && !splashWindow.isDestroyed()) {
       const cleanError = backendErrorLog.substring(0, 500);
       updateSplashStatus('Backend exited unexpectedly.', true, cleanError);
+    }
+    // Clean exit (e.g. backup restore) while the UI is already open: respawn backend.
+    if (code === 0 && !quitting && mainWindow && !mainWindow.isDestroyed()) {
+      setTimeout(() => startBackendProcess(), 500);
     }
   });
 
@@ -245,8 +298,13 @@ const startBackendProcess = async () => {
 
     const req = http.get(`http://127.0.0.1:${BACKEND_PORT}/api/v1/health`, (res) => {
       if (res.statusCode === 200) {
-        console.log('Backend is healthy! Creating main window...');
-        createWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          console.log('Backend is healthy. Reloading existing window...');
+          mainWindow.reload();
+        } else {
+          console.log('Backend is healthy! Creating main window...');
+          createWindow();
+        }
       } else {
         console.warn(`Health check got status: ${res.statusCode}`);
         setTimeout(checkHealth, POLL_INTERVAL_MS);
@@ -337,10 +395,11 @@ app.whenReady().then(async () => {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
-  // Set the read-only GitHub token for private repository access
-  autoUpdater.requestHeaders = {
-    "Authorization": "Bearer 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"
-  };
+  if (process.env.GH_TOKEN) {
+    autoUpdater.requestHeaders = {
+      Authorization: `Bearer ${process.env.GH_TOKEN}`
+    };
+  }
 
   autoUpdater.on('update-available', (info) => {
     if (mainWindow) mainWindow.webContents.send('update-available', info);

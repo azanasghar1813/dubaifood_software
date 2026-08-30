@@ -71,5 +71,21 @@ export const authController = {
     } catch (error) {
       return sendError(res, 500, 'Failed to retrieve users');
     }
+  },
+
+  verifyManagerPin: (req, res) => {
+    try {
+      const pin = String(req.body?.pin || '');
+      if (pin.length < 4) {
+        return sendError(res, 400, 'PIN is required');
+      }
+      const ok = authService.verifyManagerPin(pin);
+      if (!ok) {
+        return sendError(res, 401, 'Invalid manager PIN');
+      }
+      return sendSuccess(res, { verified: true }, 'PIN verified');
+    } catch (error) {
+      return sendError(res, 500, 'Failed to verify PIN');
+    }
   }
 };

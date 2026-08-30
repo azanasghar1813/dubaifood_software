@@ -139,10 +139,11 @@ export default function TopNavbar() {
   }
 
   const handleWindowControl = (action: string) => {
-    if ((window as any).require) {
-      const { ipcRenderer } = (window as any).require('electron');
-      ipcRenderer.send(action);
-    }
+    const api = window.electronAPI;
+    if (!api) return;
+    if (action === 'window-minimize') api.windowMinimize();
+    else if (action === 'window-maximize') api.windowMaximize();
+    else if (action === 'window-close') api.windowClose();
   };
 
   return (

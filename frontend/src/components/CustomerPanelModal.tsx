@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, User, Phone, MapPin, StickyNote, Star, X, CheckCircle2, Plus, Heart, Pencil, Trash2 } from "lucide-react"
 import { usePosStore } from "../store/posStore"
-import toast from "react-hot-toast"
+import { toast } from "../store/toastStore"
 
 import { customerService } from "../services/customerService"
 

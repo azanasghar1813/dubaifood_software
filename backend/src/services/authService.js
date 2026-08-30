@@ -37,10 +37,21 @@ export const authService = {
       throw new Error('Invalid username or PIN');
     }
 
+    if (user.is_active === 0) {
+      activityLogService.logActivity(user.id, 'LOGIN_FAILED', 'AUTH', user.id, { reason: 'Inactive account' });
+      throw new Error('This account is disabled. Contact an administrator.');
+    }
+
+    if (user.locked_until && new Date(user.locked_until) > new Date()) {
+      activityLogService.logActivity(user.id, 'LOGIN_FAILED', 'AUTH', user.id, { reason: 'Locked' });
+      throw new Error('Account is temporarily locked. Try again later.');
+    }
+
     // 1. Verify PIN
     const isValid = securityUtils.verifyPin(pin, user.pin_code);
 
     if (!isValid) {
+      userRepository.incrementFailedAttempts(user.id, user.failed_login_attempts || 0);
       activityLogService.logActivity(user.id, 'LOGIN_FAILED', 'AUTH', user.id, { reason: 'Invalid PIN' });
       throw new Error('Invalid username or PIN');
     }
@@ -105,5 +116,22 @@ export const authService = {
       lastName: u.last_name,
       role_name: u.role_name
     }));
+  },
+
+  verifyManagerPin: (pin) => {
+    const managers = dbEngine.prepare(`
+      SELECT u.pin_code, r.name as role_name
+      FROM users u
+      JOIN roles r ON u.role_id = r.id
+      WHERE u.is_active = 1
+        AND r.name IN ('Super Admin', 'Admin', 'Manager', 'Owner')
+    `).all();
+
+    for (const manager of managers) {
+      if (manager.pin_code && securityUtils.verifyPin(pin, manager.pin_code)) {
+        return true;
+      }
+    }
+    return false;
   }
 };

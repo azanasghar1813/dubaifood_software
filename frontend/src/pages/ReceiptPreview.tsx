@@ -16,7 +16,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
   const orderNumber  = order?.orderNumber || order?.id || "N/A"
   const orderType    = order?.orderType    ?? "Dine In"
   const tableNumber  = order?.tableNumber  ?? null
-  const cashier      = order?.cashierName  ?? "Ahmed"
+  const cashier      = order?.cashierName  ?? "Cashier"
   const customerName = order?.customerName ?? null
   const customerPhone = order?.customerPhone ?? null
   const customerAddress = order?.customerAddress ?? null
@@ -108,9 +108,8 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     
     <!-- Address -->
     <div style="text-align:center;font-size:9.5px;font-weight:600;color:#000;line-height:1.2;margin-bottom:12px">
-      <div style="white-space:nowrap;">Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,</div>
-      <div>Chowk Azam (Layyah)</div>
-      <div>Contact: 0308-8020784, 0345-6420784</div>
+      <div style="white-space:nowrap;">${settings.address || ''}</div>
+      <div>Contact: ${settings.phoneNumber || ''}</div>
     </div>
 
     <!-- Order Details -->
