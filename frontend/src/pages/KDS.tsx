@@ -496,6 +496,11 @@ export const KDS: React.FC = () => {
                                           {item.modifiers?.map((m, mIdx) => (
                                              <span key={mIdx} className="text-[10px] text-muted-foreground opacity-70 block pl-2">- {m.name}</span>
                                           ))}
+                                          {(item.combo_components || []).map((c: any, cIdx: number) => (
+                                             <span key={cIdx} className="text-[10px] text-muted-foreground opacity-70 block pl-2">
+                                               - {(c.quantity && c.quantity > 1) ? `${c.quantity}x ` : ''}{c.product_name_snapshot || c.product_name || 'Item'}
+                                             </span>
+                                          ))}
                                        </div>
                                     </div>
                                  ))}
@@ -598,24 +603,13 @@ export const KDS: React.FC = () => {
                 </div>
 
                 <div className="mt-4">
-                  {Object.entries(
-                    previewTicket.items.reduce((acc, item) => {
-                      const k = item.kitchen || 'OTHER';
-                      if (!acc[k]) acc[k] = [];
-                      acc[k].push(item);
-                      return acc;
-                    }, {} as Record<string, typeof previewTicket.items>)
-                  ).map(([kitchenName, items]) => (
-                    <div key={kitchenName} className="mb-4 border-2 border-black">
-                      <div className="text-center font-black uppercase py-1 border-b-2 border-black border-dashed">
-                        {kitchenName}
-                      </div>
+                  <div className="mb-4 border-2 border-black">
                       <div className="flex justify-between font-bold border-b-2 border-black border-dashed px-1 py-1 bg-gray-100">
                         <span>Item</span>
                         <span>Qty</span>
                       </div>
                       <div className="px-1 py-1">
-                        {items.map((item, idx) => (
+                        {previewTicket.items.map((item, idx) => (
                           <div key={idx} className="flex justify-between items-start mb-2 border-b border-gray-300 border-dashed last:border-0 pb-1">
                             <div className="flex-1 pr-2">
                               <span className={`font-bold ${item.type === 'REMOVE' ? 'line-through' : ''}`}>
@@ -628,6 +622,11 @@ export const KDS: React.FC = () => {
                                   ))}
                                 </div>
                               )}
+                              {(item.combo_components || []).map((c: any, cidx: number) => (
+                                <div key={cidx} className="text-xs text-gray-700 pl-2 mt-0.5">
+                                  - {(c.quantity && c.quantity > 1) ? `${c.quantity}x ` : ''}{c.product_name_snapshot || c.product_name || 'Item'}{c.variant_snapshot ? ` (${c.variant_snapshot})` : ''}
+                                </div>
+                              ))}
                               {item.notes && (
                                 <div className="text-xs italic font-bold pl-2 mt-0.5">Note: {item.notes}</div>
                               )}
@@ -639,7 +638,6 @@ export const KDS: React.FC = () => {
                         ))}
                       </div>
                     </div>
-                  ))}
                 </div>
 
               </div>

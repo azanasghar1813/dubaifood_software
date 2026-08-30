@@ -66,7 +66,8 @@ export const cartService = {
   },
 
   async checkout(orderData: any, idempotencyKey?: string) {
-    const config = idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}
+    const config: any = { timeout: 30000 }
+    if (idempotencyKey) config.headers = { 'Idempotency-Key': idempotencyKey }
     const res = await apiClient.post(`${CART_BASE_URL}/checkout`, orderData, config) as any
     return res
   },

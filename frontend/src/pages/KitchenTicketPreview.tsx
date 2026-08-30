@@ -17,6 +17,7 @@ export interface KitchenTicketPreviewOrder {
     selectedModifiers?: { name: string }[]
     notes?: string | null
     kitchen?: string
+    combo_components?: Array<{ product_name_snapshot?: string; product_name?: string; quantity?: number; variant_snapshot?: string }>
   }>
 }
 
@@ -41,33 +42,31 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
   const items = order?.items ?? []
   const isDelivery = String(orderType).toLowerCase().includes("delivery")
 
-  const grouped = items.reduce((acc, item) => {
-    const k = item.kitchen || "KITCHEN"
-    if (!acc[k]) acc[k] = []
-    acc[k].push(item)
-    return acc
-  }, {} as Record<string, typeof items>)
+  const itemRowsHtml = (list: typeof items) => list.map((item) => {
+    const mods = item.selectedModifiers?.length
+      ? `<div style="font-size:11px;font-weight:400;margin-top:2px">${item.selectedModifiers.map((m) => "- " + m.name).join("<br>")}</div>`
+      : ""
+    const combos = (item.combo_components || []).map((c) => {
+      const qtyPrefix = (c.quantity && c.quantity > 1) ? `${c.quantity}x ` : ""
+      const name = c.product_name_snapshot || c.product_name || "Item"
+      const variant = c.variant_snapshot ? ` (${c.variant_snapshot})` : ""
+      return `<div style="font-size:11px;font-weight:400;margin-top:2px">- ${qtyPrefix}${name}${variant}</div>`
+    }).join("")
+    const itemNotes = item.notes
+      ? `<div style="font-size:11px;font-weight:700;margin-top:2px">Note: ${item.notes}</div>`
+      : ""
+    return `
+      <tr style="border-bottom:1px dashed #000;">
+        <td style="padding:6px 4px;text-align:left;font-weight:800;text-transform:uppercase;">
+          ${item.name}${mods}${combos}${itemNotes}
+        </td>
+        <td style="padding:6px 4px;text-align:center;font-weight:900;font-size:16px;vertical-align:top;width:48px;">${item.quantity}</td>
+      </tr>`
+  }).join("")
 
   const ticketBody = (forPrint: boolean) => {
-    const stationBlocks = Object.entries(grouped).map(([kitchenName, stationItems]) => {
-      const rows = stationItems.map((item) => {
-        const mods = item.selectedModifiers?.length
-          ? `<div style="font-size:11px;font-weight:400;margin-top:2px">${item.selectedModifiers.map((m) => "- " + m.name).join("<br>")}</div>`
-          : ""
-        const itemNotes = item.notes
-          ? `<div style="font-size:11px;font-weight:700;margin-top:2px">Note: ${item.notes}</div>`
-          : ""
-        return `
-          <tr style="border-bottom:1px dashed #000;">
-            <td style="padding:6px 4px;text-align:left;font-weight:800;text-transform:uppercase;">
-              ${item.name}${mods}${itemNotes}
-            </td>
-            <td style="padding:6px 4px;text-align:center;font-weight:900;font-size:16px;vertical-align:top;width:48px;">${item.quantity}</td>
-          </tr>`
-      }).join("")
-      return `
+    const stationBlocks = `
         <div style="border:2px solid #000;margin-bottom:8px;">
-          <div style="text-align:center;font-weight:900;text-transform:uppercase;padding:4px;border-bottom:2px dashed #000;">${kitchenName}</div>
           <table style="width:100%;border-collapse:collapse;font-size:13px;">
             <thead>
               <tr style="border-bottom:2px dashed #000;">
@@ -75,10 +74,9 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
                 <th style="padding:4px;text-align:center;width:48px;">Qty</th>
               </tr>
             </thead>
-            <tbody>${rows}</tbody>
+            <tbody>${itemRowsHtml(items)}</tbody>
           </table>
         </div>`
-    }).join("")
 
     return `
       <div style="text-align:center;font-weight:900;font-size:18px;letter-spacing:1px;margin-bottom:6px;">KITCHEN TICKET</div>
@@ -152,33 +150,35 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
           : <div><span className="font-black mr-1">Waiter:</span>{waiterName || "Unassigned"}</div>}
         <div><span className="font-black mr-1">Time:</span>{dateStr}, {timeStr}</div>
       </div>
-      {Object.entries(grouped).map(([kitchenName, stationItems]) => (
-        <div key={kitchenName} className="border-2 border-black mb-2">
-          <div className="text-center font-black uppercase py-1 border-b-2 border-dashed border-black">{kitchenName}</div>
-          <table className="w-full text-[13px] border-collapse">
-            <thead>
-              <tr className="border-b-2 border-dashed border-black">
-                <th className="text-left py-1 px-1">Item</th>
-                <th className="text-center py-1 px-1 w-12">Qty</th>
+      <div className="border-2 border-black mb-2">
+        <table className="w-full text-[13px] border-collapse">
+          <thead>
+            <tr className="border-b-2 border-dashed border-black">
+              <th className="text-left py-1 px-1">Item</th>
+              <th className="text-center py-1 px-1 w-12">Qty</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item, idx) => (
+              <tr key={idx} className="border-b border-dashed border-black last:border-0">
+                <td className="py-1.5 px-1 font-extrabold uppercase">
+                  {item.name}
+                  {item.selectedModifiers?.map((m) => (
+                    <div key={m.name} className="text-[11px] font-normal normal-case">- {m.name}</div>
+                  ))}
+                  {(item.combo_components || []).map((c, cidx) => (
+                    <div key={cidx} className="text-[11px] font-normal normal-case">
+                      - {(c.quantity && c.quantity > 1) ? `${c.quantity}x ` : ''}{c.product_name_snapshot || c.product_name || 'Item'}{c.variant_snapshot ? ` (${c.variant_snapshot})` : ''}
+                    </div>
+                  ))}
+                  {item.notes && <div className="text-[11px] font-bold">Note: {item.notes}</div>}
+                </td>
+                <td className="py-1.5 px-1 text-center font-black text-base align-top">{item.quantity}</td>
               </tr>
-            </thead>
-            <tbody>
-              {stationItems.map((item, idx) => (
-                <tr key={idx} className="border-b border-dashed border-black last:border-0">
-                  <td className="py-1.5 px-1 font-extrabold uppercase">
-                    {item.name}
-                    {item.selectedModifiers?.map((m) => (
-                      <div key={m.name} className="text-[11px] font-normal normal-case">- {m.name}</div>
-                    ))}
-                    {item.notes && <div className="text-[11px] font-bold">Note: {item.notes}</div>}
-                  </td>
-                  <td className="py-1.5 px-1 text-center font-black text-base align-top">{item.quantity}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
+            ))}
+          </tbody>
+        </table>
+      </div>
       {notes && (
         <div className="mt-2 font-black border-t-2 border-dashed border-black pt-2">NOTE: {notes}</div>
       )}

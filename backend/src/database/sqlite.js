@@ -34,7 +34,7 @@ class DatabaseEngine {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
     this.db.pragma('foreign_keys = ON');
-    this.db.pragma('busy_timeout = 5000');
+    this.db.pragma('busy_timeout = 30000');
     this.db.pragma('cache_size = -64000');
     this.db.pragma('temp_store = MEMORY');
     // Explicit safety net: keep SQLite's own default auto-checkpoint active

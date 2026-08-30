@@ -7,6 +7,8 @@ export const userRepository = {
       SELECT u.id, u.username, u.first_name, u.last_name, u.is_active, u.show_on_login, u.last_login, u.profile_photo, u.phone, u.email, u.joining_date, r.name as role_name, r.id as role_id 
       FROM users u
       JOIN roles r ON u.role_id = r.id
+      WHERE u.username != 'system_user'
+        AND u.id != '00000000-0000-4000-a000-000000000001'
       ORDER BY u.created_at DESC
     `);
     return stmt.all();
@@ -18,6 +20,8 @@ export const userRepository = {
       FROM users u
       LEFT JOIN roles r ON u.role_id = r.id
       WHERE u.is_active = 1 AND u.show_on_login = 1
+        AND u.username != 'system_user'
+        AND u.id != '00000000-0000-4000-a000-000000000001'
       ORDER BY u.first_name ASC
     `);
     return stmt.all();

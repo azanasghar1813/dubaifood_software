@@ -213,19 +213,14 @@ class OrderCreationService {
         const v = val !== undefined ? val : cartVal;
         return v === '' ? null : (v || null);
       };
-      const customerId = resolveId(options.customer_id, cart.customer_id);
-      const tableId = resolveId(options.table_id, cart.table_id);
-      const waiterId = resolveId(options.waiter_id, cart.waiter_id);
+      const customerId = this._existingId('customers', resolveId(options.customer_id, cart.customer_id));
+      const tableId = this._resolveDiningTableId(resolveId(options.table_id, cart.table_id));
+      const waiterId = this._existingId('users', resolveId(options.waiter_id, cart.waiter_id));
       const waiterNameSnapshot = resolveId(options.waiter_name_snapshot, cart.waiter_name_snapshot);
-      const riderId = resolveId(options.rider_id, cart.rider_id);
+      const riderId = this._existingId('users', resolveId(options.rider_id, cart.rider_id));
       const riderNameSnapshot = resolveId(options.rider_name_snapshot, cart.rider_name_snapshot);
-      
+
       if (tableId) {
-        try {
-          dbEngine.db.prepare('INSERT OR IGNORE INTO dining_tables (id, table_number, status) VALUES (?, ?, ?)').run(tableId, tableId, 'OCCUPIED');
-        } catch (e) {
-          console.warn("Failed to auto-create dining table:", e);
-        }
         try {
           dbEngine.prepare(`UPDATE tables SET status = 'Occupied' WHERE id = ? OR name = ?`).run(tableId, tableId);
         } catch (e) {
@@ -392,7 +387,7 @@ class OrderCreationService {
         }
 
         // Combo component snapshots
-        for (const comp of (cartItem.comboComponents || [])) {
+        for (const comp of (cartItem.comboComponents || cartItem.combo_components || [])) {
           orderItemRepository.addComboComponent({
             id: crypto.randomUUID(),
             order_item_id: itemId,
@@ -445,6 +440,53 @@ class OrderCreationService {
 
     // 5. Hydrate and return full order graph
     return this._hydrateOrder(orderId);
+  }
+
+  _existingId(table, id) {
+    if (!id) return null;
+    try {
+      const row = dbEngine.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(id);
+      return row ? row.id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  _resolveDiningTableId(tableId) {
+    if (!tableId) return null;
+    try {
+      const byId = dbEngine.prepare('SELECT id FROM dining_tables WHERE id = ?').get(tableId);
+      if (byId) return byId.id;
+      const byNumber = dbEngine.prepare('SELECT id FROM dining_tables WHERE table_number = ?').get(String(tableId));
+      if (byNumber) return byNumber.id;
+
+      let floor = null;
+      try {
+        floor = dbEngine.prepare('SELECT id, name FROM tables WHERE id = ? OR name = ?').get(tableId, String(tableId));
+      } catch { /* floor table map may be missing */ }
+
+      const id = floor?.id || String(tableId);
+      const number = floor?.name || String(tableId);
+      try {
+        dbEngine.prepare(
+          `INSERT OR IGNORE INTO dining_tables (id, table_number, status) VALUES (?, ?, 'OCCUPIED')`
+        ).run(id, number);
+      } catch (e) {
+        try {
+          dbEngine.prepare(
+            `INSERT OR IGNORE INTO dining_tables (id, table_number, status) VALUES (?, ?, 'OCCUPIED')`
+          ).run(id, id);
+        } catch {
+          console.warn('Failed to auto-create dining table:', e.message);
+          return null;
+        }
+      }
+      const created = dbEngine.prepare('SELECT id FROM dining_tables WHERE id = ?').get(id);
+      return created ? created.id : null;
+    } catch (e) {
+      console.warn('Failed to resolve dining table:', e.message);
+      return null;
+    }
   }
 }
 

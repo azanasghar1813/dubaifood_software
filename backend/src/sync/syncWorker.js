@@ -404,7 +404,10 @@ class SyncWorker {
             if (orders && orders.length > 0) {
               const anyRole = dbEngine.prepare('SELECT id, name FROM roles LIMIT 1').get();
               if (anyRole) {
-                 dbEngine.prepare(`INSERT OR IGNORE INTO users (id, username, password_hash, pin_code, first_name, last_name, role_id, force_pin_change, is_active, created_at, updated_at) VALUES (?, 'system_user', 'system_hash', '0000', 'System', 'User', ?, 0, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(SYSTEM_USER_ID, anyRole.id);
+                 dbEngine.prepare(`INSERT OR IGNORE INTO users (id, username, password_hash, pin_code, first_name, last_name, role_id, force_pin_change, is_active, created_at, updated_at) VALUES (?, 'system_user', 'system_hash', '0000', 'System', 'User', ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(SYSTEM_USER_ID, anyRole.id);
+                 try {
+                   dbEngine.prepare(`UPDATE users SET show_on_login = 0, is_active = 0 WHERE id = ?`).run(SYSTEM_USER_ID);
+                 } catch { /* show_on_login may be missing */ }
                  dbEngine.prepare(`INSERT OR IGNORE INTO cashier_sessions (id, user_id, terminal_id, status, opening_float, opened_at, created_at, updated_at) VALUES (?, ?, 'System Sync', 'CLOSED', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(SYSTEM_SHIFT_ID, SYSTEM_USER_ID);
               }
             }

@@ -98,15 +98,15 @@ export default function Login() {
           <div className="w-full max-w-md bg-card border border-border rounded-3xl p-8 shadow-2xl">
             <h2 className="text-2xl font-black mb-2">Set this till’s device ID</h2>
             <p className="text-sm text-muted-foreground font-bold mb-6">
-              Choose once. Counter 1 uses PC1-1, PC1-2. Counter 2 uses PC2-1, PC2-2. This cannot be changed later.
+              Choose this counter’s ID once (PC1–PC5). Waiter tablets do not need their own ID — they connect to this laptop. Orders will look like PC1-1, PC2-1.
             </p>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              {['PC1', 'PC2'].map((id) => (
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {['PC1', 'PC2', 'PC3', 'PC4', 'PC5'].map((id) => (
                 <button
                   key={id}
                   type="button"
                   onClick={() => setDeviceIdInput(id)}
-                  className={`h-16 rounded-2xl border-2 font-black text-2xl tracking-widest transition-all ${
+                  className={`h-14 rounded-2xl border-2 font-black text-xl tracking-widest transition-all ${
                     deviceIdInput === id
                       ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/30'
                       : 'bg-secondary border-border text-foreground hover:border-primary/50'
@@ -118,7 +118,7 @@ export default function Login() {
             </div>
             <button
               type="button"
-              disabled={(deviceIdInput !== 'PC1' && deviceIdInput !== 'PC2') || deviceSaving}
+              disabled={!['PC1', 'PC2', 'PC3', 'PC4', 'PC5'].includes(deviceIdInput) || deviceSaving}
               onClick={saveDeviceId}
               className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-black uppercase disabled:opacity-50"
             >

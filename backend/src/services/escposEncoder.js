@@ -361,7 +361,7 @@ class EscPosEncoder {
     parts.push(this._align('center'));
     parts.push(this._doubleSize(true));
     parts.push(this._bold(true));
-    parts.push(this._encodeText(payload.station?.station_name || 'KITCHEN', iconvEncoding));
+    parts.push(this._encodeText('KITCHEN TICKET', iconvEncoding));
     parts.push(this._lf());
     parts.push(this._doubleSize(false));
     parts.push(this._bold(false));

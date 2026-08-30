@@ -23,6 +23,7 @@ export interface KitchenItem {
   kitchen: string
   status: KitchenStatus
   type: 'ADD' | 'REMOVE' | 'NORMAL'
+  combo_components?: Array<{ product_name_snapshot?: string; product_name?: string; quantity?: number; variant_snapshot?: string }>
 }
 
 export interface KitchenTicket {
@@ -132,6 +133,7 @@ export const useKdsStore = create<KdsState>((set, get) => ({
                 modifiers: item.modifiers?.map((m: any) => ({ name: m.modifier_name_snapshot })) || [],
                 notes: item.notes || null,
                 kitchen: item.category_name || item.kitchen_station_name_snapshot || 'Main Kitchen',
+                combo_components: item.combo_components || item.comboComponents || [],
                 status: is as KitchenStatus,
                 type: type as 'ADD' | 'NORMAL' | 'REMOVE'
               }

@@ -44,9 +44,15 @@ class ConfigService {
       if (legacy && isLegacyTillPrefix(legacy.value)) {
         dbEngine.prepare("DELETE FROM application_settings WHERE key = 'order_prefix'").run();
         this.refreshCache();
-        console.log(`[ConfigService] Removed legacy till prefix ${legacy.value}. Choose PC1 or PC2 on login.`);
+        console.log(`[ConfigService] Removed legacy till prefix ${legacy.value}. Choose PC1–PC5 on login.`);
       }
     } catch { /* settings table may not exist yet */ }
+
+    try {
+      dbEngine.prepare(
+        `UPDATE users SET show_on_login = 0, is_active = 0 WHERE username = 'system_user' OR id = '00000000-0000-4000-a000-000000000001'`
+      ).run();
+    } catch { /* column or table may not exist yet */ }
 
     console.log('[ConfigService] In-memory configuration cache loaded.');
   }
@@ -124,8 +130,8 @@ class ConfigService {
       throw new Error('Device ID is already set and cannot be changed.');
     }
     const clean = String(prefix || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (clean !== 'PC1' && clean !== 'PC2') {
-      throw new Error('Device ID must be PC1 or PC2.');
+    if (!['PC1', 'PC2', 'PC3', 'PC4', 'PC5'].includes(clean)) {
+      throw new Error('Device ID must be PC1, PC2, PC3, PC4 or PC5.');
     }
     this.updateApplicationCategory('SYSTEM', 'SYNC', { order_prefix: clean });
     return clean;

@@ -2079,7 +2079,7 @@ export default function POS() {
                                   quantity: item.quantity,
                                   selectedModifiers: item.selectedModifiers,
                                   notes: item.notes,
-                                  kitchen: item.category || 'KITCHEN'
+                                  combo_components: item.combo_components || item.comboComponents || []
                                 }))
                               }
                               setKotPreview(preview)
@@ -2635,7 +2635,7 @@ export default function POS() {
 
                       if (!success) {
                         setIsProcessing(false)
-                        alert("Could not complete this order. Your cart has been kept \u2014 please check your connection and try again.")
+                        alert("Could not complete this order. The cart is still here — please try again.")
                         return
                       }
                       

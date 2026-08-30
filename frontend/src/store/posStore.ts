@@ -528,7 +528,7 @@ export const usePosStore = create<POSState>()(
       }
 
       if (!order.order_number) {
-        const checkoutResult = await cartService.checkout({
+        const checkoutPayload = {
           order_type: state.orderType === 'Delivery' ? 'DELIVERY' : state.orderType === 'Takeaway' ? 'TAKEAWAY' : state.orderType === 'Drive Through' ? 'DRIVE_THROUGH' : 'DINE_IN',
           customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || order.customer_id || null,
           customer_name: state.customer?.name || null,
@@ -545,7 +545,15 @@ export const usePosStore = create<POSState>()(
           service_charge: state.getServiceCharge(),
           is_tax_enabled: false,
           discount_total: discountTotal
-        }, checkoutKey)
+        }
+
+        let checkoutResult: any = null
+        try {
+          checkoutResult = await cartService.checkout(checkoutPayload, checkoutKey)
+        } catch (firstErr) {
+          checkoutResult = await cartService.checkout(checkoutPayload, checkoutKey).catch(() => null)
+          if (!checkoutResult) throw firstErr
+        }
 
         if (!(checkoutResult as any).success) {
           console.error('Checkout failed:', checkoutResult)
@@ -596,13 +604,9 @@ export const usePosStore = create<POSState>()(
   },
 
   clearCart: () => {
-    void cartService.clearCart().then(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0, isVipOrder: false, checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
-      void get().fetchDraftOrder()
-    }).catch(() => {
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0, isVipOrder: false, checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
-      void get().fetchDraftOrder()
-    })
+    set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0, isVipOrder: false, checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
+    void cartService.clearCart().catch(() => {})
+    void get().fetchDraftOrder()
   },
 
   getSubtotal: () => get().activeOrder?.totals?.subtotal ?? get().activeOrder?.subtotal ?? 0,

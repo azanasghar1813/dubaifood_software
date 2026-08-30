@@ -39,47 +39,25 @@ class KitchenTicketGeneratorService {
     const businessProfile = configService.getBusinessProfile() || {};
     const kitchenConfig   = configService.getKitchenConfig()   || {};
 
-    // Group items by kitchen station
-    const stationMap = new Map();
-
+    const items = [];
     for (const item of order.items) {
-      // Skip cancelled items
       if (item.kitchen_state === 'CANCELLED') continue;
-
-      const stationId   = item.kitchen_station_id   || 'GENERAL';
-      const stationName = item.kitchen_station_name_snapshot
-        || this._inferStationName(item)
-        || 'Kitchen';
-
-      if (!stationMap.has(stationId)) {
-        stationMap.set(stationId, {
-          station_id:   stationId,
-          station_name: stationName,
-          station_type: this._inferStationType(stationId, stationName),
-          items:        [],
-        });
-      }
-
-      stationMap.get(stationId).items.push(item);
+      items.push(item);
     }
+    if (items.length === 0) return [];
 
-    if (stationMap.size === 0) return [];
-
-    // Generate a ticket payload for each station
-    const tickets = [];
-    const now = new Date().toISOString();
-
-    for (const [stationId, stationData] of stationMap) {
-      tickets.push(this._buildTicketPayload({
-        order,
-        stationData,
-        businessProfile,
-        kitchenConfig,
-        generatedAt: now,
-      }));
-    }
-
-    return tickets;
+    return [this._buildTicketPayload({
+      order,
+      stationData: {
+        station_id: 'GENERAL',
+        station_name: 'KITCHEN TICKET',
+        station_type: KitchenStationType.GENERAL,
+        items,
+      },
+      businessProfile,
+      kitchenConfig,
+      generatedAt: new Date().toISOString(),
+    })];
   }
 
   /**
