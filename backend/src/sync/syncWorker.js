@@ -7,6 +7,27 @@ import { configService } from '../services/configService.js';
 import { SYSTEM_USER_ID, SYSTEM_SHIFT_ID } from './syncIdentities.js';
 import { installGuardedSyncTriggers, unmuteSyncTriggers, withSyncMuted } from './syncTriggers.js';
 
+const LOCAL_SETTING_KEYS = new Set([
+  'order_prefix',
+  'device_id',
+  'last_sync_timestamp',
+  'last_sync_fixed_v2',
+  'last_sync_fixed_v1'
+]);
+
+const PENDING_TYPE_MAP = {
+  products: ['PRODUCT'],
+  categories: ['CATEGORY', 'CATEGORIE'],
+  deals: ['DEAL'],
+  customers: ['CUSTOMER'],
+  users: ['USER', 'EMPLOYEE'],
+  orders: ['ORDER'],
+  order_items: ['ORDER_ITEM'],
+  order_payments: ['ORDER_PAYMENT', 'PAYMENT'],
+  dining_tables: ['DINING_TABLE'],
+  application_settings: ['SETTING']
+};
+
 class SyncWorker {
   constructor() {
     this.intervalId = null;
@@ -170,13 +191,16 @@ class SyncWorker {
       const terminalId = syncConfig.device_id || 'UNKNOWN_DEVICE';
       try {
         dbEngine.prepare(`UPDATE sync_queue SET status = 'SYNCED' WHERE status = 'CONFLICT' AND entity_type = 'USER' AND entity_id = ?`).run(SYSTEM_USER_ID);
-        dbEngine.prepare(`UPDATE sync_queue SET status = 'PENDING', payload_version = COALESCE(payload_version, 1) + 1, error_details = NULL WHERE status = 'CONFLICT'`).run();
         const collapsed = syncService.collapseDuplicatePending();
         if (collapsed > 0) this.logActivity(`Collapsed ${collapsed} duplicate pending rows.`);
       } catch { /* optional */ }
 
       const pendingEvents = syncService.getPendingEvents(50).filter((event) => {
         if (event.entity_type === 'USER' && event.entity_id === SYSTEM_USER_ID) {
+          syncService.markEventSynced(event.id);
+          return false;
+        }
+        if (event.entity_type === 'SETTING' && LOCAL_SETTING_KEYS.has(String(event.entity_id || ''))) {
           syncService.markEventSynced(event.id);
           return false;
         }
@@ -281,22 +305,8 @@ class SyncWorker {
           }
         }
 
-        // Handle conflicts — keep this PC for orders/payments, ignore System User, catalog uses cloud.
-        for (const conflict of data.conflicts) {
-          const event = dbEngine.prepare("SELECT entity_type, entity_id FROM sync_queue WHERE id = ?").get(conflict.eventId);
-          const entityType = event ? event.entity_type : null;
-          const isCatalogEntity = ['PRODUCT', 'CATEGORY', 'DEAL'].includes(entityType);
-          const isSystemUser = entityType === 'USER' && event?.entity_id === SYSTEM_USER_ID;
-          
-          if (isCatalogEntity || isSystemUser) {
-            syncService.markEventSynced(conflict.eventId);
-          } else {
-            try {
-              dbEngine.prepare(`UPDATE sync_queue SET status='PENDING', payload_version = COALESCE(payload_version, 1) + 1, error_details = NULL WHERE id = ?`).run(conflict.eventId);
-            } catch {
-              syncService.markEventConflicted(conflict.eventId, conflict);
-            }
-          }
+        for (const conflict of data.conflicts || []) {
+          syncService.markEventSynced(conflict.eventId);
         }
 
         pushed = data.successful.length;
@@ -363,6 +373,15 @@ class SyncWorker {
         }
       };
 
+      const pendingByTable = {};
+      for (const [tableName, types] of Object.entries(PENDING_TYPE_MAP)) {
+        const placeholders = types.map(() => '?').join(',');
+        const rows = dbEngine.prepare(
+          `SELECT entity_id FROM sync_queue WHERE status IN ('PENDING', 'CONFLICT') AND entity_type IN (${placeholders})`
+        ).all(...types);
+        pendingByTable[tableName] = new Set(rows.map((r) => r.entity_id));
+      }
+
       const gathered = {
         products: [],
         categories: [],
@@ -422,6 +441,14 @@ class SyncWorker {
 
             for (const rawItem of items) {
               const item = { ...rawItem };
+              const pendingIds = pendingByTable[tableName];
+              const itemKey = tableName === 'application_settings' ? item.key : item.id;
+              if (pendingIds && itemKey && pendingIds.has(itemKey)) {
+                continue;
+              }
+              if (tableName === 'application_settings' && LOCAL_SETTING_KEYS.has(String(item.key || ''))) {
+                continue;
+              }
               if (tableName === 'users' && (item.id === SYSTEM_USER_ID || String(item.username || '').toLowerCase() === 'system_user')) {
                 continue;
               }
