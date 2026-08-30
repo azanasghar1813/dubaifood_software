@@ -185,6 +185,54 @@ class SyncService {
     }
     return dbEngine.prepare(`DELETE FROM sync_queue WHERE status = 'SYNCED' OR permanent_failure = 1`).run().changes;
   }
+
+  collapseDuplicatePending() {
+    const dups = dbEngine.prepare(`
+      SELECT entity_type, entity_id, COUNT(*) AS c
+      FROM sync_queue
+      WHERE status = 'PENDING'
+      GROUP BY entity_type, entity_id
+      HAVING c > 1
+    `).all();
+    let removed = 0;
+    const del = dbEngine.prepare('DELETE FROM sync_queue WHERE id = ?');
+    for (const dup of dups) {
+      const rows = dbEngine.prepare(`
+        SELECT id FROM sync_queue
+        WHERE status = 'PENDING' AND entity_type = ? AND entity_id = ?
+        ORDER BY created_at DESC, rowid DESC
+      `).all(dup.entity_type, dup.entity_id);
+      for (const extra of rows.slice(1)) {
+        del.run(extra.id);
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
+  pruneSynced(keep = 50) {
+    const keepRows = dbEngine.prepare(`
+      SELECT id FROM sync_queue
+      WHERE status = 'SYNCED'
+      ORDER BY updated_at DESC, rowid DESC
+      LIMIT ?
+    `).all(keep);
+    if (keepRows.length === 0) {
+      return dbEngine.prepare(`DELETE FROM sync_queue WHERE status = 'SYNCED'`).run().changes;
+    }
+    const placeholders = keepRows.map(() => '?').join(', ');
+    return dbEngine.prepare(
+      `DELETE FROM sync_queue WHERE status = 'SYNCED' AND id NOT IN (${placeholders})`
+    ).run(...keepRows.map((r) => r.id)).changes;
+  }
+
+  markEventsSynced(eventIds = []) {
+    if (!eventIds.length) return 0;
+    const placeholders = eventIds.map(() => '?').join(', ');
+    return dbEngine.prepare(
+      `UPDATE sync_queue SET status = 'SYNCED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`
+    ).run(...eventIds).changes;
+  }
 }
 
 export const syncService = new SyncService();

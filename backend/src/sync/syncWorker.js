@@ -5,6 +5,7 @@ import { syncService } from '../services/syncService.js';
 import { dbEngine } from '../database/sqlite.js';
 import { configService } from '../services/configService.js';
 import { SYSTEM_USER_ID, SYSTEM_SHIFT_ID } from './syncIdentities.js';
+import { installGuardedSyncTriggers, unmuteSyncTriggers, withSyncMuted } from './syncTriggers.js';
 
 class SyncWorker {
   constructor() {
@@ -116,6 +117,17 @@ class SyncWorker {
   start() {
     if (this.intervalId) return;
     this.logActivity('Starting background synchronization worker...');
+
+    try {
+      installGuardedSyncTriggers();
+      unmuteSyncTriggers();
+      const collapsed = syncService.collapseDuplicatePending();
+      if (collapsed > 0) this.logActivity(`Removed ${collapsed} duplicate pending sync rows.`);
+      const pruned = syncService.pruneSynced(50);
+      if (pruned > 0) this.logActivity(`Cleared ${pruned} old synced rows to free storage.`);
+    } catch (e) {
+      this.logActivity(`Failed to repair sync queue/triggers: ${e.message}`, 'error');
+    }
     
     // Automatically retry any previously failed syncs on startup
     try {
@@ -159,6 +171,8 @@ class SyncWorker {
       try {
         dbEngine.prepare(`UPDATE sync_queue SET status = 'SYNCED' WHERE status = 'CONFLICT' AND entity_type = 'USER' AND entity_id = ?`).run(SYSTEM_USER_ID);
         dbEngine.prepare(`UPDATE sync_queue SET status = 'PENDING', payload_version = COALESCE(payload_version, 1) + 1, error_details = NULL WHERE status = 'CONFLICT'`).run();
+        const collapsed = syncService.collapseDuplicatePending();
+        if (collapsed > 0) this.logActivity(`Collapsed ${collapsed} duplicate pending rows.`);
       } catch { /* optional */ }
 
       const pendingEvents = syncService.getPendingEvents(50).filter((event) => {
@@ -211,11 +225,7 @@ class SyncWorker {
                          delete record.deleted_at;
                          delete record.locked_by;
                      }
-                     try {
-                       dbEngine.prepare(`UPDATE ${tableName} SET payload_version = COALESCE(payload_version, 1) + 1 WHERE id = ?`).run(event.entity_id);
-                       record.payload_version = (Number(record.payload_version) || 1) + 1;
-                     } catch { /* payload_version may be missing */ }
-                     event.payload_version = record.payload_version || event.payload_version || 1;
+                     event.payload_version = Number(record.payload_version || event.payload_version || 1);
                      event.payload = JSON.stringify(record);
                  } else {
                      // If record is gone, convert to DELETE
@@ -291,6 +301,7 @@ class SyncWorker {
 
         pushed = data.successful.length;
         this.logActivity(`Push complete. Success: ${data.successful.length}, Failed: ${data.failed.length}, Conflicts: ${data.conflicts.length}`);
+        try { syncService.pruneSynced(50); } catch { /* ignore */ }
         
         // Reset delay on success if queue is full
         if (pendingEvents.length === 50) {
@@ -384,7 +395,7 @@ class SyncWorker {
       }
 
       if (totalPulled > 0) {
-        dbEngine.transaction(() => {
+        withSyncMuted(() => dbEngine.transaction(() => {
           const upsertData = (tableName, items) => {
             if (!items || items.length === 0) return;
 
@@ -477,7 +488,7 @@ class SyncWorker {
           upsertData('orders', gathered.orders);
           upsertData('order_items', gathered.order_items);
           upsertData('order_payments', gathered.order_payments);
-        });
+        }));
       }
 
       if (totalPulled > 0) {
@@ -504,6 +515,7 @@ class SyncWorker {
       this.logActivity(`Backing off. Next attempt in ${this.currentDelayMs / 1000}s`);
       return { success: false, error: error.message };
     } finally {
+      try { unmuteSyncTriggers(); } catch { /* never leave triggers muted */ }
       if (this.currentPhase !== 'ERROR') {
         this.currentPhase = 'IDLE';
       }
