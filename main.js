@@ -209,6 +209,8 @@ const startBackendProcess = async () => {
 
   const backendEnv = { ...process.env };
   backendEnv.PORT = BACKEND_PORT;
+  if (!backendEnv.SYNC_API_URL) backendEnv.SYNC_API_URL = 'https://dubaifood-sync-api.vercel.app/api/v1';
+  if (!backendEnv.DEVICE_SECRET) backendEnv.DEVICE_SECRET = 'Azan@181314Sync2026';
   if (app.isPackaged) {
     backendEnv.STORAGE_ROOT = path.join(app.getPath('userData'), 'storage');
   }
@@ -220,7 +222,8 @@ const startBackendProcess = async () => {
     backendEnv.NODE_PATH = path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules');
   }
 
-  backendProcess = spawn(nodeExe, [serverScript], {
+  const nodeArgs = app.isPackaged ? ['--use-system-ca', serverScript] : [serverScript];
+  backendProcess = spawn(nodeExe, nodeArgs, {
     env: backendEnv,
     cwd: app.isPackaged
       ? path.join(process.resourcesPath, 'app.asar.unpacked')

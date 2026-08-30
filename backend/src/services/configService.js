@@ -2,10 +2,14 @@ import { settingsRepository } from '../repositories/settingsRepository.js';
 import { printerRepository } from '../repositories/printerRepository.js';
 import { paymentMethodRepository } from '../repositories/paymentMethodRepository.js';
 import { activityLogService } from './activityLogService.js';
+import { dbEngine } from '../database/sqlite.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { SerialPort } from 'serialport';
 import crypto from 'crypto';
+import os from 'os';
+
+const isLegacyTillPrefix = (prefix) => /^T[0-9A-F]{2}$/i.test(String(prefix || '').trim());
 
 const execAsync = promisify(exec);
 
@@ -32,11 +36,17 @@ class ConfigService {
       console.log(`[ConfigService] Generated persistent device_id: ${deviceId}`);
     }
     
-    if (!syncConfig.order_prefix) {
-      const prefix = `T${Math.floor(Math.random() * 90) + 10}`; // e.g. T42
-      this.updateApplicationCategory('SYSTEM', 'SYNC', { order_prefix: prefix });
-      console.log(`[ConfigService] Generated default order_prefix: ${prefix}`);
-    }
+    // Txx prefixes (e.g. T93) were auto-generated — wipe so the till can pick PC1/PC2.
+    try {
+      const legacy = dbEngine.prepare(
+        "SELECT value FROM application_settings WHERE key = 'order_prefix'"
+      ).get();
+      if (legacy && isLegacyTillPrefix(legacy.value)) {
+        dbEngine.prepare("DELETE FROM application_settings WHERE key = 'order_prefix'").run();
+        this.refreshCache();
+        console.log(`[ConfigService] Removed legacy till prefix ${legacy.value}. Choose PC1 or PC2 on login.`);
+      }
+    } catch { /* settings table may not exist yet */ }
 
     console.log('[ConfigService] In-memory configuration cache loaded.');
   }
@@ -106,6 +116,34 @@ class ConfigService {
 
   getSyncConfig() {
     return this.getApplicationCategory('SYNC');
+  }
+
+  claimOrderPrefix(prefix) {
+    const current = this.getSyncConfig().order_prefix;
+    if (current && !isLegacyTillPrefix(current)) {
+      throw new Error('Device ID is already set and cannot be changed.');
+    }
+    const clean = String(prefix || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (clean !== 'PC1' && clean !== 'PC2') {
+      throw new Error('Device ID must be PC1 or PC2.');
+    }
+    this.updateApplicationCategory('SYSTEM', 'SYNC', { order_prefix: clean });
+    return clean;
+  }
+
+  getLanLoginUrls() {
+    const port = process.env.PORT || 5000;
+    const urls = [];
+    const nets = os.networkInterfaces();
+    for (const addrs of Object.values(nets || {})) {
+      for (const addr of addrs || []) {
+        const family = addr.family === 'IPv4' || addr.family === 4;
+        if (family && !addr.internal) {
+          urls.push(`http://${addr.address}:${port}/login`);
+        }
+      }
+    }
+    return urls;
   }
 
   // Setters

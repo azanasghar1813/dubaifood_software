@@ -19,7 +19,8 @@ class OrderNumberService {
     const syncConfig = configService.getSyncConfig() || {};
     
     // Prioritize the device-specific order_prefix, fallback to global prefix or 'POS'
-    const prefix = syncConfig.order_prefix || orderConfig.order_number_prefix || 'POS';
+    let prefix = syncConfig.order_prefix || orderConfig.order_number_prefix || 'POS';
+    if (/^T[0-9A-F]{2}$/i.test(String(prefix))) prefix = 'POS';
     const padLength = orderConfig.order_number_pad_length || 1;
     
     let resetDaily = true;
@@ -63,15 +64,53 @@ class OrderNumberService {
         .replace('{BRANCH}', branchId)
         .replace('{SEQ}', seqPadded);
 
-      // Verify uniqueness guard (in case of override)
-      const existing = dbEngine.prepare('SELECT id FROM orders WHERE order_number = ?').get(orderNumber);
-      if (existing) {
-        // Fallback suffix if collision
-        orderNumber = `${orderNumber}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+      while (dbEngine.prepare('SELECT id FROM orders WHERE order_number = ?').get(orderNumber)) {
+        nextSeq += 1;
+        dbEngine.prepare(`
+          UPDATE order_number_sequences
+          SET last_sequence = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE branch_id = ? AND business_date = ? AND prefix = ?
+        `).run(nextSeq, branchId, dateKey, prefix);
+        const padded = String(nextSeq).padStart(padLength, '0');
+        orderNumber = template
+          .replace('{PREFIX}', prefix)
+          .replace('{YYYYMMDD}', dateFormatted)
+          .replace('{BRANCH}', branchId)
+          .replace('{SEQ}', padded);
       }
 
       return orderNumber;
     });
+  }
+
+  peekNextNumber(branchId = 'DEFAULT_BRANCH', businessDate = null) {
+    if (!businessDate) {
+      businessDate = new Date().toISOString().split('T')[0];
+    }
+    const orderConfig = configService.getOrderConfig() || {};
+    const syncConfig = configService.getSyncConfig() || {};
+    let prefix = syncConfig.order_prefix || orderConfig.order_number_prefix || 'POS';
+    if (/^T[0-9A-F]{2}$/i.test(String(prefix))) prefix = 'POS';
+    const padLength = orderConfig.order_number_pad_length || 1;
+    let resetDaily = true;
+    if (orderConfig.order_number_reset_daily !== undefined) {
+      const val = String(orderConfig.order_number_reset_daily).toLowerCase();
+      resetDaily = val === 'true' || val === '1';
+    }
+    const template = orderConfig.order_number_template || '{PREFIX}-{SEQ}';
+    const dateKey = resetDaily ? businessDate : 'GLOBAL';
+    const seqRow = dbEngine.prepare(`
+      SELECT last_sequence FROM order_number_sequences
+      WHERE branch_id = ? AND business_date = ? AND prefix = ?
+    `).get(branchId, dateKey, prefix);
+    const nextSeq = seqRow ? seqRow.last_sequence + 1 : 1;
+    const seqPadded = String(nextSeq).padStart(padLength, '0');
+    const dateFormatted = businessDate.replace(/-/g, '');
+    return template
+      .replace('{PREFIX}', prefix)
+      .replace('{YYYYMMDD}', dateFormatted)
+      .replace('{BRANCH}', branchId)
+      .replace('{SEQ}', seqPadded);
   }
 }
 

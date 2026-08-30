@@ -10,6 +10,7 @@ import {
   reprintReceipt,
   openCashDrawer,
   cancelJob,
+  clearQueue,
   getPrinterStatuses,
   getPrinterStatus,
   testPrinter,
@@ -25,6 +26,7 @@ router.use(authenticate);
 router.get('/queue',                     getQueue);
 router.get('/queue/stats',               getQueueStats);
 router.get('/queue/order/:orderId',      getJobsByOrder);
+router.post('/queue/clear',              clearQueue);
 router.get('/queue/:jobId',              getJobById);
 router.delete('/queue/:jobId',           cancelJob);
 router.post('/receipt/:orderId',         printReceipt);

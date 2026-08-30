@@ -5,6 +5,7 @@ import {
 } from "lucide-react"
 import { useAuthStore, hasPermission } from "../store/authStore"
 import { configApi } from "../api/configApi"
+import { apiClient } from "../api/client"
 import { wipeOutHistory } from "../api/historyApi"
 import type { BusinessProfile, FinanceConfig, Printer, OrderConfig } from "../api/configApi"
 
@@ -24,6 +25,8 @@ export default function Settings() {
   const [updateInfo, setUpdateInfo] = useState<any>(null)
   const [downloadProgress, setDownloadProgress] = useState<any>(null)
   const [updateError, setUpdateError] = useState("")
+  const [waiterUrls, setWaiterUrls] = useState<string[]>([])
+  const [devicePrefix, setDevicePrefix] = useState<string>("")
 
   // Form Data
   const [orderConfig, setOrderConfig] = useState<OrderConfig>({
@@ -61,6 +64,11 @@ export default function Settings() {
       
       if (data?.business?.order) setOrderConfig(data.business.order)
       if (data?.printers) setPrinters(data.printers)
+      try {
+        const health: any = await apiClient.get('/health')
+        setWaiterUrls(health?.waiter_urls || health?.data?.waiter_urls || [])
+        setDevicePrefix(health?.order_prefix || health?.data?.order_prefix || "")
+      } catch { /* ignore */ }
     } catch (e) {
       console.error("Failed to load config", e)
     } finally {
@@ -267,6 +275,17 @@ export default function Settings() {
           <p className="text-xs text-muted-foreground font-bold mt-1">
             Manage your business profile, service charges, and printer configurations.
           </p>
+          {waiterUrls.length > 0 && (
+            <div className="mt-3 p-3 rounded-xl bg-secondary/60 border border-border">
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">
+                Waiter tablet link {devicePrefix ? `(${devicePrefix})` : ""}
+              </p>
+              {waiterUrls.map((url) => (
+                <p key={url} className="text-sm font-black text-orange-500 break-all">{url}</p>
+              ))}
+              <p className="text-[10px] text-muted-foreground font-bold mt-1">Same Wi-Fi as this PC. Open this address in the tablet browser.</p>
+            </div>
+          )}
         </div>
 
         {activeTab !== "Printers" && (

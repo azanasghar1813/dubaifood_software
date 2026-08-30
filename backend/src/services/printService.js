@@ -194,11 +194,9 @@ class PrintService {
       jobIds.push(jobId);
     }
 
-    setImmediate(() => {
-      printEngineService.processPendingJobs().catch(() => {});
-    });
+    await printEngineService.processPendingJobs();
 
-    return { job_ids: jobIds, count: jobIds.length, status: 'ENQUEUED' };
+    return { job_ids: jobIds, count: jobIds.length, status: 'PRINTED' };
   }
 
   /**
@@ -305,9 +303,19 @@ class PrintService {
   }
 
   _resolveKitchenPrinter(stationType) {
-    // Try to find a printer whose station_type matches
-    const printer = printerManagerService.getDefaultPrinterForJobType('KITCHEN_TICKET');
-    return printer;
+    const preferred = printerManagerService.getDefaultPrinterForJobType('KITCHEN_TICKET');
+    if (preferred && preferred.driver_type && preferred.driver_type !== 'VIRTUAL') {
+      return preferred;
+    }
+    const all = printerManagerService.getAllWithStatus();
+    const hw = all.find((p) =>
+      (p.driver_type === 'ESCPOS_USB' || p.driver_type === 'ESCPOS_LAN') &&
+      p.is_active !== 0 &&
+      (String(p.station_type || '').toUpperCase().includes('KITCHEN') ||
+        String(p.type || '').toLowerCase().includes('kitchen'))
+    );
+    if (hw) return hw;
+    return all.find((p) => (p.driver_type === 'ESCPOS_USB' || p.driver_type === 'ESCPOS_LAN') && p.is_active !== 0) || preferred;
   }
 
   _loadOrder(orderId) {

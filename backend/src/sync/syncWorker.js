@@ -439,7 +439,9 @@ class SyncWorker {
       return { success: true, pushed, pulled };
     } catch (error) {
       this.currentPhase = 'ERROR';
-      this.logActivity(`Sync failed (Offline or API Error): ${error.message}`, 'error');
+      const cause = error.cause?.code || error.cause?.message || error.cause || '';
+      const url = config.sync?.apiUrl || 'unknown';
+      this.logActivity(`Sync failed (Offline or API Error): ${error.message}${cause ? ' [' + cause + ']' : ''} → ${url}`, 'error');
       // Exponential backoff
       this.currentDelayMs = Math.min(this.currentDelayMs * 2, this.maxDelayMs);
       this.logActivity(`Backing off. Next attempt in ${this.currentDelayMs / 1000}s`);

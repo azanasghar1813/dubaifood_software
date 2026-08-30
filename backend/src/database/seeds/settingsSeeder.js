@@ -23,7 +23,7 @@ export const runSettingsSeeder = (db) => {
     { key: 'currency_code', val: 'AED', cat: 'FINANCIAL', desc: 'Default currency code' },
     { key: 'currency_symbol', val: 'د.إ', cat: 'FINANCIAL', desc: 'Currency symbol' },
     { key: 'tax_rate_percent', val: '5.00', cat: 'FINANCIAL', desc: 'Default VAT rate' },
-    { key: 'service_charge_percent', val: '0.00', cat: 'FINANCIAL', desc: 'Default Service Charge' },
+    { key: 'service_charge_percent', val: '7', cat: 'FINANCIAL', desc: 'Default Service Charge' },
     
     // Operations
     { key: 'business_day_start', val: '06:00', cat: 'OPERATIONS', desc: 'When the financial day resets' },

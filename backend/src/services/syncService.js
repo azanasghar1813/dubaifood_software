@@ -70,12 +70,87 @@ class SyncService {
   }
 
   getQueue(status, limit = 50) {
-    return dbEngine.prepare(`
+    const rows = dbEngine.prepare(`
       SELECT * FROM sync_queue 
       WHERE status = ? 
       ORDER BY updated_at DESC 
       LIMIT ?
     `).all(status, limit);
+    if (status !== 'CONFLICT') return rows;
+    return rows.map((row) => this._decorateConflict(row));
+  }
+
+  _decorateConflict(row) {
+    let cloud = {};
+    try { cloud = row.error_details ? JSON.parse(row.error_details) : {}; } catch { cloud = { raw: row.error_details }; }
+
+    const tableMap = {
+      PRODUCT: 'products',
+      CATEGORY: 'categories',
+      DEAL: 'deals',
+      CUSTOMER: 'customers',
+      USER: 'users',
+      EMPLOYEE: 'users',
+      ORDER: 'orders',
+      ORDER_ITEM: 'order_items',
+      ORDER_PAYMENT: 'order_payments',
+      PAYMENT: 'order_payments',
+      DINING_TABLE: 'dining_tables',
+      SETTING: 'application_settings'
+    };
+    const table = tableMap[row.entity_type];
+    let local = null;
+    if (table) {
+      try {
+        const record = table === 'application_settings'
+          ? dbEngine.prepare('SELECT * FROM application_settings WHERE key = ?').get(row.entity_id)
+          : dbEngine.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(row.entity_id);
+        if (record) {
+          if (table === 'orders') {
+            const items = dbEngine.prepare(
+              'SELECT product_name_snapshot as name, quantity FROM order_items WHERE order_id = ? LIMIT 8'
+            ).all(row.entity_id);
+            local = {
+              order_number: record.order_number,
+              status: record.lifecycle_state || record.status,
+              payment: record.payment_state,
+              total: record.grand_total ?? record.total_amount ?? record.total,
+              updated_at: record.updated_at,
+              items: items.map((i) => `${i.quantity}x ${i.name || 'Item'}`)
+            };
+          } else if (table === 'products' || table === 'categories' || table === 'deals') {
+            local = { name: record.name, price: record.price ?? record.selling_price, updated_at: record.updated_at };
+          } else if (table === 'users') {
+            local = { username: record.username, name: `${record.first_name || ''} ${record.last_name || ''}`.trim(), updated_at: record.updated_at };
+          } else if (table === 'customers') {
+            local = { name: `${record.first_name || ''} ${record.last_name || ''}`.trim(), phone: record.phone, updated_at: record.updated_at };
+          } else {
+            local = { id: record.id, updated_at: record.updated_at };
+          }
+        } else {
+          local = { missing: true };
+        }
+      } catch {
+        local = { missing: true };
+      }
+    }
+
+    const label = local?.order_number || local?.name || local?.username || row.entity_id;
+    return {
+      ...row,
+      item: `${row.entity_type} · ${label}`,
+      description: cloud.error
+        ? cloud.error
+        : `This ${String(row.entity_type || 'record').toLowerCase()} exists on the cloud with different data.`,
+      local,
+      cloud: {
+        serverVersion: cloud.serverVersion,
+        clientVersion: cloud.clientVersion,
+        error: cloud.error || null,
+        entityId: cloud.entityId || row.entity_id,
+        needsPull: !!cloud.needsPull
+      }
+    };
   }
 
   retryEvent(eventId) {

@@ -77,6 +77,7 @@ interface POSState {
   riderName: string | null
   guestCount: number
   isTaxEnabled: boolean
+  previewOrderNumber: string | null
   orderType: string
   openOrders: Record<string, any>
   activeOrderId: string
@@ -159,6 +160,7 @@ export const usePosStore = create<POSState>()(
   riderName: null,
   guestCount: 1,
   isTaxEnabled: true,
+  previewOrderNumber: null,
   orderType: 'Dine In',
   openOrders: {},
   activeOrderId: Date.now().toString(),
@@ -186,8 +188,16 @@ export const usePosStore = create<POSState>()(
           }
         }
         
+        let previewOrderNumber = get().previewOrderNumber
+        if (!(res.data as any)?.order_number) {
+          try {
+            const next = await apiClient.get('/orders/next-number') as any
+            previewOrderNumber = next?.data?.order_number || next?.order_number || previewOrderNumber
+          } catch { /* keep previous preview */ }
+        }
         set({ 
           activeOrder: res.data, 
+          previewOrderNumber,
           cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] }))
         })
       }
@@ -245,6 +255,7 @@ export const usePosStore = create<POSState>()(
     }})
     
     // Build the activeOrder shape from backend data or passed-in order
+    const serviceCharge = Number(backendOrder?.service_charge ?? order?.serviceCharge ?? order?.service_charge ?? 0)
     const activeOrder = backendOrder ? {
       id: backendOrder.id,
       order_number: backendOrder.order_number,
@@ -254,13 +265,15 @@ export const usePosStore = create<POSState>()(
       tax_total: backendOrder.tax_total ?? 0,
       discount_total: backendOrder.discount_total ?? 0,
       grand_total: backendOrder.grand_total ?? 0,
+      service_charge: serviceCharge,
       items: backendOrder.items || [],
       totals: {
         subtotal: backendOrder.subtotal ?? 0,
         tax_total: backendOrder.tax_total ?? 0,
         discount_total: backendOrder.discount_total ?? 0,
+        service_charge: serviceCharge,
       }
-    } : order as any
+    } : { ...order, service_charge: serviceCharge } as any
     
     set({
       editingOrderId: order.id,
@@ -599,24 +612,16 @@ export const usePosStore = create<POSState>()(
   getServiceCharge: () => {
     if (!get().isTaxEnabled || get().orderType !== 'Dine In') return 0;
     const active = get().activeOrder
-    if (active?.service_charge != null && Number(active.service_charge) > 0) {
+    if (get().editingOrderId && active?.service_charge != null && Number(active.service_charge) > 0) {
       return Number(active.service_charge)
     }
     
     const cfg = get().financeConfig || {};
     const raw = Number(cfg.service_charge_percent ?? cfg.service_charge_rate ?? 7);
-    const rate = !Number.isFinite(raw) || raw <= 0 ? 0.07 : (raw > 1 ? raw / 100 : raw);
+    const rate = !Number.isFinite(raw) || raw <= 0 ? 0.07 : (raw > 1 ? raw / 100 : (raw === 0.1 ? 0.07 : raw));
 
-    const cart = get().cart;
-    let applicableSubtotal = 0;
-    cart.forEach(item => {
-      const cat = (item.category || '').toLowerCase();
-      if (!cat.includes('deal') && !cat.includes('combo') && !cat.includes('burger') && !cat.includes('pizza') && !cat.includes('sandwich') && !cat.includes('broast') && !cat.includes('appetizer') && !cat.includes('fast food') && !cat.includes('roll') && !cat.includes('pasta') && !cat.includes('shawarma') && !cat.includes('drink') && !cat.includes('limka') && !cat.includes('water') && !cat.includes('beverage') && !cat.includes('chip') && !cat.includes('fries')) {
-        applicableSubtotal += (item.subtotal ?? (Number(item.price) * item.quantity));
-      }
-    });
-
-    return Math.round(applicableSubtotal * rate);
+    const subtotal = get().getSubtotal();
+    return Math.round(subtotal * rate);
   },
   getGrandTotal: () => {
     const sub = get().getSubtotal();

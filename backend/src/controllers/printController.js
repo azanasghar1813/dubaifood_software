@@ -124,6 +124,15 @@ export const cancelJob = (req, res) => {
   }
 };
 
+export const clearQueue = (req, res) => {
+  try {
+    const deleted = printQueueService.clearAll();
+    res.json({ success: true, message: `Print queue cleared (${deleted} jobs removed).`, data: { deleted } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // ─── Printer Management ──────────────────────────────────────────────────────
 
 export const getPrinterStatuses = (req, res) => {

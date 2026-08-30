@@ -19,7 +19,15 @@ export const securityUtils = {
    * @returns {boolean}
    */
   verifyPin: (plainText, hashedText) => {
-    return bcrypt.compareSync(plainText, hashedText);
+    if (plainText == null || hashedText == null) return false;
+    const pin = String(plainText).trim();
+    const stored = String(hashedText).trim();
+    try {
+      if (stored.startsWith('$2')) return bcrypt.compareSync(pin, stored);
+      return pin === stored;
+    } catch {
+      return false;
+    }
   },
 
   /**

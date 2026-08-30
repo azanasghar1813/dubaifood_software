@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useKdsStore, type KitchenTicket } from '../store/kdsStore'
 import { usePrinterStore } from '../store/printerStore'
 import { 
-  Search, Printer, CheckCircle2, AlertCircle, RefreshCw, Clock, Usb, Bluetooth, Network, Settings2, RefreshCcw
+  Search, Printer, CheckCircle2, AlertCircle, RefreshCw, Clock, Usb, Bluetooth, Network, Settings2, RefreshCcw, XCircle
 } from 'lucide-react'
 import { configApi } from '../api/configApi'
 
@@ -141,8 +141,8 @@ export const KDS: React.FC = () => {
      })
      
      result.sort((a, b) => {
-        const timeA = new Date(a.orderTime).getTime()
-        const timeB = new Date(b.orderTime).getTime()
+        const timeA = new Date(a.orderTime).getTime() || 0
+        const timeB = new Date(b.orderTime).getTime() || 0
         return sortOrder === "Newest" ? timeB - timeA : timeA - timeB
      })
      
@@ -183,6 +183,32 @@ export const KDS: React.FC = () => {
     }
   }
 
+  const handleClearFailed = async () => {
+    const failedTickets = mappedTickets.filter(t => t.displayStatus === "PRINT_FAILED")
+    if (failedTickets.length === 0) return alert("No failed prints to clear.")
+    if (!window.confirm(`Clear ${failedTickets.length} failed kitchen ticket(s) from this screen?`)) return
+    for (const t of failedTickets) {
+      try {
+        await updateTicketStatus(t.id, "Served")
+      } catch (e) {
+        console.error(`Failed to clear ticket ${t.id}`, e)
+      }
+    }
+  }
+
+  const handlePrintTicket = async (ticket: KitchenTicket) => {
+    try {
+      const result = await usePrinterStore.getState().printKitchen(ticket.id, 'cashier')
+      if (result) {
+        updateTicketStatus(ticket.id, "Accepted")
+      } else {
+        alert("Kitchen printer did not accept the ticket. Check USB or LAN printer.")
+      }
+    } catch (e) {
+      alert("Kitchen print failed.")
+    }
+  }
+
   return (
     <div className="h-[calc(100vh-8.5rem)] rounded-3xl border border-border bg-background flex flex-col font-sans overflow-hidden">
       
@@ -220,6 +246,14 @@ export const KDS: React.FC = () => {
           >
             <RefreshCcw className={`w-4 h-4 ${isRetryingAll ? 'animate-spin' : ''}`} />
             <span className="text-xs font-bold hidden sm:inline">Retry Failed</span>
+          </button>
+
+          <button 
+            onClick={handleClearFailed}
+            className="p-2.5 bg-secondary hover:bg-border text-muted-foreground hover:text-foreground border border-border rounded-xl transition-colors flex items-center gap-2"
+          >
+            <XCircle className="w-4 h-4" />
+            <span className="text-xs font-bold hidden sm:inline">Clear Failed</span>
           </button>
           
           <button 
@@ -479,6 +513,12 @@ export const KDS: React.FC = () => {
                         {/* Right: Actions */}
                         <div className="p-4 bg-secondary/30 border-l border-border flex flex-col gap-2 items-center justify-center min-w-[140px] shrink-0">
                            <button 
+                              onClick={() => handlePrintTicket(ticket)}
+                              className="w-full py-2 bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/20 rounded-xl font-black text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-1"
+                           >
+                              <Printer className="w-3.5 h-3.5" /> Print
+                           </button>
+                           <button 
                               onClick={() => setPreviewTicket(ticket)}
                               className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded-xl font-black text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-1"
                            >
@@ -532,8 +572,8 @@ export const KDS: React.FC = () => {
                   <span className="text-3xl mt-1">#{previewTicket.orderNumber}</span>
                 </div>
                 {previewTicket.isVip && (
-                  <div className="font-black text-lg text-center border-y-2 border-black py-1 my-3 bg-black text-white uppercase">
-                    *** VIP ORDER ***
+                  <div className="font-black text-lg text-center py-1 my-3 uppercase">
+                    ** VIP ORDER **
                   </div>
                 )}
                 <div className="flex justify-between border-t-2 border-black border-dashed pt-2">
@@ -605,6 +645,12 @@ export const KDS: React.FC = () => {
               </div>
 
               <div className="mt-6 flex justify-end gap-2">
+                <button
+                  onClick={() => handlePrintTicket(previewTicket)}
+                  className="flex-1 py-3 bg-primary text-white font-black rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                  <Printer className="w-4 h-4" /> Print
+                </button>
                 <button onClick={() => setPreviewTicket(null)} className="flex-1 py-3 bg-secondary hover:bg-border text-foreground font-black rounded-xl transition-colors">
                   Close
                 </button>

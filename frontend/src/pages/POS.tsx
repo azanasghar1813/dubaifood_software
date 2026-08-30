@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { toast } from "../store/toastStore"
 import ReceiptPreview from "./ReceiptPreview"
+import KitchenTicketPreview from "./KitchenTicketPreview"
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels"
 import { menuService } from "../services/menuService"
 import { cartService } from "../services/posServices/cartService"
@@ -156,6 +157,7 @@ export default function POS() {
   const [isKdsAutoSend, setIsKdsAutoSend] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
   const [printOrder, setPrintOrder] = useState<any>(null)
+  const [kotPreview, setKotPreview] = useState<any>(null)
   const [heldModalOpen, setHeldModalOpen] = useState(false)
   const [heldOrders, setHeldOrders] = useState<any[]>([])
   const [holdBusy, setHoldBusy] = useState(false)
@@ -183,7 +185,7 @@ export default function POS() {
     editingOrderId, clearEditMode, completeOrder,
     deliveryCharges, setDeliveryCharges,
     fetchDraftOrder, financeConfig, activeOrderId, activeOrder, isVipOrder,
-    holdOrder, resumeOrder
+    holdOrder, resumeOrder, previewOrderNumber
   } = usePosStore()
 
   const { orderCounter } = useOrderStore()
@@ -1660,7 +1662,7 @@ export default function POS() {
               <div className="p-3 border-b border-border bg-secondary/30">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <h2 className="font-black tracking-wider uppercase text-muted-foreground text-[10px] mb-1 mt-1">Order #{activeOrder?.order_number || orderCounter}</h2>
+                    <h2 className="font-black tracking-wider uppercase text-muted-foreground text-[10px] mb-1 mt-1">Order #{activeOrder?.order_number || previewOrderNumber || orderCounter}</h2>
                   </div>
 
                   <div className="flex flex-col items-center justify-center">
@@ -1914,7 +1916,7 @@ export default function POS() {
 
                       {orderType === 'Dine In' && isTaxEnabled && getServiceCharge() > 0 && (
                         <div className="flex justify-between text-xs font-black text-foreground border-l-2 border-orange-500 pl-2 p-1 -mx-1">
-                          <span>Service Charges ({financeConfig?.service_charge_percent || financeConfig?.service_charge_rate || 7}%)</span>
+                          <span>Service Charges (7%)</span>
                           <span>Rs {getServiceCharge().toLocaleString()}</span>
                         </div>
                       )}
@@ -2032,22 +2034,59 @@ export default function POS() {
                         onClick={async () => {
                           try {
                             const { usePrinterStore } = await import("../store/printerStore")
-                            let currentOrderId = usePosStore.getState().editingOrderId || usePosStore.getState().activeOrder?.id
-                            
-                            if (!currentOrderId) {
-                               const { success, orderId } = await usePosStore.getState().completeOrder([], 0)
-                               if (success && orderId) {
-                                   currentOrderId = orderId
-                               }
+                            const state = usePosStore.getState()
+                            let currentOrderId = state.editingOrderId || ((state.activeOrder as any)?.order_number ? state.activeOrder?.id : null)
+
+                            if (!currentOrderId || !(state.activeOrder as any)?.order_number) {
+                              const checkoutKey = crypto.randomUUID()
+                              const checkoutResult: any = await cartService.checkout({
+                                order_type: state.orderType === 'Delivery' ? 'DELIVERY' : state.orderType === 'Takeaway' ? 'TAKEAWAY' : state.orderType === 'Drive Through' ? 'DRIVE_THROUGH' : 'DINE_IN',
+                                customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || null,
+                                table_id: state.tableNumber || null,
+                                waiter_id: state.waiterId || null,
+                                rider_id: state.riderId || null,
+                                delivery_charges: state.orderType === 'Delivery' ? state.deliveryCharges : 0,
+                                service_charge: state.getServiceCharge(),
+                                is_tax_enabled: false,
+                              }, checkoutKey)
+                              if (!checkoutResult?.success) {
+                                alert("KOT could not be sent. Checkout failed.")
+                                return
+                              }
+                              const order = checkoutResult.data
+                              currentOrderId = order.id
+                              usePosStore.setState({
+                                activeOrder: { ...order, service_charge: state.getServiceCharge() },
+                                previewOrderNumber: order.order_number
+                              })
                             }
 
                             if (currentOrderId) {
                               const kot = await usePrinterStore.getState().printKitchen(currentOrderId, user?.id || user?.name || 'cashier')
-                              if (kot) alert("KOT Sent to Kitchen!")
-                              else alert("KOT could not be sent. Check kitchen printer.")
+                              const latest = usePosStore.getState()
+                              const preview = {
+                                orderNumber: (latest.activeOrder as any)?.order_number || latest.previewOrderNumber,
+                                orderType: latest.orderType,
+                                tableNumber: latest.tableNumber,
+                                cashierName: user?.name || 'Cashier',
+                                waiterName: latest.waiterName || null,
+                                riderName: latest.riderName || null,
+                                isVip: latest.isVipOrder || latest.customer?.is_vip || latest.customer?.isVip || false,
+                                notes: orderNotes || null,
+                                timestamp: new Date().toISOString(),
+                                items: latest.cart.map((item: any) => ({
+                                  name: item.name,
+                                  quantity: item.quantity,
+                                  selectedModifiers: item.selectedModifiers,
+                                  notes: item.notes,
+                                  kitchen: item.category || 'KITCHEN'
+                                }))
+                              }
+                              setKotPreview(preview)
+                              if (!kot) alert("KOT could not be sent to the kitchen printer. Check USB or LAN. Preview is still shown.")
                             }
                           } catch {
-                            alert("KOT could not be sent. Check kitchen printer.")
+                            alert("KOT could not be sent. Check kitchen printer (USB or LAN).")
                           }
                         }}
                         disabled={cart.length === 0}
@@ -2779,6 +2818,7 @@ export default function POS() {
 
       {/* ReceiptPreview Popup */}
       {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
+      {kotPreview && <KitchenTicketPreview order={kotPreview} autoPrint={false} onClose={() => setKotPreview(null)} />}
 
       {isTouchDevice && (
         <button

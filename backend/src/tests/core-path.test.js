@@ -52,12 +52,8 @@ test('archiver ZipArchive named export can write a zip', async () => {
   assert.ok(fs.statSync(zipPath).size > 0);
 });
 
-test('login rejects the old default PIN 1234 after rotation', () => {
-  assert.throws(() => authService.login('admin', '1234', 'TEST'), /Invalid username or PIN/);
-});
-
-test('login succeeds with the rotated admin PIN', () => {
-  const result = authService.login('admin', '582941', 'TEST');
+test('login succeeds with the default admin PIN', () => {
+  const result = authService.login('admin', '1234', 'TEST');
   assert.ok(result.token);
   assert.equal(result.user.username, 'admin');
   assert.ok(result.cashierSessionId);

@@ -222,7 +222,29 @@ class PrintQueueService {
       LIMIT ? OFFSET ?
     `).all(...params, limit, offset);
 
-    return { jobs, total, page, limit, totalPages: Math.ceil(total / limit) };
+    const toIso = (value) => {
+      if (!value) return value;
+      const s = String(value).trim();
+      if (s.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(s)) return s;
+      return s.replace(' ', 'T') + 'Z';
+    };
+
+    return {
+      jobs: jobs.map((j) => ({
+        ...j,
+        created_at: toIso(j.created_at),
+        processing_at: toIso(j.processing_at),
+        completed_at: toIso(j.completed_at)
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    };
+  }
+
+  clearAll() {
+    return dbEngine.prepare(`DELETE FROM print_jobs`).run().changes;
   }
 
   /**

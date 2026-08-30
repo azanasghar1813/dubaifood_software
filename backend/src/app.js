@@ -38,9 +38,18 @@ app.use(helmet({
 
 // Cross-Origin Resource Sharing
 app.use(cors({
-  origin: '*', // Configure properly in production
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id', 'x-cashier-session-id', 'x-terminal-id']
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Idempotency-Key',
+    'x-user-id',
+    'x-cashier-session-id',
+    'x-terminal-id',
+    'x-device-name',
+    'x-branch-id'
+  ]
 }));
 
 // Request Logging

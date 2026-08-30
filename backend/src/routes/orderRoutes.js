@@ -14,6 +14,8 @@ const router = Router();
 
 router.use(authenticate);
 
+router.get('/next-number', orderController.peekNextNumber);
+
 // Draft operations
 router.get('/draft', orderController.getDraft);
 router.post('/draft/items', validate(addItemSchema), orderController.addItemToDraft);

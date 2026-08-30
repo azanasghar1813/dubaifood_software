@@ -123,7 +123,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       ${!isDelivery && (order as any)?.waiterName ? `<div><span style="margin-right:4px;font-weight:900;">Waiter:</span>${(order as any).waiterName}</div>` : ''}
       <div><span style="margin-right:4px;font-weight:900;">Status:</span>${paymentStatus}</div>
       <div><span style="margin-right:4px;font-weight:900;">Time:</span>${dateStr}, ${timeStr}</div>
-      ${isVip ? `<div style="text-align:center;border-top:2px solid #000;border-bottom:2px solid #000;padding:2px;margin-top:6px;font-weight:900;font-size:14px;background:#000;color:#fff">*** VIP ORDER ***</div>` : ''}
+      ${isVip ? `<div style="text-align:center;padding:4px 0;margin-top:6px;font-weight:900;font-size:14px;">** VIP ORDER **</div>` : ''}
     </div>
 
     <!-- Items -->
@@ -199,7 +199,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
         <div><span className="mr-1 font-black">Status:</span>{paymentStatus}</div>
         <div><span className="mr-1 font-black">Time:</span>{dateStr}, {timeStr}</div>
         {isVip && (
-          <div className="font-black uppercase text-sm border-y-2 border-black py-1 mt-2 text-center bg-black text-white">*** VIP ORDER ***</div>
+          <div className="font-black uppercase text-sm py-1 mt-2 text-center">** VIP ORDER **</div>
         )}
       </div>
 

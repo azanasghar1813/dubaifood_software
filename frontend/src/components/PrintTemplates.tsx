@@ -89,7 +89,7 @@ const ReceiptTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
         <div><span className="mr-1">Time:</span>{new Date(order.timestamp).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }).replace(',', '')}</div>
         
         {order.isVip && (
-          <div className="font-black uppercase text-lg border-y-2 border-black py-1 mt-3 mb-2 text-center bg-black text-white">*** VIP ORDER ***</div>
+          <div className="font-black uppercase text-lg py-1 mt-3 mb-2 text-center">** VIP ORDER **</div>
         )}
       </div>
 

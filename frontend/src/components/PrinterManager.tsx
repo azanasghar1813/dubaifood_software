@@ -8,8 +8,24 @@ interface PrinterManagerProps {
   onClose: () => void
 }
 
+const formatJobTime = (timeStr?: string | null) => {
+  if (!timeStr) return '—'
+  let t = String(timeStr).trim()
+  if (!t.endsWith('Z') && !t.includes('+')) t = t.replace(' ', 'T') + 'Z'
+  const d = new Date(t)
+  if (Number.isNaN(d.getTime())) return String(timeStr)
+  return d.toLocaleString(undefined, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
+}
+
 export const PrinterManager: React.FC<PrinterManagerProps> = ({ isOpen, onClose }) => {
-  const { printers, printQueue, reprintJob, cancelJob, fetchPrinters, fetchQueue } = usePrinterStore()
+  const { printers, printQueue, reprintJob, cancelJob, clearQueue, fetchPrinters, fetchQueue } = usePrinterStore()
 
   useEffect(() => {
     if (isOpen) {
@@ -74,7 +90,25 @@ export const PrinterManager: React.FC<PrinterManagerProps> = ({ isOpen, onClose 
 
           {/* Print Queue */}
           <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
-            <h3 className="font-bold text-sm text-muted-foreground uppercase tracking-wider mb-4">Print Queue</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-sm text-muted-foreground uppercase tracking-wider">Print Queue</h3>
+              {printQueue.length > 0 && (
+                <button
+                  onClick={async () => {
+                    if (!window.confirm('Clear the entire print queue? Pending, failed, and completed jobs will be removed.')) return
+                    try {
+                      await clearQueue()
+                      fetchQueue()
+                    } catch {
+                      alert('Could not clear the print queue.')
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500 text-red-600 hover:text-white text-[10px] uppercase font-black rounded-lg border border-red-500/20 transition-colors"
+                >
+                  Clear Queue
+                </button>
+              )}
+            </div>
             
             <div className="space-y-2">
               <AnimatePresence>
@@ -95,10 +129,10 @@ export const PrinterManager: React.FC<PrinterManagerProps> = ({ isOpen, onClose 
                     >
                       <div>
                         <div className="font-bold text-foreground">
-                          {job.job_type} Job <span className="text-muted-foreground font-normal text-sm">for {job.printer_id || 'unassigned'}</span>
+                          {job.job_type}{job.order_number ? ` · #${job.order_number}` : ' Job'} <span className="text-muted-foreground font-normal text-sm">for {job.printer_id || 'unassigned'}</span>
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          {new Date(job.created_at).toLocaleTimeString()} • ID: {job.id.slice(-6)}
+                          {formatJobTime(job.created_at)} • ID: {job.id.slice(-6)}
                         </div>
                       </div>
 

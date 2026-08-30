@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuthStore } from "../store/authStore"
 import { authService } from "../services/authService"
+import { apiClient } from "../api/client"
 import { useLoadingStore } from "../store/loadingStore"
 import { toast } from "../store/toastStore"
 import { Lock, User, ChevronDown, Loader2 } from "lucide-react"
@@ -12,6 +13,9 @@ export default function Login() {
   const [selectedUsername, setSelectedUsername] = useState("")
   const [pin, setPin] = useState("")
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [needsDeviceId, setNeedsDeviceId] = useState(false)
+  const [deviceIdInput, setDeviceIdInput] = useState("")
+  const [deviceSaving, setDeviceSaving] = useState(false)
   
   const navigate = useNavigate()
   const { setSession } = useAuthStore()
@@ -31,7 +35,24 @@ export default function Login() {
       }
     }
     fetchUsers()
+    apiClient.get('/health').then((res: any) => {
+      const prefix = res?.order_prefix || res?.data?.order_prefix
+      if (!prefix) setNeedsDeviceId(true)
+    }).catch(() => {})
   }, [])
+
+  const saveDeviceId = async () => {
+    setDeviceSaving(true)
+    try {
+      await apiClient.post('/health/device-id', { order_prefix: deviceIdInput })
+      setNeedsDeviceId(false)
+      toast.success("Device ID saved", `Orders will use ${deviceIdInput.toUpperCase()}-1, ${deviceIdInput.toUpperCase()}-2`)
+    } catch (e: any) {
+      toast.error("Could not save device ID", e?.response?.data?.message || e?.message)
+    } finally {
+      setDeviceSaving(false)
+    }
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -71,6 +92,41 @@ export default function Login() {
       {/* Ambient background elements */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+
+      {needsDeviceId && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/90 p-4">
+          <div className="w-full max-w-md bg-card border border-border rounded-3xl p-8 shadow-2xl">
+            <h2 className="text-2xl font-black mb-2">Set this till’s device ID</h2>
+            <p className="text-sm text-muted-foreground font-bold mb-6">
+              Choose once. Counter 1 uses PC1-1, PC1-2. Counter 2 uses PC2-1, PC2-2. This cannot be changed later.
+            </p>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              {['PC1', 'PC2'].map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setDeviceIdInput(id)}
+                  className={`h-16 rounded-2xl border-2 font-black text-2xl tracking-widest transition-all ${
+                    deviceIdInput === id
+                      ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/30'
+                      : 'bg-secondary border-border text-foreground hover:border-primary/50'
+                  }`}
+                >
+                  {id}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              disabled={(deviceIdInput !== 'PC1' && deviceIdInput !== 'PC2') || deviceSaving}
+              onClick={saveDeviceId}
+              className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-black uppercase disabled:opacity-50"
+            >
+              {deviceSaving ? "Saving..." : "Save device ID"}
+            </button>
+          </div>
+        </div>
+      )}
       
       <motion.div 
         initial={{ opacity: 0, y: 20 }}

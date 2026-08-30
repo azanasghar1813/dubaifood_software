@@ -25,6 +25,6 @@ export const envSchema = z.object({
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly']).default('info'),
 
   // Sync API
-  SYNC_API_URL: z.string().url().default('http://localhost:3000/api/v1'),
-  DEVICE_SECRET: z.string().min(16),
+  SYNC_API_URL: z.string().url().default('https://dubaifood-sync-api.vercel.app/api/v1'),
+  DEVICE_SECRET: z.string().min(16).default('Azan@181314Sync2026'),
 });

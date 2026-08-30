@@ -355,37 +355,78 @@ export default function Synchronization() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="p-6 bg-amber-500/10 border border-amber-500/25 rounded-[2.5rem] shadow-sm space-y-4"
+                className="p-6 bg-amber-500/10 border border-amber-500/25 rounded-[2.5rem] shadow-sm space-y-4 max-h-[min(70vh,640px)] flex flex-col"
               >
-                <div className="flex items-center gap-2 text-amber-500">
-                  <AlertTriangle className="w-5 h-5" />
-                  <h3 className="text-sm font-black uppercase tracking-wider">Sync Conflict Warnings</h3>
+                <div className="flex items-center justify-between gap-2 text-amber-500 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5" />
+                    <h3 className="text-sm font-black uppercase tracking-wider">Sync Conflict Warnings</h3>
+                  </div>
+                  <span className="text-[10px] font-black uppercase bg-amber-500/15 px-2 py-1 rounded-lg">{conflicts.length} items</span>
                 </div>
-                
-                {conflicts.map(conf => (
+
+                <div className="space-y-4 overflow-y-auto custom-scrollbar pr-1 min-h-0">
+                {conflicts.map(conf => {
+                  const local = conf.local || {}
+                  const cloud = conf.cloud || {}
+                  const title = conf.item || `${conf.entity_type || 'Record'} · ${conf.entity_id || conf.id}`
+                  return (
                   <div key={conf.id} className="p-4 bg-card border border-border rounded-2xl space-y-3 text-xs font-bold text-foreground">
-                    <div className="flex justify-between">
-                      <span className="text-primary font-black">{conf.item}</span>
-                      <span className="text-muted-foreground">Conflict ID: {conf.id}</span>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-primary font-black break-all">{title}</span>
+                      <span className="text-muted-foreground shrink-0 uppercase">{conf.action || 'UPDATE'}</span>
                     </div>
-                    <p className="text-muted-foreground font-semibold leading-relaxed">{conf.description}</p>
+                    <p className="text-muted-foreground font-semibold leading-relaxed">{conf.description || 'This record is different on this PC and on the cloud.'}</p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="p-3 rounded-xl bg-secondary/50 border border-border space-y-1">
+                        <p className="text-[10px] uppercase font-black text-emerald-500">This PC (local)</p>
+                        {local.missing ? (
+                          <p className="text-muted-foreground">No longer on this PC</p>
+                        ) : (
+                          <>
+                            {local.order_number && <p>Order: <span className="text-foreground">{local.order_number}</span></p>}
+                            {local.name && <p>Name: <span className="text-foreground">{local.name}</span></p>}
+                            {local.username && <p>User: <span className="text-foreground">{local.username}</span></p>}
+                            {local.status && <p>Status: <span className="text-foreground">{local.status}</span></p>}
+                            {local.payment && <p>Payment: <span className="text-foreground">{local.payment}</span></p>}
+                            {local.total != null && <p>Total: <span className="text-foreground">{local.total}</span></p>}
+                            {local.phone && <p>Phone: <span className="text-foreground">{local.phone}</span></p>}
+                            {Array.isArray(local.items) && local.items.length > 0 && (
+                              <p className="text-muted-foreground font-semibold">{local.items.join(', ')}</p>
+                            )}
+                            {local.updated_at && <p className="text-[10px] text-muted-foreground">Updated {formatTime(local.updated_at)}</p>}
+                            {cloud.clientVersion != null && <p className="text-[10px] text-muted-foreground">Version {cloud.clientVersion}</p>}
+                          </>
+                        )}
+                      </div>
+                      <div className="p-3 rounded-xl bg-secondary/50 border border-border space-y-1">
+                        <p className="text-[10px] uppercase font-black text-blue-500">Cloud / other PC</p>
+                        {cloud.error && <p className="text-red-500">{cloud.error}</p>}
+                        <p>Cloud already has a different copy of this {String(conf.entity_type || 'record').toLowerCase()}.</p>
+                        {cloud.serverVersion != null && <p>Cloud version: <span className="text-foreground">{cloud.serverVersion}</span></p>}
+                        {cloud.entityId && <p className="text-[10px] text-muted-foreground break-all">ID: {cloud.entityId}</p>}
+                      </div>
+                    </div>
                     
-                    <div className="flex gap-2 pt-2">
+                    <div className="flex gap-2 pt-1 flex-wrap">
                       <button 
                         onClick={() => handleResolveConflict(conf.id, "local")}
-                        className="px-3 py-1.5 bg-secondary hover:bg-border border border-border text-[10px] uppercase font-black rounded-lg transition-colors"
+                        className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-600 hover:text-white border border-emerald-500/20 text-[10px] uppercase font-black rounded-lg transition-colors"
                       >
-                        Keep Local PC Data
+                        Keep this PC
                       </button>
                       <button 
                         onClick={() => handleResolveConflict(conf.id, "cloud")}
-                        className="px-3 py-1.5 bg-secondary hover:bg-border border border-border text-[10px] uppercase font-black rounded-lg transition-colors"
+                        className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500 text-blue-600 hover:text-white border border-blue-500/20 text-[10px] uppercase font-black rounded-lg transition-colors"
                       >
-                        Keep Cloud Data
+                        Keep cloud / other PC
                       </button>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

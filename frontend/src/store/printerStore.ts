@@ -69,6 +69,7 @@ interface PrinterState {
   testPrinter:     (printerId: string) => Promise<any>
   updatePrinterStatus: (printerId: string, status: Printer['status']) => void
   cancelJob:       (jobId: string) => Promise<void>
+  clearQueue:      () => Promise<void>
   updateSettings:  (settings: Partial<PrinterState['settings']>) => void
 }
 
@@ -217,6 +218,16 @@ export const usePrinterStore = create<PrinterState>((set, get) => ({
       }))
     } catch (error: any) {
       console.error('[PrinterStore] cancelJob failed:', error.message)
+    }
+  },
+
+  clearQueue: async () => {
+    try {
+      await apiClient.post('/print/queue/clear')
+      set({ printQueue: [] })
+    } catch (error: any) {
+      console.error('[PrinterStore] clearQueue failed:', error.message)
+      throw error
     }
   },
 

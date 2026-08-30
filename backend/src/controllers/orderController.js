@@ -1,4 +1,5 @@
 import { orderService } from '../services/orderService.js';
+import { orderNumberService } from '../services/orderNumberService.js';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
 
 const resolveSessionContext = (req, res, { requireShift = true } = {}) => {
@@ -19,6 +20,14 @@ const resolveSessionContext = (req, res, { requireShift = true } = {}) => {
 };
 
 export const orderController = {
+  peekNextNumber: (_req, res) => {
+    try {
+      sendSuccess(res, { order_number: orderNumberService.peekNextNumber() }, 'Next order number');
+    } catch (error) {
+      sendError(res, 400, error.message);
+    }
+  },
+
   getDraft: (req, res) => {
     const ctx = resolveSessionContext(req, res);
     if (!ctx) return;
