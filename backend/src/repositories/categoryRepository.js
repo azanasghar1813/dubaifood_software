@@ -40,7 +40,7 @@ class CategoryRepository {
       name: data.name,
       parent_id: data.parent_id || null,
       display_order: data.display_order || 0,
-      lifecycle_state: data.lifecycle_state || 'DRAFT',
+      lifecycle_state: data.lifecycle_state || 'ACTIVE',
       color_code: data.color_code || null,
       image_path: data.image_path || null,
       icon_name: data.icon_name || null,

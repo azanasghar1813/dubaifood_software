@@ -24,7 +24,10 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     (order as any)?.customer?.is_vip ||
     (order as any)?.customer?.isVip ||
     (order as any)?.isVip ||
-    (order as any)?.is_vip
+    (order as any)?.is_vip ||
+    (order as any)?.metadata?.is_vip === true ||
+    (order as any)?.metadata?.is_vip === 'true' ||
+    String((order as any)?.metadata?.is_vip || '') === '1'
   )
   const receiptAddress = (settings.address || 'Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)').replace(/\n/g, '<br>')
   const receiptPhone = settings.phoneNumber || '0308-8020784, 0345-6420784'

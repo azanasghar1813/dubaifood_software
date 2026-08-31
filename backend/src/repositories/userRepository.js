@@ -1,6 +1,16 @@
 import crypto from 'crypto';
 import { dbEngine } from '../database/sqlite.js';
 
+const usersHasSyncVersion = () => {
+  try {
+    return dbEngine.db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'sync_version');
+  } catch {
+    return false;
+  }
+};
+
+const bumpSync = () => (usersHasSyncVersion() ? ', sync_version = sync_version + 1' : '');
+
 export const userRepository = {
   findAll: () => {
     const stmt = dbEngine.db.prepare(`
@@ -68,24 +78,24 @@ export const userRepository = {
   updateProfile: (id, data) => {
     const stmt = dbEngine.db.prepare(`
       UPDATE users 
-      SET username = ?, first_name = ?, last_name = ?, phone = ?, email = ?, profile_photo = ?, role_id = ?, show_on_login = ?, updated_at = CURRENT_TIMESTAMP, sync_version = sync_version + 1
+      SET username = ?, first_name = ?, last_name = ?, phone = ?, email = ?, profile_photo = ?, role_id = ?, show_on_login = ?, updated_at = CURRENT_TIMESTAMP${bumpSync()}
       WHERE id = ?
     `);
     stmt.run(data.username, data.firstName, data.lastName, data.phone, data.email, data.profilePhoto, data.roleId, data.showOnLogin === false ? 0 : 1, id);
   },
 
   updateStatus: (id, isActive) => {
-    const stmt = dbEngine.db.prepare('UPDATE users SET is_active = ?, updated_at = CURRENT_TIMESTAMP, sync_version = sync_version + 1 WHERE id = ?');
+    const stmt = dbEngine.db.prepare(`UPDATE users SET is_active = ?, updated_at = CURRENT_TIMESTAMP${bumpSync()} WHERE id = ?`);
     stmt.run(isActive ? 1 : 0, id);
   },
 
   updatePin: (id, newHashedPin) => {
-    const stmt = dbEngine.db.prepare('UPDATE users SET pin_code = ?, updated_at = CURRENT_TIMESTAMP, sync_version = sync_version + 1 WHERE id = ?');
+    const stmt = dbEngine.db.prepare(`UPDATE users SET pin_code = ?, updated_at = CURRENT_TIMESTAMP${bumpSync()} WHERE id = ?`);
     stmt.run(newHashedPin, id);
   },
 
   updatePhoto: (id, photoPath) => {
-    const stmt = dbEngine.db.prepare('UPDATE users SET profile_photo = ?, updated_at = CURRENT_TIMESTAMP, sync_version = sync_version + 1 WHERE id = ?');
+    const stmt = dbEngine.db.prepare(`UPDATE users SET profile_photo = ?, updated_at = CURRENT_TIMESTAMP${bumpSync()} WHERE id = ?`);
     stmt.run(photoPath, id);
   },
 

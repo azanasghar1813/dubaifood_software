@@ -10,6 +10,7 @@ const SYNC_TABLES = [
   { table: 'order_items', type: 'ORDER_ITEM' },
   { table: 'order_payments', type: 'ORDER_PAYMENT' },
   { table: 'dining_tables', type: 'DINING_TABLE' },
+  { table: 'tables', type: 'DINING_TABLE' },
   { table: 'product_variants', type: 'VARIANT' }
 ];
 

@@ -17,6 +17,52 @@ const LOCAL_SETTING_KEYS = new Set([
   'last_sync_fixed_v1'
 ]);
 
+function applyRoleAcl(raw) {
+  let data;
+  try { data = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return; }
+  if (!data || !Array.isArray(data.permission_codes)) return;
+  const role = (data.role_id && dbEngine.prepare('SELECT id FROM roles WHERE id = ?').get(data.role_id))
+    || (data.name && dbEngine.prepare('SELECT id FROM roles WHERE name = ? COLLATE NOCASE').get(data.name));
+  if (!role) return;
+  dbEngine.prepare('DELETE FROM role_permissions WHERE role_id = ?').run(role.id);
+  const insert = dbEngine.prepare('INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)');
+  for (const code of data.permission_codes) {
+    const perm = dbEngine.prepare('SELECT id FROM permissions WHERE code = ?').get(code);
+    if (perm) insert.run(role.id, perm.id);
+  }
+}
+
+function upsertFloorTablesFromDining(rows) {
+  if (!rows || !rows.length) return;
+  const hasTables = dbEngine.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tables'").get();
+  if (!hasTables) return;
+  let fallbackCat = dbEngine.prepare('SELECT id FROM table_categories ORDER BY created_at ASC LIMIT 1').get();
+  for (const row of rows) {
+    const name = row.table_number || row.name;
+    if (!name || !row.id) continue;
+    let catId = fallbackCat?.id || null;
+    if (row.zone) {
+      let cat = dbEngine.prepare('SELECT id FROM table_categories WHERE name = ?').get(row.zone);
+      if (!cat) {
+        const newId = crypto.randomUUID();
+        dbEngine.prepare('INSERT INTO table_categories (id, name) VALUES (?, ?)').run(newId, row.zone);
+        cat = { id: newId };
+        if (!fallbackCat) fallbackCat = cat;
+      }
+      catId = cat.id;
+    }
+    if (!catId) continue;
+    dbEngine.prepare(`
+      INSERT INTO tables (id, name, category_id, status, created_at)
+      VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        status = excluded.status,
+        category_id = excluded.category_id
+    `).run(row.id, name, catId, row.status || 'Available', row.created_at || null);
+  }
+}
+
 const PENDING_TYPE_MAP = {
   products: ['PRODUCT'],
   categories: ['CATEGORY', 'CATEGORIE'],
@@ -122,6 +168,28 @@ class SyncWorker {
     }
   }
 
+  _stripCloudUnknownFields(event) {
+    if (!event?.payload) return;
+    let payload = event.payload;
+    if (typeof payload === 'string') {
+      try { payload = JSON.parse(payload); } catch { return; }
+    }
+    if (!payload || typeof payload !== 'object') return;
+    delete payload.sync_version;
+    delete payload.sync_status;
+    delete payload.synced_at;
+    delete payload.sync_hash;
+    delete payload.show_on_login;
+    delete payload.failed_login_attempts;
+    delete payload.locked_until;
+    delete payload.force_pin_change;
+    if (event.entity_type === 'ORDER' || event.entity_type === 'ORDER_ITEM') {
+      delete payload.deleted_at;
+      delete payload.locked_by;
+    }
+    event.payload = JSON.stringify(payload);
+  }
+
   logActivity(message, level = 'info') {
     const entry = {
       timestamp: new Date().toISOString(),
@@ -160,6 +228,47 @@ class SyncWorker {
         }
         dbEngine.prepare("INSERT INTO application_settings (key, value, description) VALUES ('variant_sync_backfill_v1', '1', 'Queued variants for cloud sync') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
         if (n > 0) this.logActivity(`Queued ${n} product variants for sync.`);
+      }
+      const tableFill = dbEngine.prepare("SELECT value FROM application_settings WHERE key = 'floor_tables_sync_v1'").get();
+      if (!tableFill) {
+        let queued = 0;
+        try {
+          const floorTables = dbEngine.prepare('SELECT id FROM tables').all();
+          const insertT = dbEngine.prepare(`INSERT INTO sync_queue (id, entity_type, entity_id, action, status, payload_version) VALUES (?, 'DINING_TABLE', ?, 'UPDATE', 'PENDING', 1)`);
+          for (const t of floorTables) {
+            const exists = dbEngine.prepare(`SELECT 1 FROM sync_queue WHERE entity_type = 'DINING_TABLE' AND entity_id = ? AND status = 'PENDING'`).get(t.id);
+            if (!exists) {
+              insertT.run(crypto.randomUUID(), t.id);
+              queued += 1;
+            }
+          }
+        } catch { /* tables table may not exist */ }
+        dbEngine.prepare("INSERT INTO application_settings (key, value, description) VALUES ('floor_tables_sync_v1', '1', 'Queued floor tables for cloud sync') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
+        if (queued > 0) this.logActivity(`Queued ${queued} floor tables for sync.`);
+      }
+      const roleFill = dbEngine.prepare("SELECT value FROM application_settings WHERE key = 'role_acl_sync_v1'").get();
+      if (!roleFill) {
+        try {
+          const roles = dbEngine.prepare('SELECT id FROM roles').all();
+          const insertS = dbEngine.prepare(`INSERT INTO application_settings (key, value, description) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
+          const insertQ = dbEngine.prepare(`INSERT INTO sync_queue (id, entity_type, entity_id, action, status, payload_version) VALUES (?, 'SETTING', ?, 'UPDATE', 'PENDING', 1)`);
+          for (const role of roles) {
+            const codes = dbEngine.prepare(`
+              SELECT p.code FROM permissions p
+              INNER JOIN role_permissions rp ON rp.permission_id = p.id
+              WHERE rp.role_id = ?
+            `).all(role.id).map((r) => r.code);
+            const nameRow = dbEngine.prepare('SELECT name FROM roles WHERE id = ?').get(role.id);
+            const key = `role_acl_${role.id}`;
+            insertS.run(key, JSON.stringify({ role_id: role.id, name: nameRow?.name, permission_codes: codes }), 'Role screen access');
+            const exists = dbEngine.prepare(`SELECT 1 FROM sync_queue WHERE entity_type = 'SETTING' AND entity_id = ? AND status = 'PENDING'`).get(key);
+            if (!exists) insertQ.run(crypto.randomUUID(), key);
+          }
+        } catch (e) {
+          this.logActivity(`Role ACL backfill skipped: ${e.message}`, 'error');
+        }
+        dbEngine.prepare("INSERT INTO application_settings (key, value, description) VALUES ('role_acl_sync_v1', '1', 'Queued role screen access for cloud sync') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
+        this.logActivity('Queued role screen-access for sync.');
       }
     } catch (e) {
       this.logActivity(`Failed to repair sync queue/triggers: ${e.message}`, 'error');
@@ -256,11 +365,44 @@ class SyncWorker {
              };
              const tableName = tableMap[event.entity_type];
              if (tableName) {
-                 const record = tableName === 'application_settings'
-                   ? dbEngine.prepare('SELECT * FROM application_settings WHERE key = ?').get(event.entity_id)
-                   : dbEngine.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(event.entity_id);
+                 let record;
+                 if (tableName === 'application_settings') {
+                   record = dbEngine.prepare('SELECT * FROM application_settings WHERE key = ?').get(event.entity_id);
+                 } else if (event.entity_type === 'DINING_TABLE') {
+                   record = dbEngine.prepare('SELECT * FROM dining_tables WHERE id = ?').get(event.entity_id);
+                   if (!record) {
+                     const floor = dbEngine.prepare(`
+                       SELECT t.id, t.name, t.status, t.created_at, c.name AS category_name
+                       FROM tables t
+                       LEFT JOIN table_categories c ON c.id = t.category_id
+                       WHERE t.id = ?
+                     `).get(event.entity_id);
+                     if (floor) {
+                       record = {
+                         id: floor.id,
+                         table_number: floor.name,
+                         capacity: 4,
+                         status: floor.status || 'Available',
+                         zone: floor.category_name || null,
+                         payload_version: 1,
+                         created_at: floor.created_at,
+                         updated_at: new Date().toISOString()
+                       };
+                     }
+                   }
+                 } else {
+                   record = dbEngine.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(event.entity_id);
+                 }
                  if (record) {
                      // Strip columns that don't exist in Supabase yet to prevent schema cache errors
+                     delete record.sync_version;
+                     delete record.sync_status;
+                     delete record.synced_at;
+                     delete record.sync_hash;
+                     delete record.show_on_login;
+                     delete record.failed_login_attempts;
+                     delete record.locked_until;
+                     delete record.force_pin_change;
                      if (tableName === 'orders' || tableName === 'order_items') {
                          delete record.deleted_at;
                          delete record.locked_by;
@@ -279,6 +421,7 @@ class SyncWorker {
           if (event.entity_type === 'PRODUCT' || event.entity_type === 'CATEGORY') {
             await this._attachCloudImages(event, terminalId);
           }
+          this._stripCloudUnknownFields(event);
         }
 
         // Push to cloud
@@ -318,6 +461,18 @@ class SyncWorker {
             syncService.markEventPermanentFailure(failure.eventId, failure.error);
           } else {
             syncService.markEventFailed(failure.eventId, failure.error);
+          }
+        }
+
+        const accounted = new Set([
+          ...(data.successful || []),
+          ...((data.failed || []).map((f) => f.eventId)),
+          ...((data.conflicts || []).map((c) => c.eventId))
+        ]);
+        for (const event of pendingEvents) {
+          if (accounted.has(event.id)) continue;
+          if (event.action === 'DELETE' || event.action === 'ARCHIVED') {
+            syncService.markEventSynced(event.id);
           }
         }
 
@@ -521,7 +676,11 @@ class SyncWorker {
           upsertData('customers', gathered.customers);
           upsertData('deals', gathered.deals);
           upsertData('dining_tables', gathered.dining_tables);
+          upsertFloorTablesFromDining(gathered.dining_tables);
           upsertData('application_settings', gathered.application_settings);
+          for (const row of gathered.application_settings || []) {
+            if (String(row.key || '').startsWith('role_acl_')) applyRoleAcl(row.value);
+          }
 
           if (gathered.orders.length > 0) {
             const anyRole = dbEngine.prepare('SELECT id, name FROM roles LIMIT 1').get();

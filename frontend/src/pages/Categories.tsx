@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion"
 
 export default function Categories() {
   const { user } = useAuthStore()
-  const canManageProducts = user?.role === 'Super Admin' || user?.role === 'Admin' || (user?.permissions?.includes("MANAGE_PRODUCTS") ?? false)
+  const canManageProducts = user?.role === 'Super Admin' || user?.role === 'Super Administrator' || user?.role === 'Admin' || user?.role === 'Owner' || user?.permissions?.includes('*') || (user?.permissions?.includes("MANAGE_PRODUCTS") ?? false)
 
   const [categories, setCategories] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -86,17 +86,25 @@ export default function Categories() {
 
     try {
       setIsSubmitting(true)
+      const payload = {
+        name: formData.name.trim(),
+        display_order: Number(formData.display_order) || 0,
+        lifecycle_state: formData.lifecycle_state || 'ACTIVE',
+        visibility: formData.visibility || 'VISIBLE',
+        parent_id: formData.parent_id || null,
+      }
       if (drawerMode === "add") {
-        await menuService.createCategory(formData)
+        await menuService.createCategory(payload)
         toast.success("Category created successfully")
       } else {
-        await menuService.updateCategory(selectedCategory.id, formData)
+        await menuService.updateCategory(selectedCategory.id, payload)
         toast.success("Category updated successfully")
       }
       setIsDrawerOpen(false)
       fetchCategories()
     } catch (error: any) {
-      toast.error(error.response?.data?.error || "Failed to save category")
+      const details = error.response?.data?.errors?.map((e: any) => e.message).join(', ')
+      toast.error(error.response?.data?.message || details || error.response?.data?.error || "Failed to save category")
     } finally {
       setIsSubmitting(false)
     }
@@ -303,22 +311,22 @@ export default function Categories() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Parent Category</label>
+                    <label className="text-sm font-medium">Section / Parent</label>
                     <select
                       value={formData.parent_id || ""}
                       onChange={e => setFormData({ ...formData, parent_id: e.target.value || null })}
                       className="w-full h-10 px-3 rounded-md bg-secondary/50 border border-border/50 focus:border-primary/50 focus:outline-none transition-colors"
                     >
-                      <option value="">None (Top Level Category)</option>
+                      <option value="">None (Top Level — Restaurant / Fast Food / Deals)</option>
                       {categories
-                        .filter((c) => c.id !== selectedCategory?.id)
+                        .filter((c) => !c.parent_id && c.id !== selectedCategory?.id)
                         .map((c) => (
                           <option key={c.id} value={c.id}>
                             {c.name}
                           </option>
                       ))}
                     </select>
-                    <p className="text-xs text-muted-foreground">Select a parent if this is a subcategory.</p>
+                    <p className="text-xs text-muted-foreground">To move a subcategory, pick Restaurant or Fast Food here, then Save.</p>
                   </div>
                   
                   <div className="space-y-2">

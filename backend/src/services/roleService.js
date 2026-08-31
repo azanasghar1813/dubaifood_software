@@ -1,6 +1,20 @@
 import { roleRepository } from '../repositories/roleRepository.js';
 import { activityLogService } from './activityLogService.js';
 import { dbEngine } from '../database/sqlite.js';
+import { settingsRepository } from '../repositories/settingsRepository.js';
+
+function queueRoleAcl(roleId) {
+  const role = roleRepository.findById(roleId);
+  if (!role) return;
+  const codes = roleRepository.getRolePermissions(roleId).map((p) => p.code);
+  settingsRepository.updateApplicationSettings('SYNC', {
+    [`role_acl_${roleId}`]: JSON.stringify({
+      role_id: roleId,
+      name: role.name,
+      permission_codes: codes
+    })
+  });
+}
 
 export const roleService = {
   getAllRoles: () => {
@@ -31,6 +45,7 @@ export const roleService = {
     });
 
     activityLogService.logActivity(actorId, 'ROLE_CREATED', 'ROLE', roleId, { name, permissionsAssigned: permissionIds.length });
+    try { queueRoleAcl(roleId); } catch { /* sync is best-effort */ }
     return roleId;
   },
 
@@ -56,6 +71,7 @@ export const roleService = {
     });
 
     activityLogService.logActivity(actorId, 'ROLE_UPDATED', 'ROLE', roleId, { name, permissionsAssigned: permissionIds.length });
+    try { queueRoleAcl(roleId); } catch { /* sync is best-effort */ }
   },
 
   deleteRole: (actorId, roleId) => {

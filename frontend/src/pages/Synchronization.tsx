@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { 
-  RefreshCw, AlertTriangle, History, Trash2, Plus, MonitorSmartphone, Wifi, Database
+  RefreshCw, AlertTriangle, History, Trash2, Plus, MonitorSmartphone, Wifi, Database, Clock
 } from "lucide-react"
 import { syncApi, type SyncStatus, type ActiveDevice, type SyncQueueItem } from "../api/syncApi"
 import { toast } from "../store/toastStore"
@@ -61,21 +61,24 @@ export default function Synchronization() {
   const [syncHistory, setSyncHistory] = useState([])
 
   const [conflicts, setConflicts] = useState<any[]>([])
+  const [pendingQueue, setPendingQueue] = useState<SyncQueueItem[]>([])
   const [failedQueue, setFailedQueue] = useState<SyncQueueItem[]>([])
   const [syncedQueue, setSyncedQueue] = useState<SyncQueueItem[]>([])
 
   const fetchSyncData = async () => {
     try {
       setIsLoading(true);
-      const [statusData, devicesData, failedData, syncedData, conflictData] = await Promise.all([
+      const [statusData, devicesData, pendingData, failedData, syncedData, conflictData] = await Promise.all([
         syncApi.getStatus(),
         syncApi.getActiveDevices(),
+        syncApi.getQueue('PENDING', 500),
         syncApi.getQueue('FAILED', 10000), // Show virtually all failed items
-        syncApi.getQueue('SYNCED', 10),
+        syncApi.getQueue('SYNCED', 50),
         syncApi.getQueue('CONFLICT', 100)
       ]);
       setStatus(statusData);
       setDevices(devicesData);
+      setPendingQueue(pendingData || []);
       setFailedQueue(failedData);
       setSyncedQueue(syncedData);
       setConflicts(conflictData || []);
@@ -514,7 +517,37 @@ export default function Synchronization() {
       {/* ====================================================
           SYNC QUEUE VISUALIZATION
           ==================================================== */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+
+        {/* Pending Uploads */}
+        <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4 flex flex-col min-h-[320px]">
+          <div className="flex justify-between items-center gap-2">
+            <h3 className="text-base font-black uppercase tracking-wider text-orange-500 flex items-center gap-2">
+              <Clock className="w-5 h-5" /> Pending Uploads
+            </h3>
+            <span className="text-[10px] font-black uppercase bg-orange-500/10 text-orange-500 border border-orange-500/20 px-2 py-1 rounded-lg">
+              {status.pending} items
+            </span>
+          </div>
+          <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2 min-h-0 flex-1">
+            {pendingQueue.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground text-xs font-bold">
+                No pending uploads.
+              </div>
+            ) : (
+              pendingQueue.map(item => (
+                <div key={item.id} className="p-4 bg-orange-500/5 border border-orange-500/20 rounded-2xl flex flex-col gap-1">
+                  <div className="flex justify-between items-start gap-2">
+                    <span className="font-black text-xs text-orange-500 uppercase">{item.entity_type} • {item.action}</span>
+                    <span className="text-[9px] font-black uppercase text-orange-500/80 shrink-0">Waiting</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground break-all">ID: {item.entity_id}</p>
+                  <p className="text-[9px] text-zinc-500 mt-1">Queued {formatTime(item.created_at || item.updated_at)}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
         
         {/* Failed Uploads */}
         <div className="p-6 bg-card border border-border rounded-3xl shadow-sm space-y-4 flex flex-col">

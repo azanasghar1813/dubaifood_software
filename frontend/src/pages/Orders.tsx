@@ -485,7 +485,7 @@ export default function Orders() {
     const pin = deletePin.trim()
     const pinOk = pin === '748810' || await authService.verifyManagerPin(pin)
     if (!pinOk) {
-      alert('Unauthorized. Use PIN 748810.')
+      alert('Unauthorized. Enter the owner PIN.')
       return
     }
     try {
@@ -1076,8 +1076,8 @@ export default function Orders() {
             <h3 className="text-lg font-black mb-1">Delete order</h3>
             <p className="text-sm font-bold text-muted-foreground mb-4">
               {deleteDialog.mode === 'one'
-                ? `Enter PIN 748810 to delete #${deleteDialog.order?.orderNumber}.`
-                : `Enter PIN 748810 to delete ${selectedOrderIds.size} selected order(s).`}
+                ? `Enter owner PIN to delete #${deleteDialog.order?.orderNumber}.`
+                : `Enter owner PIN to delete ${selectedOrderIds.size} selected order(s).`}
             </p>
             <input
               autoFocus

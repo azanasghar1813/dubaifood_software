@@ -305,8 +305,19 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
       if (editingCustomerId) {
         const res: any = await customerService.updateCustomer(editingCustomerId, custData)
         toast.success("Customer updated")
+        const backendCustomer = res.data || res
+        setCustomer({
+          ...backendCustomer,
+          id: editingCustomerId,
+          name: finalName,
+          phone: newPhone || null,
+          address: newAddress,
+          is_vip: isVip
+        })
         fetchCustomers()
         resetForm()
+        onClose()
+        if (onSuccess) onSuccess()
       } else {
         if (isFavourite) {
           const res: any = await customerService.createCustomer(custData)

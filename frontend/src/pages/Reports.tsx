@@ -1091,7 +1091,7 @@ export default function Reports() {
                       </div>
                       <div className="p-3 bg-yellow-500/10 border border-yellow-500/25 rounded-2xl flex justify-between items-center">
                         <div>
-                          <span className="text-[10px] text-yellow-500 font-bold uppercase">Ali Fries</span>
+                          <span className="text-[10px] text-yellow-500 font-bold uppercase">Shani Fries</span>
                           <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.chipsSales || 0)}</p>
                         </div>
                         <span className="text-sm font-bold text-yellow-500 bg-yellow-500/20 px-3 py-1.5 rounded-lg">

@@ -347,7 +347,7 @@ class PrintService {
         order.customer = null;
       }
     }
-    order.is_vip = order.metadata?.is_vip === 'true' || order.metadata?.is_vip === true || order.customer?.is_vip === 1 || order.customer?.is_vip === true;
+    order.is_vip = order.metadata?.is_vip === 'true' || order.metadata?.is_vip === true || String(order.metadata?.is_vip) === '1' || order.customer?.is_vip === 1 || order.customer?.is_vip === true;
     return order;
   }
 }

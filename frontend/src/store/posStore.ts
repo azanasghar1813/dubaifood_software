@@ -146,12 +146,22 @@ export const usePosStore = create<POSState>()(
   isVipOrder: false,
   toggleVipOrder: async () => {
     const nextState = !get().isVipOrder;
-    set({ isVipOrder: nextState });
-    if (get().activeOrder && !get().editingOrderId) {
-      const res = await cartService.setMeta({ is_vip: nextState });
-      if ((res as any).success) {
-        set({ activeOrder: (res as any).data });
+    const current = get().customer;
+    set({
+      isVipOrder: nextState,
+      customer: current ? { ...current, is_vip: nextState } : current
+    });
+    try {
+      const state = get();
+      if (state.editingOrderId && state.activeOrder?.order_number) {
+        const res = await apiClient.put(`/orders/${state.editingOrderId}/meta`, { is_vip: nextState });
+        if ((res as any).success) set({ activeOrder: (res as any).data });
+      } else if (state.activeOrder) {
+        const res = await cartService.setMeta({ is_vip: nextState });
+        if ((res as any).success) set({ activeOrder: (res as any).data });
       }
+    } catch (e) {
+      console.error('Failed to persist VIP:', e);
     }
   },
   tableNumber: null,

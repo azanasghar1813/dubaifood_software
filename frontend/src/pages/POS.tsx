@@ -21,6 +21,7 @@ import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "reac
 import { menuService } from "../services/menuService"
 import { cartService } from "../services/posServices/cartService"
 import { authService } from "../services/authService"
+import { apiClient } from "../api/client"
 import { CustomerPanelModal } from "../components/CustomerPanelModal"
 import { TableSelectorModal } from "../components/TableSelectorModal"
 import { WaiterSelectorModal } from "../components/WaiterSelectorModal"
@@ -136,10 +137,6 @@ export default function POS() {
   // Ref for the product grid container (to read column count)
   const gridContainerRef = useRef<HTMLDivElement>(null)
 
-  // Edit Mode state
-  const [removingCartItemId, setRemovingCartItemId] = useState<string | null>(null)
-  const [removalReason, setRemovalReason] = useState("")
-
   // Restaurant Management Modals
   const [customerModalOpen, setCustomerModalOpen] = useState(false)
   const [tableModalOpen, setTableModalOpen] = useState(false)
@@ -226,6 +223,15 @@ export default function POS() {
 
       if (currentOrderId) {
         const latest = usePosStore.getState()
+        try {
+          await apiClient.put(`/orders/${currentOrderId}/meta`, {
+            is_vip: !!(latest.isVipOrder || latest.customer?.is_vip || latest.customer?.isVip),
+            customer_id: (!latest.customer?.is_temp ? latest.customer?.id : null) || null,
+            customer_name: latest.customer?.name || null,
+            customer_phone: latest.customer?.phone || null,
+            customer_address: latest.customer?.address || null,
+          })
+        } catch { /* VIP persist is best-effort before KOT */ }
         const preview = {
           orderNumber: (latest.activeOrder as any)?.order_number || latest.previewOrderNumber,
           orderType: latest.orderType,
@@ -331,8 +337,18 @@ export default function POS() {
           }
 
           let displayPrice = p.price || 0;
-          if (p.variants && p.variants.length > 0) {
-            const minVariantPrice = Math.min(...p.variants.map((v: any) => v.price || 0));
+          const seenVar = new Set<string>();
+          const variants = (p.variants || []).filter((v: any) => {
+            const name = String(v.name || '').trim().toLowerCase();
+            const id = String(v.id || '');
+            const k = id || name;
+            if (!k || seenVar.has(k) || (name && seenVar.has(`n:${name}`))) return false;
+            if (id) seenVar.add(id);
+            if (name) seenVar.add(`n:${name}`);
+            return true;
+          });
+          if (variants.length > 0) {
+            const minVariantPrice = Math.min(...variants.map((v: any) => v.price || 0));
             if (minVariantPrice > 0) {
               displayPrice = minVariantPrice;
             }
@@ -340,6 +356,7 @@ export default function POS() {
 
           return {
             ...p,
+            variants,
             code: p.code || p.product_code,
             category: activeCats.find((c: any) => c.id === p.category_id)?.name || 'Unknown',
             image: imagePath,
@@ -899,9 +916,7 @@ export default function POS() {
           if (usePosStore.getState().isLoadingOrder) return
           const selectedCartItem = cart[cartSelectedIndex]
           if (selectedCartItem) {
-            if (editingOrderId && selectedCartItem.editState !== 'new') {
-              setRemovingCartItemId(selectedCartItem.cartItemId)
-            } else if (selectedCartItem.quantity > 1) {
+            if (selectedCartItem.quantity > 1) {
               updateQuantity(selectedCartItem.cartItemId, selectedCartItem.quantity - 1)
             } else {
               removeFromCart(selectedCartItem.cartItemId)
@@ -917,12 +932,8 @@ export default function POS() {
           if (usePosStore.getState().isLoadingOrder) return
           const selectedCartItem = cart[cartSelectedIndex]
           if (selectedCartItem) {
-            if (editingOrderId && selectedCartItem.editState !== 'new') {
-              setRemovingCartItemId(selectedCartItem.cartItemId)
-            } else {
-              removeFromCart(selectedCartItem.cartItemId)
-              setCartSelectedIndex(s => Math.max(s - 1, 0))
-            }
+            removeFromCart(selectedCartItem.cartItemId)
+            setCartSelectedIndex(s => Math.max(s - 1, 0))
           }
           return
         }
@@ -1632,9 +1643,9 @@ export default function POS() {
                             {/* Variant Chips */}
                             {product.variants && product.variants.length > 0 && (
                               <div className="mt-3 grid grid-cols-2 gap-1.5" onClick={(e) => e.stopPropagation()}>
-                                {product.variants.map((v: any) => (
+                                {product.variants.map((v: any, vi: number) => (
                                   <button
-                                    key={v.name}
+                                    key={v.id || `${product.id}-var-${vi}`}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleProductClick(product, v.name);
@@ -1856,9 +1867,7 @@ export default function POS() {
                                 <div className="flex items-center gap-3 mt-2">
                                   <div className={`flex items-center border border-border rounded-lg bg-secondary ${item.editState === 'removed' ? 'opacity-50 pointer-events-none' : ''}`}>
                                     <button onClick={() => {
-                                      if (editingOrderId && item.editState !== 'new') {
-                                        setRemovingCartItemId(item.cartItemId)
-                                      } else if (item.quantity > 1) {
+                                      if (item.quantity > 1) {
                                         updateQuantity(item.cartItemId, item.quantity - 1)
                                       } else {
                                         removeFromCart(item.cartItemId)
@@ -1900,11 +1909,7 @@ export default function POS() {
                                 {item.editState !== 'removed' && (
                                   <button
                                     onClick={() => {
-                                      if (editingOrderId && item.editState !== 'new') {
-                                        setRemovingCartItemId(item.cartItemId)
-                                      } else {
-                                        removeFromCart(item.cartItemId)
-                                      }
+                                      removeFromCart(item.cartItemId)
                                     }}
                                     className="text-red-500 hover:text-red-600 mt-2 ml-auto block group"
                                   >
@@ -2211,7 +2216,7 @@ export default function POS() {
                       {activeCartItem.modifiers.map(mod => {
                         const isSelected = tempModifiers.some(m => m.name === mod.name)
                         return (
-                          <button key={mod.name} onClick={() => toggleTempModifier(mod)} className={`flex justify-between p-6 rounded-2xl border-[3px] font-black text-lg transition-all ${isSelected ? 'border-[#00E676] bg-[#00E676]/10 text-[#00E676]' : 'border-border bg-secondary text-foreground hover:border-muted-foreground'}`}>
+                          <button key={mod.id || `mod-${mod.name}`} onClick={() => toggleTempModifier(mod)} className={`flex justify-between p-6 rounded-2xl border-[3px] font-black text-lg transition-all ${isSelected ? 'border-[#00E676] bg-[#00E676]/10 text-[#00E676]' : 'border-border bg-secondary text-foreground hover:border-muted-foreground'}`}>
                             <span>{mod.name}</span><span>+Rs {mod.price.toLocaleString()}</span>
                           </button>
                         )
@@ -2259,7 +2264,7 @@ export default function POS() {
                   const isSelected = index === sizeSelectedIndex;
                   return (
                     <button
-                      key={size.name}
+                      key={size.id || `size-${size.name}-${index}`}
                       onMouseEnter={() => setSizeSelectedIndex(index)}
                       onClick={() => {
                         addToCart({ ...activeProductForSize, variant_id: size.id, name: `${activeProductForSize.name} (${size.name})`, price: size.price, code: size.code || activeProductForSize.code });
@@ -2677,76 +2682,6 @@ export default function POS() {
         isOpen={recentOrdersModalOpen}
         onClose={() => setRecentOrdersModalOpen(false)}
       />
-
-      {/* Removal Reason Modal — shown when removing items in Edit Mode */}
-      <AnimatePresence>
-        {removingCartItemId && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-card w-full max-w-sm rounded-2xl shadow-2xl border border-border overflow-hidden"
-            >
-              <div className="p-4 bg-secondary border-b border-border flex justify-between items-center">
-                <h2 className="text-lg font-black text-foreground">Select Removal Reason</h2>
-                <button onClick={() => { setRemovingCartItemId(null); setRemovalReason("") }} className="p-1.5 hover:bg-background rounded-lg transition-colors">
-                  <XOctagon className="w-5 h-5 text-muted-foreground" />
-                </button>
-              </div>
-              <div className="p-4 space-y-3">
-                <div className="grid grid-cols-1 gap-2">
-                  {["Customer Cancelled", "Kitchen Error", "Manager Override", "Out of Stock", "Wrong Order"].map(reason => (
-                    <button
-                      key={reason}
-                      onClick={() => setRemovalReason(reason)}
-                      className={`p-3 text-left border rounded-xl font-bold transition-all ${removalReason === reason
-                        ? 'bg-orange-500/20 border-orange-500 text-orange-400'
-                        : 'bg-secondary border-border text-foreground hover:bg-background'
-                        }`}
-                    >
-                      {reason}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="text"
-                  placeholder="Or type custom reason..."
-                  value={!["Customer Cancelled", "Kitchen Error", "Manager Override", "Out of Stock", "Wrong Order"].includes(removalReason) ? removalReason : ""}
-                  onChange={(e) => setRemovalReason(e.target.value)}
-                  className="w-full bg-secondary text-foreground p-3 rounded-xl border border-border focus:border-orange-500 outline-none transition-colors"
-                />
-                <div className="flex gap-2 pt-2">
-                  <button
-                    onClick={() => { setRemovingCartItemId(null); setRemovalReason("") }}
-                    className="flex-1 p-3 rounded-xl font-bold bg-secondary text-foreground hover:bg-background transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (removalReason && removingCartItemId) {
-                        const target = cart.find((c: any) => c.cartItemId === removingCartItemId)
-                        if (target && target.quantity > 1) {
-                          updateQuantity(removingCartItemId, target.quantity - 1)
-                        } else {
-                          removeFromCart(removingCartItemId, removalReason)
-                        }
-                        setRemovingCartItemId(null)
-                        setRemovalReason("")
-                      }
-                    }}
-                    disabled={!removalReason}
-                    className="flex-1 p-3 rounded-xl font-bold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Confirm Remove
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* ReceiptPreview Popup */}
       {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}

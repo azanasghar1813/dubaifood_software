@@ -89,6 +89,7 @@ export const pushSyncEvents = async (req, res) => {
       
       if (action === 'DELETE' || action === 'ARCHIVED') {
         tableGroups[tableName].deletes.push(entity_id);
+        tableGroups[tableName].eventMap[entity_id].push(event);
       } else {
         try {
           const entityData = typeof payload === 'string' ? JSON.parse(payload) : payload || {};
@@ -97,8 +98,13 @@ export const pushSyncEvents = async (req, res) => {
           // Strip local-only columns that do not exist in Supabase cloud schema
           delete entityData.idempotency_key;
           delete entityData.sync_status;
+          delete entityData.sync_version;
           delete entityData.synced_at;
           delete entityData.sync_hash;
+          delete entityData.show_on_login;
+          delete entityData.failed_login_attempts;
+          delete entityData.locked_until;
+          delete entityData.force_pin_change;
           
           // Strip kitchen timings which might not be in cloud schema
           delete entityData.kitchen_started_at;
@@ -200,10 +206,11 @@ export const pushSyncEvents = async (req, res) => {
         if (group.deletes.length > 0) {
           const deleteCol = tableName === 'application_settings' ? 'key' : 'id';
           const { error } = await supabase.from(tableName).delete().in(deleteCol, group.deletes);
-          if (error) {
+          const missingTable = error && /schema cache|does not exist|Could not find the table/i.test(error.message || '');
+          if (error && !missingTable) {
              for (const id of group.deletes) {
                const { error: singleError } = await supabase.from(tableName).delete().eq(deleteCol, id);
-               if (singleError) {
+               if (singleError && !/schema cache|does not exist|Could not find the table/i.test(singleError.message || '')) {
                  const events = group.eventMap[id] || [];
                  for (const event of events) {
                    results.failed.push({ eventId: event.id, error: singleError.message });
@@ -288,6 +295,16 @@ export const pushSyncEvents = async (req, res) => {
                 
                 if (firstPassError) {
                   throw new Error(`Categories first pass failed: ${firstPassError.message}`);
+                }
+              }
+            }
+
+            if (tableName === 'dining_tables') {
+              for (const u of validUpserts) {
+                if (u.table_number && u.id) {
+                  try {
+                    await supabase.from('dining_tables').delete().eq('table_number', u.table_number).neq('id', u.id);
+                  } catch { /* unique cleanup is best-effort */ }
                 }
               }
             }

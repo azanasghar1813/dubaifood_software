@@ -79,6 +79,30 @@ class ConfigService {
       dbEngine.prepare("DELETE FROM application_settings WHERE key = 'order_prefix'").run();
       dbEngine.prepare('DELETE FROM sync_queue').run();
       try { dbEngine.prepare('DELETE FROM sync_conflicts').run(); } catch { /* optional */ }
+
+      const wipe = (sql) => { try { dbEngine.prepare(sql).run(); } catch { /* optional */ } };
+      wipe('DELETE FROM order_combo_components');
+      wipe('DELETE FROM order_item_modifiers');
+      wipe('DELETE FROM order_item_addons');
+      wipe('DELETE FROM order_item_variants');
+      wipe('DELETE FROM order_items');
+      wipe('DELETE FROM order_payments');
+      wipe('DELETE FROM payment_receipts');
+      wipe('DELETE FROM order_timeline');
+      wipe('DELETE FROM order_metadata');
+      wipe('DELETE FROM order_audit_trail');
+      wipe('DELETE FROM order_search_index');
+      wipe('DELETE FROM order_tags');
+      wipe('DELETE FROM order_attachments');
+      wipe('DELETE FROM reprint_log');
+      wipe('DELETE FROM print_jobs');
+      wipe('DELETE FROM print_queue');
+      wipe('DELETE FROM cart_cache');
+      wipe('DELETE FROM orders');
+      wipe('DELETE FROM order_number_sequences');
+      wipe("DELETE FROM activity_logs WHERE entity_type IN ('ORDER', 'ORDER_ITEM', 'ORDER_PAYMENT', 'PAYMENT', 'PRINT')");
+      try { dbEngine.prepare("UPDATE dining_tables SET status = 'AVAILABLE'").run(); } catch { /* optional */ }
+      try { dbEngine.prepare("UPDATE tables SET status = 'Available'").run(); } catch { /* optional */ }
       dbEngine.prepare(`
         INSERT INTO application_settings (key, value, description)
         VALUES ('last_sync_timestamp', '0', 'Last successful cloud pull timestamp')
@@ -91,6 +115,7 @@ class ConfigService {
         { table: 'deals', type: 'DEAL' },
         { table: 'customers', type: 'CUSTOMER' },
         { table: 'users', type: 'USER' },
+        { table: 'tables', type: 'DINING_TABLE' },
       ];
       for (const { table, type } of backfillTables) {
         try {
@@ -106,7 +131,7 @@ class ConfigService {
       }
 
       this.refreshCache();
-      console.log('[ConfigService] Fresh install: cleared cloned till identity. Login will ask for PC-A–PC-F.');
+      console.log('[ConfigService] Fresh install: cleared cloned till identity and test orders. Login will ask for PC-A–PC-F.');
     } catch (e) {
       console.error('[ConfigService] Failed to reset cloned identity:', e.message);
       return;
