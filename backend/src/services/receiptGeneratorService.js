@@ -128,7 +128,7 @@ class ReceiptGeneratorService {
         order_type: order.order_type,
         table_id: order.table_id || null,
         customer_id: order.customer_id || null,
-        is_vip: order.customer?.is_vip || order.is_vip || (order.metadata && String(order.metadata.is_vip) === 'true') || false,
+        is_vip: !!(order.customer?.is_vip || order.is_vip || (order.metadata && (String(order.metadata.is_vip) === 'true' || order.metadata.is_vip === true || String(order.metadata.is_vip) === '1'))),
         business_date: order.business_date,
         created_at: order.created_at,
         cashier_user_id: order.cashier_user_id,

@@ -120,6 +120,8 @@ export default function Orders() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set())
   const [printOrder, setPrintOrder] = useState<Order | null>(null)
+  const [deleteDialog, setDeleteDialog] = useState<{ mode: 'one' | 'bulk'; order?: Order } | null>(null)
+  const [deletePin, setDeletePin] = useState('')
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -174,19 +176,10 @@ export default function Orders() {
     setSelectedOrderIds(new Set())
   }
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (selectedOrderIds.size === 0) return
-    const pin = prompt("Deleting orders requires Authorization. Enter manager PIN:")
-    const pinOk = pin ? await authService.verifyManagerPin(pin) : false
-    if (!pinOk) { alert("Unauthorized."); return }
-
-    if (!confirm(`Permanently delete ${selectedOrderIds.size} order(s)? This action cannot be undone.`)) return
-
-    for (const id of selectedOrderIds) {
-      try { await deleteOrder(id) } catch (e) { }
-    }
-    syncOrdersFromBackend()
-    setSelectedOrderIds(new Set())
+    setDeletePin('')
+    setDeleteDialog({ mode: 'bulk' })
   }
 
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -478,26 +471,39 @@ export default function Orders() {
     }
   }
 
-  const handleDeleteOrder = async (order: Order) => {
-    const pin = prompt("Deleting an order requires Authorization. Enter PIN 748810:")
-    const pinOk = pin === '748810' || (pin ? await authService.verifyManagerPin(pin) : false)
-    if (!pinOk) { alert("Unauthorized. Use PIN 748810."); return }
+  const handleDeleteOrder = (order: Order) => {
+    setDeletePin('')
+    setDeleteDialog({ mode: 'one', order })
+  }
 
-
-    if (!confirm(`Are you absolutely sure you want to permanently delete order ${order.orderNumber}? This action cannot be undone.`)) return
-
+  const confirmDeleteWithPin = async () => {
+    if (!deleteDialog) return
+    const pin = deletePin.trim()
+    const pinOk = pin === '748810' || await authService.verifyManagerPin(pin)
+    if (!pinOk) {
+      alert('Unauthorized. Use PIN 748810.')
+      return
+    }
     try {
-      const res = await deleteOrder(order.id)
-      if (res.success) {
-        alert(`Order ${order.orderNumber} deleted successfully.`)
-        if (selectedOrder?.id === order.id) setSelectedOrder(null)
-        syncOrdersFromBackend()
+      if (deleteDialog.mode === 'one' && deleteDialog.order) {
+        const res: any = await deleteOrder(deleteDialog.order.id)
+        if (res?.success === false) {
+          alert(res.message || 'Failed to delete order')
+          return
+        }
+        if (selectedOrder?.id === deleteDialog.order.id) setSelectedOrder(null)
       } else {
-        alert("Failed to delete order")
+        for (const id of selectedOrderIds) {
+          try { await deleteOrder(id) } catch { /* continue */ }
+        }
+        setSelectedOrderIds(new Set())
       }
-    } catch (e) {
+      setDeleteDialog(null)
+      setDeletePin('')
+      await syncOrdersFromBackend()
+    } catch (e: any) {
       console.error(e)
-      alert("Error deleting order. Make sure backend is running.")
+      alert(e?.response?.data?.message || e?.message || 'Error deleting order.')
     }
   }
 
@@ -789,7 +795,7 @@ export default function Orders() {
                       <button onClick={() => setSelectedOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" title="View Details"><FileText className="w-4 h-4" /></button>
                       <button onClick={() => handlePrintReceipt(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-primary transition-colors flex items-center justify-center" title="Print/Reprint Receipt"><Printer className="w-4 h-4" /></button>
                       <button onClick={() => handleEditClick(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-amber-500 transition-colors flex items-center justify-center" title="Edit Order"><Pencil className="w-4 h-4" /></button>
-                      <button onClick={() => handleDeleteOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-red-600 transition-colors flex items-center justify-center" title="Delete Order"><Trash2 className="w-4 h-4" /></button>
+                      <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteOrder(order) }} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-red-600 transition-colors flex items-center justify-center" title="Delete Order"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>
@@ -1059,6 +1065,33 @@ export default function Orders() {
       <div className="hidden">
         {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
       </div>
+
+      {deleteDialog && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-2xl">
+            <h3 className="text-lg font-black mb-1">Delete order</h3>
+            <p className="text-sm font-bold text-muted-foreground mb-4">
+              {deleteDialog.mode === 'one'
+                ? `Enter PIN 748810 to delete #${deleteDialog.order?.orderNumber}.`
+                : `Enter PIN 748810 to delete ${selectedOrderIds.size} selected order(s).`}
+            </p>
+            <input
+              autoFocus
+              type="password"
+              inputMode="numeric"
+              value={deletePin}
+              onChange={(e) => setDeletePin(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') confirmDeleteWithPin() }}
+              className="w-full h-11 px-3 rounded-xl border border-border bg-secondary font-black tracking-widest mb-4 outline-none focus:border-primary"
+              placeholder="PIN"
+            />
+            <div className="flex gap-2">
+              <button type="button" onClick={() => { setDeleteDialog(null); setDeletePin('') }} className="flex-1 h-11 rounded-xl border border-border font-black">Cancel</button>
+              <button type="button" onClick={confirmDeleteWithPin} className="flex-1 h-11 rounded-xl bg-red-500 text-white font-black">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

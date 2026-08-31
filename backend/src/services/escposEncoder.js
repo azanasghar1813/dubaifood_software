@@ -85,11 +85,14 @@ class EscPosEncoder {
         parts.push(this._bold(false));
       }
       if (biz.address) {
-        parts.push(this._encodeText(biz.address, iconvEncoding));
-        parts.push(this._lf());
+        for (const line of String(biz.address).split(/\r?\n/)) {
+          if (!line.trim()) continue;
+          parts.push(this._encodeText(line, iconvEncoding));
+          parts.push(this._lf());
+        }
       }
       if (biz.phone) {
-        parts.push(this._encodeText('Tel: ' + biz.phone, iconvEncoding));
+        parts.push(this._encodeText('Contact: ' + biz.phone, iconvEncoding));
         parts.push(this._lf());
       }
       if (biz.tax_id) {

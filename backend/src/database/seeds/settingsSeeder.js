@@ -13,8 +13,8 @@ export const runSettingsSeeder = (db) => {
   const defaultSettings = [
     // General
     { key: 'business_name', val: 'Dubai Food Software POS', cat: 'GENERAL', desc: 'The official name of the business' },
-    { key: 'business_address', val: 'Dubai, UAE', cat: 'GENERAL', desc: 'Main physical address' },
-    { key: 'phone_number', val: '+971 50 123 4567', cat: 'GENERAL', desc: 'Main contact number' },
+    { key: 'business_address', val: 'Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)', cat: 'GENERAL', desc: 'Main physical address' },
+    { key: 'phone_number', val: '0308-8020784, 0345-6420784', cat: 'GENERAL', desc: 'Main contact number' },
     { key: 'whatsapp_number', val: '+971 50 123 4567', cat: 'GENERAL', desc: 'WhatsApp support number' },
     { key: 'email_address', val: 'contact@dubaifood.com', cat: 'GENERAL', desc: 'Support email address' },
     { key: 'timezone', val: 'Asia/Dubai', cat: 'GENERAL', desc: 'Business timezone' },
@@ -37,6 +37,14 @@ export const runSettingsSeeder = (db) => {
     const res = insertSetting.run(setting.key, setting.val, setting.cat, setting.desc);
     if (res.changes > 0) inserted++;
   }
+
+  // Existing DBs keep INSERT OR IGNORE values — force the live receipt address/phone.
+  db.prepare(`UPDATE business_settings SET value = ? WHERE key = 'business_address'`).run(
+    'Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)'
+  );
+  db.prepare(`UPDATE business_settings SET value = ? WHERE key = 'phone_number'`).run(
+    '0308-8020784, 0345-6420784'
+  );
 
   // Insert default printers for UI kitchen selections
   const insertPrinter = db.prepare('INSERT OR IGNORE INTO printers (id, name, type, station_type) VALUES (?, ?, ?, ?)');

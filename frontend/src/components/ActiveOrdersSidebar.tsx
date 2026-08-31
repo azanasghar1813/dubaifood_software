@@ -220,15 +220,9 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     if (!window.confirm(confirmMsg)) return
 
     try {
-      const { useOrderStore } = await import('../store/orderStore')
+      await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'COMPLETED', reason: 'Marked complete from active orders' })
       useOrderStore.getState().updateOrder(order.id, { status: 'Completed' })
-
-      await apiClient.post(
-        `/payments/order/${order.id}`,
-        { amount_received: order.total, payment_method: 'CASH' },
-        { headers: { 'Idempotency-Key': crypto.randomUUID() } }
-      )
-      syncOrdersFromBackend()
+      await syncOrdersFromBackend()
     } catch (e: any) {
       console.error(e)
       alert(e?.response?.data?.message || e?.message || 'Could not complete this order.')

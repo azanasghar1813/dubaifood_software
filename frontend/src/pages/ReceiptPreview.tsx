@@ -20,7 +20,14 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
   const customerName = order?.customerName ?? null
   const customerPhone = order?.customerPhone ?? null
   const customerAddress = order?.customerAddress ?? null
-  const isVip        = (order as any)?.customer?.is_vip || (order as any)?.isVip || false
+  const isVip        = !!(
+    (order as any)?.customer?.is_vip ||
+    (order as any)?.customer?.isVip ||
+    (order as any)?.isVip ||
+    (order as any)?.is_vip
+  )
+  const receiptAddress = (settings.address || 'Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)').replace(/\n/g, '<br>')
+  const receiptPhone = settings.phoneNumber || '0308-8020784, 0345-6420784'
   const notes        = order?.notes        ?? null
   const paymentStatus = order?.paymentStatus ?? "Unpaid"
   const timestamp    = order ? new Date(order.timestamp) : new Date()
@@ -107,9 +114,9 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     </div>
     
     <!-- Address -->
-    <div style="text-align:center;font-size:9.5px;font-weight:600;color:#000;line-height:1.2;margin-bottom:12px">
-      <div style="white-space:nowrap;">${settings.address || ''}</div>
-      <div>Contact: ${settings.phoneNumber || ''}</div>
+    <div style="text-align:center;font-size:9.5px;font-weight:600;color:#000;line-height:1.35;margin-bottom:12px">
+      <div>${receiptAddress}</div>
+      <div>Contact: ${receiptPhone}</div>
     </div>
 
     <!-- Order Details -->
@@ -173,10 +180,9 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       {/* Header */}
       <div className="flex flex-col items-center justify-center mb-6">
         <img src="/receipt_logo.png" className="w-[140px] object-contain mb-2" onError={(e: any) => e.target.style.display='none'} />
-        <div className="text-[9.5px] text-center mt-1 font-semibold leading-tight w-full">
-          <div className="whitespace-nowrap">Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,</div>
-          <div>Chowk Azam (Layyah)</div>
-          <div>Contact: 0308-8020784, 0345-6420784</div>
+        <div className="text-[9.5px] text-center mt-1 font-semibold leading-[1.35] w-full whitespace-pre-line">
+          {settings.address || 'Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)'}
+          {'\n'}Contact: {settings.phoneNumber || '0308-8020784, 0345-6420784'}
         </div>
       </div>
       

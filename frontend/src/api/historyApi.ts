@@ -53,6 +53,7 @@ export interface HistoryOrderRow {
   customer_id:           string | null;
   customer_name?:        string | null;
   customer_phone?:       string | null;
+  is_vip?:               number | boolean | string | null;
   table_id:              string | null;
   waiter_id?:            string | null;
   waiter_name?:          string | null;

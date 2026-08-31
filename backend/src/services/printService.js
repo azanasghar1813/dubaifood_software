@@ -9,6 +9,8 @@ import { syncService } from './syncService.js';
 import { orderRepository } from '../repositories/orderRepository.js';
 import { orderItemRepository } from '../repositories/orderItemRepository.js';
 import { orderPaymentRepository } from '../repositories/orderPaymentRepository.js';
+import { orderMetadataRepository } from '../repositories/orderMetadataRepository.js';
+import { customerRepository } from '../repositories/customerRepository.js';
 import { paymentReceiptRepository } from '../repositories/paymentReceiptRepository.js';
 import { configService } from './configService.js';
 
@@ -345,6 +347,14 @@ class PrintService {
     } catch {
       order.metadata = {};
     }
+    if (order.customer_id) {
+      try {
+        order.customer = customerRepository.findById(order.customer_id);
+      } catch {
+        order.customer = null;
+      }
+    }
+    order.is_vip = order.metadata?.is_vip === 'true' || order.metadata?.is_vip === true || order.customer?.is_vip === 1 || order.customer?.is_vip === true;
     return order;
   }
 }

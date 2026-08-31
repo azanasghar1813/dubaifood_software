@@ -727,9 +727,7 @@ export default function POS() {
           usePosStore.getState().setOrderType('Delivery')
           break
         case "Escape":
-          if (isCartMode) {
-            setIsCartMode(false)
-          } else if (customerModalOpen) {
+          if (customerModalOpen) {
             setCustomerModalOpen(false)
           } else if (tableModalOpen) {
             setTableModalOpen(false)
@@ -739,6 +737,17 @@ export default function POS() {
             setRiderModalOpen(false)
           } else if (recentOrdersModalOpen) {
             setRecentOrdersModalOpen(false)
+          } else if (waiterId || waiterName) {
+            e.preventDefault()
+            setWaiterId(null, null)
+          } else if (riderId || riderName) {
+            e.preventDefault()
+            setRiderId(null, null)
+          } else if (tableNumber) {
+            e.preventDefault()
+            setTableNumber(null)
+          } else if (isCartMode) {
+            setIsCartMode(false)
           } else {
             e.preventDefault()
             clearCart()
@@ -993,7 +1002,9 @@ export default function POS() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [
     cart, checkoutModalOpen, customizeModalOpen, sizeModalOpen,
-    customerModalOpen, tableModalOpen, recentOrdersModalOpen,
+    customerModalOpen, tableModalOpen, waiterModalOpen, riderModalOpen, recentOrdersModalOpen,
+    waiterId, waiterName, riderId, riderName, tableNumber,
+    setWaiterId, setRiderId, setTableNumber,
     activeProductForSize, clearCart, setCustomer, updateQuantity,
     removeFromCart, editingOrderId, clearEditMode, duplicateItem,
     sizeSelectedIndex, gridSelectedIndex,
@@ -1976,6 +1987,7 @@ export default function POS() {
                               const checkoutResult: any = await cartService.checkout({
                                 order_type: state.orderType === 'Delivery' ? 'DELIVERY' : state.orderType === 'Takeaway' ? 'TAKEAWAY' : state.orderType === 'Drive Through' ? 'DRIVE_THROUGH' : 'DINE_IN',
                                 customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || null,
+                                is_vip: state.isVipOrder || !!state.customer?.is_vip || !!state.customer?.isVip || false,
                                 table_id: state.tableNumber || null,
                                 waiter_id: state.waiterId || null,
                                 rider_id: state.riderId || null,
@@ -2484,7 +2496,9 @@ export default function POS() {
                     onClick={async () => {
                       setIsProcessing(true)
                       const amt = amountReceived ? Number(amountReceived) : totalToPay
-                      const method: PaymentMethod = selectedPaymentMethod ?? 'Cash'
+                      const method: PaymentMethod = selectedPaymentMethod
+                        ? selectedPaymentMethod
+                        : (isPaidPrint ? 'Cash' : 'Later' as PaymentMethod)
 
                       const fullOrderData = {
                         id: activeOrderId,

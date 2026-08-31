@@ -284,8 +284,11 @@ export const usePosStore = create<POSState>()(
       orderType: order?.orderType || order?.order_type || (backendOrder?.order_type === 'DINE_IN' ? 'Dine In' : backendOrder?.order_type === 'TAKEAWAY' ? 'Takeaway' : backendOrder?.order_type === 'DELIVERY' ? 'Delivery' : get().orderType),
       tableNumber: order?.tableNumber || order?.table_id || backendOrder?.table_id || null,
       waiterId: order?.waiterId || order?.waiter_id || backendOrder?.waiter_id || null,
+      waiterName: order?.waiterName || order?.waiter_name || backendOrder?.waiter_name_snapshot || backendOrder?.waiter_name || null,
       riderId: order?.riderId || order?.rider_id || backendOrder?.rider_id || null,
-      customer: order?.customerName ? { name: order.customerName, phone: order.customerPhone || order.customer_phone } : get().customer,
+      riderName: order?.riderName || order?.rider_name || backendOrder?.rider_name_snapshot || backendOrder?.rider_name || null,
+      isVipOrder: !!(order?.isVip || backendOrder?.is_vip || backendOrder?.metadata?.is_vip === 'true' || backendOrder?.metadata?.is_vip === true || backendOrder?.customer?.is_vip),
+      customer: order?.customerName ? { name: order.customerName, phone: order.customerPhone || order.customer_phone, is_vip: !!(order?.isVip || backendOrder?.customer?.is_vip) } : get().customer,
       deliveryCharges: Number(order.deliveryCharges || order.delivery_charges || order.metadata?.delivery_charges || backendOrder?.delivery_fee || 0)
     })
   },
@@ -562,6 +565,19 @@ export const usePosStore = create<POSState>()(
 
         order = (checkoutResult as any).data
         set({ activeOrder: order, cart: (order?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] })) })
+      } else if (order?.id) {
+        try {
+          await apiClient.put(`/orders/${order.id}/meta`, {
+            is_vip: state.isVipOrder || !!state.customer?.is_vip || !!state.customer?.isVip || false,
+            customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || order.customer_id || null,
+            waiter_id: state.waiterId || order.waiter_id || null,
+            waiter_name_snapshot: state.waiterName || null,
+            rider_id: state.riderId || order.rider_id || null,
+            rider_name_snapshot: state.riderName || null,
+          })
+        } catch (e) {
+          console.warn('Could not persist VIP / staff meta on numbered order', e)
+        }
       }
 
       if (order?.id) {
@@ -600,7 +616,7 @@ export const usePosStore = create<POSState>()(
       set({ paymentIdempotencyKeys: updatedPaymentKeys });
 
       // Draft order is now completed. Fetch a new draft order and sync history.
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, isVipOrder: false, checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
+      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, waiterName: null, riderId: null, riderName: null, isVipOrder: false, checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
       await get().fetchDraftOrder()
       // Immediately sync order history for instant status updates
       useOrderStore.getState().syncOrdersFromBackend()
@@ -614,7 +630,7 @@ export const usePosStore = create<POSState>()(
   },
 
   clearCart: () => {
-    set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, riderId: null, deliveryCharges: 0, isVipOrder: false, checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
+    set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, waiterName: null, riderId: null, riderName: null, deliveryCharges: 0, isVipOrder: false, checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
     void cartService.clearCart().catch(() => {})
     void get().fetchDraftOrder()
   },
@@ -689,16 +705,18 @@ export const usePosStore = create<POSState>()(
   },
   
   setCustomer: async (customer) => {
-    set({ customer })
+    const vip = !!(customer?.is_vip || customer?.isVip)
+    set({ customer, isVipOrder: customer ? vip : false })
     try {
       const state = get();
+      const meta = { customer_id: customer?.id || null, is_vip: customer ? vip : false };
       if (state.editingOrderId && state.activeOrder && state.activeOrder.order_number) {
-        const res = await apiClient.put(`/orders/${state.editingOrderId}/meta`, { customer_id: customer?.id || null });
+        const res = await apiClient.put(`/orders/${state.editingOrderId}/meta`, meta);
         if ((res as any).success) {
           set({ activeOrder: (res as any).data });
         }
       } else {
-        const res = await cartService.setMeta({ customer_id: customer?.id || null });
+        const res = await cartService.setMeta(meta);
         if ((res as any).success) {
           set({ activeOrder: (res as any).data });
         }

@@ -68,13 +68,14 @@ export const pushSyncEvents = async (req, res) => {
         'ORDER_PAYMENT': 'order_payments',
         'PAYMENT': 'order_payments',
         'DINING_TABLE': 'dining_tables',
-        'SETTING': 'application_settings'
+        'SETTING': 'application_settings',
+        'VARIANT': 'product_variants'
       };
 
       const tableName = tableMap[entity_type.toUpperCase()];
 
       if (!tableName) {
-        if (entity_type.toUpperCase() === 'PRINT' || entity_type.toUpperCase() === 'KDS' || entity_type.toUpperCase() === 'RECEIPT' || entity_type.toUpperCase() === 'VARIANT') {
+        if (entity_type.toUpperCase() === 'PRINT' || entity_type.toUpperCase() === 'KDS' || entity_type.toUpperCase() === 'RECEIPT') {
           // Gracefully ignore local-only events
           results.successful.push(event.id);
           continue;
@@ -157,6 +158,7 @@ export const pushSyncEvents = async (req, res) => {
       'users',
       'categories',
       'products',
+      'product_variants',
       'deals',
       'customers',
       'dining_tables',
@@ -408,7 +410,8 @@ export const pullSyncEvents = async (req, res) => {
       deals,
       order_payments,
       dining_tables,
-      application_settings
+      application_settings,
+      product_variants
     ] = await Promise.all([
       fetchTableSafe('products'),
       fetchTableSafe('categories'),
@@ -419,7 +422,8 @@ export const pullSyncEvents = async (req, res) => {
       fetchTableSafe('deals'),
       fetchTableSafe('order_payments'),
       fetchTableSafe('dining_tables'),
-      fetchTableSafe('application_settings')
+      fetchTableSafe('application_settings'),
+      fetchTableSafe('product_variants')
     ]);
 
     // Return the batched updates
@@ -435,7 +439,8 @@ export const pullSyncEvents = async (req, res) => {
         deals,
         order_payments,
         dining_tables,
-        application_settings
+        application_settings,
+        product_variants
       }
     });
   } catch (error) {

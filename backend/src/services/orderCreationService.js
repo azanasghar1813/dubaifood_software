@@ -21,6 +21,7 @@ import { printerRepository } from '../repositories/printerRepository.js';
 import { availabilityService } from './availabilityService.js';
 import { kitchenQueueService } from './kitchenQueueService.js';
 import { OrderLifecycleState } from '../constants/orderStates.js';
+import { customerRepository } from '../repositories/customerRepository.js';
 import crypto from 'crypto';
 import { dateUtils } from '../utils/dateUtils.js';
 
@@ -302,7 +303,14 @@ class OrderCreationService {
       if (options.customer_name) orderMetadataRepository.setMeta(newOrderId, 'customer_name', options.customer_name);
       if (options.customer_phone) orderMetadataRepository.setMeta(newOrderId, 'customer_phone', options.customer_phone);
       if (options.customer_address) orderMetadataRepository.setMeta(newOrderId, 'customer_address', options.customer_address);
-      if (options.is_vip || cart.is_vip) orderMetadataRepository.setMeta(newOrderId, 'is_vip', 'true');
+      let isVip = !!(options.is_vip || cart.is_vip);
+      if (!isVip && customerId) {
+        try {
+          const cust = customerRepository.findById(customerId);
+          if (cust && (cust.is_vip === 1 || cust.is_vip === true || cust.isVip)) isVip = true;
+        } catch { /* ignore */ }
+      }
+      if (isVip) orderMetadataRepository.setMeta(newOrderId, 'is_vip', 'true');
 
       // ── 3d. Create line items with full immutable snapshots ────────────────
       for (const cartItem of cart.items) {

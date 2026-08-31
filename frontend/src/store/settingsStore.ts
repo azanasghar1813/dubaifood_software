@@ -20,8 +20,8 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       restaurantName: "Dubai Foods",
-      phoneNumber: "+971 4 123 4567",
-      address: "Sheikh Zayed Road, Dubai, UAE",
+      phoneNumber: "0308-8020784, 0345-6420784",
+      address: "Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)",
       trn: "100234567890",
       
       taxRate: 0,
@@ -34,9 +34,14 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'settings-storage',
-      version: 2,
-      migrate: (persistedState: any) => {
-        return { ...persistedState, taxRate: 0 }
+      version: 3,
+      migrate: (persistedState: any, version: number) => {
+        const next = { ...persistedState, taxRate: 0 }
+        if (!version || version < 3) {
+          next.address = "Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)"
+          next.phoneNumber = "0308-8020784, 0345-6420784"
+        }
+        return next
       },
     }
   )

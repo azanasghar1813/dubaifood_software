@@ -100,5 +100,6 @@ export const AllowedPaymentTransitions = Object.freeze({
 export const EditableLifecycleStates = [
   OrderLifecycleState.DRAFT,
   OrderLifecycleState.HELD,
-  OrderLifecycleState.ACTIVE
+  OrderLifecycleState.ACTIVE,
+  OrderLifecycleState.COMPLETED
 ];

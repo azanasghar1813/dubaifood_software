@@ -218,7 +218,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     customerName: row.customer_name || detail?.metadata?.customer_name || row.customer_id || 'Guest',
     customerPhone: row.customer_phone || detail?.metadata?.customer_phone || undefined,
     customerAddress: detail?.metadata?.customer_address || undefined,
-    isVip: detail?.metadata?.is_vip === 'true' || detail?.metadata?.is_vip === true || false,
+    isVip: detail?.metadata?.is_vip === 'true' || detail?.metadata?.is_vip === true || detail?.metadata?.is_vip === 1 || String(detail?.metadata?.is_vip) === '1' || row.is_vip === 1 || row.is_vip === true || !!(detail as any)?.customer?.is_vip || false,
     tableNumber: row.table_id || null,
     guestCount: 1,
     orderType: (row.order_type === 'TAKEAWAY' ? 'Takeaway' : row.order_type === 'DELIVERY' ? 'Delivery' : row.order_type === 'DRIVE_THROUGH' ? 'Drive Through' : 'Dine In'),

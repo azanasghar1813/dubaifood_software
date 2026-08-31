@@ -80,6 +80,12 @@ class HistoryRepository {
           (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'customer_phone'),
           (SELECT phone FROM customers c WHERE c.id = o.customer_id)
         ) AS customer_phone,
+        COALESCE(
+          (SELECT CASE WHEN LOWER(CAST(meta_value AS TEXT)) IN ('true', '1') THEN 1 ELSE 0 END
+           FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'is_vip' LIMIT 1),
+          (SELECT CASE WHEN is_vip IN (1, '1', 'true') THEN 1 ELSE 0 END FROM customers c WHERE c.id = o.customer_id),
+          0
+        ) AS is_vip,
         o.service_charge AS service_charge,
         o.delivery_fee AS delivery_charges,
         (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM activity_logs al WHERE al.entity_id = o.id AND al.action IN ('ITEM_REMOVED', 'ITEM_ADDED', 'QUANTITY_CHANGED', 'ORDER_UPDATED')) AS is_edited
@@ -119,6 +125,8 @@ class HistoryRepository {
         IFNULL(dt.table_number, o.table_id) as table_id,
         o.waiter_id,
         COALESCE(o.waiter_name_snapshot, w.username) AS waiter_name,
+        o.rider_id,
+        COALESCE(o.rider_name_snapshot, r.username) AS rider_name,
         o.service_charge AS service_charge,
         o.delivery_fee AS delivery_charges
       FROM orders o 
@@ -200,6 +208,22 @@ class HistoryRepository {
 
     // Metadata
     order.metadata = this._loadMetadata(orderId);
+
+    if (order.customer_id) {
+      try {
+        const cust = dbEngine.prepare(
+          'SELECT is_vip, first_name, last_name, phone, address FROM customers WHERE id = ?'
+        ).get(order.customer_id);
+        if (cust) {
+          order.customer = cust;
+          if (cust.is_vip === 1 || cust.is_vip === true) {
+            if (order.metadata.is_vip !== 'false' && order.metadata.is_vip !== false) {
+              order.metadata.is_vip = true;
+            }
+          }
+        }
+      } catch { /* best-effort VIP from saved customer */ }
+    }
 
     // Audit trail (Combine order_audit_trail and activity_logs)
     const audits = dbEngine.prepare(`

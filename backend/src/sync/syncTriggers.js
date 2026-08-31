@@ -9,7 +9,8 @@ const SYNC_TABLES = [
   { table: 'orders', type: 'ORDER' },
   { table: 'order_items', type: 'ORDER_ITEM' },
   { table: 'order_payments', type: 'ORDER_PAYMENT' },
-  { table: 'dining_tables', type: 'DINING_TABLE' }
+  { table: 'dining_tables', type: 'DINING_TABLE' },
+  { table: 'product_variants', type: 'VARIANT' }
 ];
 
 function tableExists(name) {

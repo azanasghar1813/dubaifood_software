@@ -28,8 +28,7 @@ class OrderService {
     const order = orderRepository.findById(orderId);
     if (!order) throw new Error('Order not found.');
     
-    // Immutable check
-    if (order.lifecycle_state === 'COMPLETED' || order.lifecycle_state === 'CANCELLED') {
+    if (order.lifecycle_state === 'CANCELLED' || order.lifecycle_state === 'ARCHIVED') {
       throw new Error(`Order ${order.order_number} is ${order.lifecycle_state} and cannot be modified.`);
     }
 
@@ -80,14 +79,21 @@ class OrderService {
       try {
         const customer = customerRepository.findById(order.customer_id);
         if (customer) {
+          order.customer = customer;
           order.metadata.customer_name = customer.first_name + (customer.last_name ? ' ' + customer.last_name : '');
           order.metadata.customer_phone = customer.phone || order.metadata.customer_phone;
           order.metadata.customer_address = customer.address || order.metadata.customer_address;
+          if (customer.is_vip === 1 || customer.is_vip === true || customer.isVip) {
+            if (order.metadata.is_vip !== 'false') {
+              order.metadata.is_vip = 'true';
+            }
+          }
         }
       } catch (e) {
         console.error('Failed to hydrate customer info:', e);
       }
     }
+    order.is_vip = order.metadata?.is_vip === 'true' || order.metadata?.is_vip === true || order.customer?.is_vip === 1 || order.customer?.is_vip === true;
 
     // Cache if active
     orderCacheService.upsertOrder(order);
@@ -500,8 +506,30 @@ class OrderService {
       if (meta.customer_id !== undefined) {
         updates.customer_id = meta.customer_id;
       }
+      if (meta.waiter_id !== undefined) {
+        updates.waiter_id = meta.waiter_id || null;
+      }
+      if (meta.waiter_name_snapshot !== undefined) {
+        updates.waiter_name_snapshot = meta.waiter_name_snapshot || null;
+      }
+      if (meta.rider_id !== undefined) {
+        updates.rider_id = meta.rider_id || null;
+      }
+      if (meta.rider_name_snapshot !== undefined) {
+        updates.rider_name_snapshot = meta.rider_name_snapshot || null;
+      }
       if (meta.delivery_charges !== undefined) {
         updates.delivery_fee = meta.delivery_charges;
+      }
+      if (meta.is_vip !== undefined) {
+        orderMetadataRepository.setMeta(orderId, 'is_vip', meta.is_vip ? 'true' : 'false');
+      } else if (meta.customer_id) {
+        try {
+          const cust = customerRepository.findById(meta.customer_id);
+          if (cust && (cust.is_vip === 1 || cust.is_vip === true || cust.isVip)) {
+            orderMetadataRepository.setMeta(orderId, 'is_vip', 'true');
+          }
+        } catch { /* customer lookup is best-effort */ }
       }
 
       if (Object.keys(updates).length > 0) {

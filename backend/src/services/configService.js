@@ -82,7 +82,15 @@ class ConfigService {
 
   // Specific domain getters
   getBusinessProfile() {
-    return this.getBusinessCategory('PROFILE');
+    const profile = this.getBusinessCategory('PROFILE') || {};
+    const general = this.getBusinessCategory('GENERAL') || {};
+    return {
+      ...general,
+      ...profile,
+      business_name: profile.business_name || general.business_name,
+      address: profile.address || profile.business_address || general.business_address || general.address || '',
+      phone: profile.phone || profile.phone_number || general.phone_number || general.phone || '',
+    };
   }
 
   getReceiptConfig() {

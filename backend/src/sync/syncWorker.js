@@ -6,6 +6,7 @@ import { dbEngine } from '../database/sqlite.js';
 import { configService } from '../services/configService.js';
 import { SYSTEM_USER_ID, SYSTEM_SHIFT_ID } from './syncIdentities.js';
 import { installGuardedSyncTriggers, unmuteSyncTriggers, withSyncMuted } from './syncTriggers.js';
+import { menuCacheService } from '../services/menuCacheService.js';
 
 const LOCAL_SETTING_KEYS = new Set([
   'order_prefix',
@@ -25,7 +26,8 @@ const PENDING_TYPE_MAP = {
   order_items: ['ORDER_ITEM'],
   order_payments: ['ORDER_PAYMENT', 'PAYMENT'],
   dining_tables: ['DINING_TABLE'],
-  application_settings: ['SETTING']
+  application_settings: ['SETTING'],
+  product_variants: ['VARIANT']
 };
 
 class SyncWorker {
@@ -146,6 +148,21 @@ class SyncWorker {
       if (collapsed > 0) this.logActivity(`Removed ${collapsed} duplicate pending sync rows.`);
       const pruned = syncService.pruneSynced(50);
       if (pruned > 0) this.logActivity(`Cleared ${pruned} old synced rows to free storage.`);
+      const backfill = dbEngine.prepare("SELECT value FROM application_settings WHERE key = 'variant_sync_backfill_v1'").get();
+      if (!backfill) {
+        const variants = dbEngine.prepare('SELECT id FROM product_variants').all();
+        const insert = dbEngine.prepare(`INSERT INTO sync_queue (id, entity_type, entity_id, action, status, payload_version) VALUES (?, 'VARIANT', ?, 'UPDATE', 'PENDING', 1)`);
+        let n = 0;
+        for (const v of variants) {
+          const exists = dbEngine.prepare(`SELECT 1 FROM sync_queue WHERE entity_type = 'VARIANT' AND entity_id = ? AND status = 'PENDING'`).get(v.id);
+          if (!exists) {
+            insert.run(crypto.randomUUID(), v.id);
+            n += 1;
+          }
+        }
+        dbEngine.prepare("INSERT INTO application_settings (key, value, description) VALUES ('variant_sync_backfill_v1', '1', 'Queued variants for cloud sync') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
+        if (n > 0) this.logActivity(`Queued ${n} product variants for sync.`);
+      }
     } catch (e) {
       this.logActivity(`Failed to repair sync queue/triggers: ${e.message}`, 'error');
     }
@@ -236,7 +253,8 @@ class SyncWorker {
                'ORDER_PAYMENT': 'order_payments',
                'PAYMENT': 'order_payments',
                'DINING_TABLE': 'dining_tables',
-               'SETTING': 'application_settings'
+               'SETTING': 'application_settings',
+               'VARIANT': 'product_variants'
              };
              const tableName = tableMap[event.entity_type];
              if (tableName) {
@@ -392,7 +410,8 @@ class SyncWorker {
         deals: [],
         order_payments: [],
         dining_tables: [],
-        application_settings: []
+        application_settings: [],
+        product_variants: []
       };
 
       let offset = 0;
@@ -495,6 +514,7 @@ class SyncWorker {
 
           upsertData('categories', gathered.categories);
           upsertData('products', gathered.products);
+          upsertData('product_variants', gathered.product_variants);
           upsertData('users', gathered.users);
           upsertData('customers', gathered.customers);
           upsertData('deals', gathered.deals);
@@ -520,6 +540,7 @@ class SyncWorker {
 
       if (totalPulled > 0) {
         this.logActivity(`Pull complete. Processed ${totalPulled} new items from cloud.`);
+        try { menuCacheService.refresh(); } catch { /* catalog cache optional */ }
       } else {
         this.logActivity(`Pull complete. No new items found.`);
       }

@@ -27,7 +27,7 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
     status: t.status
   }))
 
-  const { openOrders, switchOrder, setTableNumber, activeOrderId, loadOrderForEdit } = usePosStore()
+  const { openOrders, switchOrder, setTableNumber, activeOrderId } = usePosStore()
   const { orders } = useOrderStore()
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -150,16 +150,7 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
   }, [isOpen, filteredTables, selectedIndex, searchQuery, onClose])
 
   const handleSelect = (table: Table) => {
-    const liveOrder = orders.find((o: any) =>
-      (o.tableNumber === table.label || o.tableNumber === table.id) &&
-      o.status !== 'Completed' && o.status !== 'Cancelled'
-    )
-
-    if (liveOrder) {
-      loadOrderForEdit(liveOrder)
-    } else {
-      setTableNumber(table.label || table.id)
-    }
+    setTableNumber(table.label || table.id)
     onClose()
   }
 

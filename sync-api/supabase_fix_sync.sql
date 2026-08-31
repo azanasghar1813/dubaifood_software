@@ -58,3 +58,21 @@ WHERE table_schema = 'public'
     OR (table_name = 'orders' AND column_name = 'branch_id')
   )
 ORDER BY table_name, column_name;
+
+-- 7) Product variants so size/price options copy between tills.
+CREATE TABLE IF NOT EXISTS public.product_variants (
+  id UUID PRIMARY KEY,
+  product_id UUID REFERENCES public.products(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  product_code TEXT,
+  sku TEXT,
+  price NUMERIC(10,2) NOT NULL DEFAULT 0,
+  preparation_time INTEGER,
+  kitchen_printer_id UUID,
+  lifecycle_state TEXT DEFAULT 'ACTIVE',
+  version INTEGER DEFAULT 1,
+  display_order INTEGER DEFAULT 0,
+  payload_version INTEGER DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
