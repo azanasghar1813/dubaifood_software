@@ -8,6 +8,9 @@ import { promisify } from 'util';
 import { SerialPort } from 'serialport';
 import crypto from 'crypto';
 import os from 'os';
+import fs from 'fs';
+import path from 'path';
+import config from '../config/index.js';
 
 export const ALLOWED_DEVICE_PREFIXES = ['PC-A', 'PC-B', 'PC-C', 'PC-D', 'PC-F'];
 
@@ -34,6 +37,8 @@ class ConfigService {
     
     // Prevent infinite recursion by setting initialized before using getters
     this.initialized = true;
+
+    this._resetClonedIdentityIfNeeded();
     
     // Ensure Device Identity exists
     const syncConfig = this.getSyncConfig();
@@ -62,6 +67,51 @@ class ConfigService {
     } catch { /* column or table may not exist yet */ }
 
     console.log('[ConfigService] In-memory configuration cache loaded.');
+  }
+
+  // Packed pos.db is copied from the build laptop and already has PC-A.
+  // Cloud pull never overwrites order_prefix — new tills must pick locally.
+  _resetClonedIdentityIfNeeded() {
+    const markerPath = path.join(config.paths.root, '.needs-device-claim');
+    if (!fs.existsSync(markerPath)) return;
+    try {
+      dbEngine.prepare("DELETE FROM application_settings WHERE key = 'device_id'").run();
+      dbEngine.prepare("DELETE FROM application_settings WHERE key = 'order_prefix'").run();
+      dbEngine.prepare('DELETE FROM sync_queue').run();
+      try { dbEngine.prepare('DELETE FROM sync_conflicts').run(); } catch { /* optional */ }
+      dbEngine.prepare(`
+        INSERT INTO application_settings (key, value, description)
+        VALUES ('last_sync_timestamp', '0', 'Last successful cloud pull timestamp')
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run();
+
+      const backfillTables = [
+        { table: 'categories', type: 'CATEGORY' },
+        { table: 'products', type: 'PRODUCT' },
+        { table: 'deals', type: 'DEAL' },
+        { table: 'customers', type: 'CUSTOMER' },
+        { table: 'users', type: 'USER' },
+      ];
+      for (const { table, type } of backfillTables) {
+        try {
+          const rows = dbEngine.prepare(`SELECT id FROM ${table}`).all();
+          const insertStmt = dbEngine.prepare(`
+            INSERT INTO sync_queue (id, entity_type, entity_id, action, metadata, payload_version)
+            VALUES (?, ?, ?, 'CREATED', '{}', 1)
+          `);
+          for (const row of rows) {
+            insertStmt.run(crypto.randomUUID(), type, row.id);
+          }
+        } catch { /* table may not exist yet */ }
+      }
+
+      this.refreshCache();
+      console.log('[ConfigService] Fresh install: cleared cloned till identity. Login will ask for PC-A–PC-F.');
+    } catch (e) {
+      console.error('[ConfigService] Failed to reset cloned identity:', e.message);
+      return;
+    }
+    try { fs.unlinkSync(markerPath); } catch { /* ignore */ }
   }
 
   refreshCache() {

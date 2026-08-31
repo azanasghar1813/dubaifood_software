@@ -15,58 +15,44 @@ const userDataPath = app.getPath('userData');
 const prodStorageRoot = path.join(userDataPath, 'storage');
 process.env.STORAGE_ROOT = prodStorageRoot;
 
+const copyDirContents = (src, dest) => {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const name of fs.readdirSync(src)) {
+    const from = path.join(src, name);
+    const to = path.join(dest, name);
+    if (fs.statSync(from).isDirectory()) {
+      copyDirContents(from, to);
+    } else if (!fs.existsSync(to)) {
+      fs.copyFileSync(from, to);
+    }
+  }
+};
+
 if (app.isPackaged) {
   const defaultStorageRoot = path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', 'storage');
-  if (!fs.existsSync(prodStorageRoot) && fs.existsSync(defaultStorageRoot)) {
-    console.log('First run: Copying pre-populated database and storage to user data path...');
-    fs.cpSync(defaultStorageRoot, prodStorageRoot, { recursive: true });
-    
-    // Wipe cloned identity so the new laptop generates its own unique ID and syncs properly
+  const packedDb = path.join(defaultStorageRoot, 'database', 'pos.db');
+  const liveDb = path.join(prodStorageRoot, 'database', 'pos.db');
+  // Copy only when this PC has no live database yet. Never crash if AppData/storage already exists
+  // (Node fs.cpSync throws EEXIST on an existing dest folder).
+  if (!fs.existsSync(liveDb) && fs.existsSync(packedDb)) {
     try {
-      const { createRequire } = await import('node:module');
-      const require = createRequire(import.meta.url);
-      const Database = require('better-sqlite3');
-      
-      const dbPath = path.join(prodStorageRoot, 'database', 'pos.db');
-      if (fs.existsSync(dbPath)) {
-        const db = new Database(dbPath);
-        db.prepare("DELETE FROM application_settings WHERE key = 'device_id'").run();
-        db.prepare("DELETE FROM application_settings WHERE key = 'order_prefix'").run();
-        db.prepare("DELETE FROM sync_queue").run();
-        
-        // After wiping sync_queue/device identity, backfill fresh CREATE events
-        // for every entity already sitting in the cloned/local database, since
-        // none of them have ever actually been pushed to the cloud.
-        const backfillTables = [
-          { table: 'categories', type: 'CATEGORY' },
-          { table: 'products', type: 'PRODUCT' },
-          { table: 'deals', type: 'DEAL' },
-          { table: 'customers', type: 'CUSTOMER' },
-          { table: 'users', type: 'USER' },
-        ];
-
-        const cryptoLib = require('crypto');
-        for (const { table, type } of backfillTables) {
-          try {
-            const rows = db.prepare(`SELECT id FROM ${table}`).all();
-            const insertStmt = db.prepare(`
-              INSERT INTO sync_queue (id, entity_type, entity_id, action, metadata, payload_version)
-              VALUES (?, ?, ?, 'CREATED', '{}', 1)
-            `);
-            for (const row of rows) {
-              insertStmt.run(cryptoLib.randomUUID(), type, row.id);
-            }
-          } catch(e) {}
-        }
-
-        try { db.prepare("DELETE FROM sync_conflicts").run(); } catch(e){}
-        db.prepare("UPDATE application_settings SET value = '0' WHERE key = 'last_sync_timestamp'").run();
-        db.close();
-        console.log('Successfully wiped cloned identity for fresh start on new device.');
-      }
+      console.log('First run: Copying pre-populated database and storage to user data path...');
+      copyDirContents(defaultStorageRoot, prodStorageRoot);
+      fs.writeFileSync(path.join(prodStorageRoot, '.needs-device-claim'), '1');
+      console.log('First run: device ID will be chosen on login.');
     } catch (e) {
-      console.error('Failed to wipe cloned identity:', e.message);
+      console.error('First-run storage copy failed:', e.message);
     }
+  }
+  // Always fill in missing product photos (sync may have pointed DB at dead cloud URLs).
+  try {
+    const packedImages = path.join(defaultStorageRoot, 'images');
+    const liveImages = path.join(prodStorageRoot, 'images');
+    if (fs.existsSync(packedImages)) {
+      copyDirContents(packedImages, liveImages);
+    }
+  } catch (e) {
+    console.error('Product image copy failed:', e.message);
   }
 }
 

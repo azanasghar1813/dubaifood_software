@@ -6,6 +6,7 @@ import { variantRepository } from '../repositories/variantRepository.js';
 import { routingService } from './routingService.js';
 import { globalSearchService } from './search/globalSearchService.js';
 import { catalogSearchProvider } from './search/providers/catalogSearchProvider.js';
+import { preferLocalProductImage, invalidateLocalProductImageIndex } from '../utils/localProductImage.js';
 
 class MenuCacheService {
   constructor() {
@@ -30,6 +31,7 @@ class MenuCacheService {
   initialize() {
     console.log('[MenuCache] Initializing menu engine cache...');
     const startTime = Date.now();
+    invalidateLocalProductImageIndex();
 
     // 1. Load raw data from repositories
     // We cache ACTIVE, UNAVAILABLE, and HIDDEN items. DRAFT, ARCHIVED, and DELETED are excluded from POS cache.
@@ -58,7 +60,10 @@ class MenuCacheService {
       prod.modifier_groups = modifierRepository.getGroupsForProduct(prod.id).filter(g => allowedStates.includes(g.lifecycle_state));
       prod.variants = variantRepository.findByProduct(prod.id).filter(v => allowedStates.includes(v.lifecycle_state));
       prod.addons = productRepository.getAddons(prod.id);
-      prod.images = productRepository.getImages(prod.id);
+      prod.images = productRepository.getImages(prod.id).map((img) => ({
+        ...img,
+        image_path: preferLocalProductImage(prod.id, img.image_path)
+      }));
       
       // Map variants for quick search
       prod.variants.forEach(variant => {
@@ -141,7 +146,10 @@ class MenuCacheService {
     prod.modifier_groups = modifierRepository.getGroupsForProduct(prod.id).filter(g => ['ACTIVE', 'UNAVAILABLE', 'HIDDEN'].includes(g.lifecycle_state));
     prod.variants = variantRepository.findByProduct(prod.id).filter(v => ['ACTIVE', 'UNAVAILABLE', 'HIDDEN'].includes(v.lifecycle_state));
     prod.addons = productRepository.getAddons(prod.id);
-    prod.images = productRepository.getImages(prod.id);
+    prod.images = productRepository.getImages(prod.id).map((img) => ({
+      ...img,
+      image_path: preferLocalProductImage(prod.id, img.image_path)
+    }));
 
     prod.variants.forEach(variant => {
       variant.resolved_kitchen_printer_id = routingService.resolveKitchenPrinter(prod, variant);

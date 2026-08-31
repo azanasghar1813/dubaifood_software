@@ -1482,7 +1482,7 @@ export default function POS() {
                             >
                               <div className={`w-12 h-12 rounded-lg shrink-0 overflow-hidden relative ${!product.image ? getCategoryGradient(product.category) : ''}`}>
                                 {product.image ? (
-                                  <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                                  <img src={product.image} alt={product.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-white/50">
                                     {getCategoryIcon(product.category)}
@@ -1602,7 +1602,7 @@ export default function POS() {
                                   </div>
                                 </div>
                               ) : product.image ? (
-                                <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                                <img src={product.image} alt={product.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
                               ) : (
                                 <div className="w-full h-full flex flex-col items-center justify-center text-white/50 mix-blend-overlay">
                                   {getCategoryIcon(product.category)}

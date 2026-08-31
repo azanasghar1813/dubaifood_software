@@ -7,6 +7,7 @@ import { configService } from '../services/configService.js';
 import { SYSTEM_USER_ID, SYSTEM_SHIFT_ID } from './syncIdentities.js';
 import { installGuardedSyncTriggers, unmuteSyncTriggers, withSyncMuted } from './syncTriggers.js';
 import { menuCacheService } from '../services/menuCacheService.js';
+import { preferLocalProductImage } from '../utils/localProductImage.js';
 
 const LOCAL_SETTING_KEYS = new Set([
   'order_prefix',
@@ -113,10 +114,7 @@ class SyncWorker {
       try {
         const images = dbEngine.prepare('SELECT id, image_path FROM product_images WHERE product_id = ?').all(event.entity_id);
         for (const img of images) {
-          const url = await this._uploadLocalImage(img.image_path, terminalId);
-          if (url && url !== img.image_path) {
-            dbEngine.prepare('UPDATE product_images SET image_path = ? WHERE id = ?').run(url, img.id);
-          }
+          await this._uploadLocalImage(img.image_path, terminalId);
         }
       } catch (err) {
         this.logActivity(`product_images upload skipped: ${err.message}`, 'error');
@@ -481,6 +479,10 @@ class SyncWorker {
               }
               if (tableName === 'order_items' && item.order_id && !existsId('orders', item.order_id)) continue;
               if (tableName === 'order_payments' && item.order_id && !existsId('orders', item.order_id)) continue;
+              if (tableName === 'product_images' && item.product_id) {
+                const localPath = preferLocalProductImage(item.product_id, item.image_path);
+                if (localPath) item.image_path = localPath;
+              }
 
               const values = keys.map(k => {
                 if (k === 'sync_status') return 'SYNCED';
@@ -551,6 +553,11 @@ class SyncWorker {
       // --- PULL LOGIC END ---
 
       pulled = totalPulled;
+      // After an outage, backoff can sit at 60s forever if there was nothing to push.
+      // Keep 0 (drain a full 50-event queue immediately); otherwise resume the 5s cadence.
+      if (this.currentDelayMs !== 0) {
+        this.currentDelayMs = this.baseDelayMs;
+      }
       this.currentPhase = 'IDLE';
       return { success: true, pushed, pulled };
     } catch (error) {
