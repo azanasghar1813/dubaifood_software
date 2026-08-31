@@ -112,17 +112,44 @@ class EscPosEncoder {
       parts.push(this._bold(false));
       parts.push(this._encodeText(`Type : ${o.order_type || ''}`, iconvEncoding));
       parts.push(this._lf());
-      if (o.table_id) {
-        parts.push(this._encodeText(`Table: ${o.table_id}`, iconvEncoding));
+      const tableLabel = o.table_number || o.table_id;
+      if (tableLabel) {
+        parts.push(this._encodeText(`Table: ${tableLabel}`, iconvEncoding));
+        parts.push(this._lf());
+      }
+      parts.push(this._encodeText(`Customer: ${o.customer_name || 'Guest'}`, iconvEncoding));
+      parts.push(this._lf());
+      if (o.customer_phone) {
+        parts.push(this._encodeText(`Phone: ${o.customer_phone}`, iconvEncoding));
+        parts.push(this._lf());
+      }
+      if (o.customer_address) {
+        for (const line of String(o.customer_address).split(/\r?\n/)) {
+          if (!line.trim()) continue;
+          parts.push(this._encodeText(line, iconvEncoding));
+          parts.push(this._lf());
+        }
+      }
+      if (o.waiter_name) {
+        parts.push(this._encodeText(`Waiter: ${o.waiter_name}`, iconvEncoding));
+        parts.push(this._lf());
+      }
+      if (o.rider_name) {
+        parts.push(this._encodeText(`Rider: ${o.rider_name}`, iconvEncoding));
         parts.push(this._lf());
       }
       const paidLabel = o.receipt_paid_stamp ? 'Paid' : 'Unpaid';
       parts.push(this._encodeText(`Status: ${paidLabel}`, iconvEncoding));
       parts.push(this._lf());
+      if (o.payment_method && String(o.payment_method).toUpperCase() !== 'UNPAID' && String(o.payment_method).toUpperCase() !== 'LATER') {
+        parts.push(this._encodeText(`Pay: ${o.payment_method}`, iconvEncoding));
+        parts.push(this._lf());
+      }
       parts.push(this._encodeText(`Date : ${o.business_date || ''}`, iconvEncoding));
       parts.push(this._lf());
-      if (o.cashier_user_id) {
-        parts.push(this._encodeText(`Staff: ${o.cashier_user_id}`, iconvEncoding));
+      const cashierLabel = o.cashier_name || null;
+      if (cashierLabel) {
+        parts.push(this._encodeText(`Cashier: ${cashierLabel}`, iconvEncoding));
         parts.push(this._lf());
       }
       if (o.notes) {
@@ -133,7 +160,7 @@ class EscPosEncoder {
     }
 
     // ── VIP Badge ─────────────────────────────────────────────────────────
-    if (payload.order && payload.order.is_vip) {
+    if (payload.order && (payload.order.is_vip === true || payload.order.is_vip === 'true' || payload.order.is_vip === 1)) {
       parts.push(this._align('center'));
       parts.push(this._bold(true));
       parts.push(this._encodeText('*** VIP ORDER ***', iconvEncoding));
@@ -221,7 +248,7 @@ class EscPosEncoder {
     // ── Financials ────────────────────────────────────────────────────────
     if (payload.financials) {
       const f = payload.financials;
-      const sym = f.currency_symbol || 'AED';
+      const sym = f.currency_symbol || 'Rs';
 
       parts.push(this._align('right'));
 
@@ -241,13 +268,15 @@ class EscPosEncoder {
       ));
       parts.push(this._lf());
 
-      const taxPct = ((f.tax_rate || 0) * 100).toFixed(0);
-      const taxLabel = f.tax_name || 'VAT';
-      parts.push(this._encodeText(
-        this._padBoth(`${taxLabel} (${taxPct}%):`, `${sym} ${(f.tax_total || 0).toFixed(2)}`, charWidth),
-        iconvEncoding
-      ));
-      parts.push(this._lf());
+      if (Number(f.tax_total) > 0) {
+        const taxPct = ((f.tax_rate || 0) * 100).toFixed(0);
+        const taxLabel = f.tax_name || 'VAT';
+        parts.push(this._encodeText(
+          this._padBoth(`${taxLabel} (${taxPct}%):`, `${sym} ${(f.tax_total || 0).toFixed(2)}`, charWidth),
+          iconvEncoding
+        ));
+        parts.push(this._lf());
+      }
 
       if (f.service_charge > 0) {
         parts.push(this._encodeText(
@@ -280,7 +309,7 @@ class EscPosEncoder {
     // ── Payment ───────────────────────────────────────────────────────────
     if (payload.payment) {
       const p = payload.payment;
-      const sym = payload.financials?.currency_symbol || 'AED';
+      const sym = payload.financials?.currency_symbol || 'Rs';
 
       parts.push(this._separator(charWidth, iconvEncoding));
       parts.push(this._align('left'));
@@ -378,12 +407,27 @@ class EscPosEncoder {
     parts.push(this._encodeText(`Order: ${oh.order_number || 'N/A'}`, iconvEncoding));
     parts.push(this._lf());
     parts.push(this._bold(false));
-    if (oh.table_id) {
-      parts.push(this._encodeText(`Table: ${oh.table_id}`, iconvEncoding));
+    const kotTable = oh.table_number || oh.table_id;
+    if (kotTable) {
+      parts.push(this._encodeText(`Table: ${kotTable}`, iconvEncoding));
       parts.push(this._lf());
     }
     parts.push(this._encodeText(`Type : ${oh.order_type || ''}`, iconvEncoding));
     parts.push(this._lf());
+    if (oh.waiter_name) {
+      parts.push(this._encodeText(`Waiter: ${oh.waiter_name}`, iconvEncoding));
+      parts.push(this._lf());
+    }
+    if (oh.rider_name) {
+      parts.push(this._encodeText(`Rider: ${oh.rider_name}`, iconvEncoding));
+      parts.push(this._lf());
+    }
+    if (oh.is_vip) {
+      parts.push(this._bold(true));
+      parts.push(this._encodeText('** VIP ORDER **', iconvEncoding));
+      parts.push(this._lf());
+      parts.push(this._bold(false));
+    }
     if (oh.notes) {
       parts.push(this._encodeText(`Notes: ${oh.notes}`, iconvEncoding));
       parts.push(this._lf());

@@ -119,13 +119,14 @@ const mapKitchenState = (state: string): KitchenStatus => {
   if (normalized === 'PREPARING') return 'Preparing'
   if (normalized === 'READY') return 'Ready'
   if (normalized === 'SERVED') return 'Served'
+  if (normalized === 'COMPLETED') return 'Completed'
   return 'Pending'
 }
 
-const mapPaymentState = (state: string): PaymentStatus => {
+const mapPaymentState = (state: string, paidStamp?: any): PaymentStatus => {
   const normalized = String(state || '').toUpperCase()
-  if (normalized === 'PAID') return 'Paid'
   if (normalized === 'REFUNDED') return 'Refunded'
+  if (paidStamp === true || paidStamp === 1 || paidStamp === '1' || paidStamp === 'true') return 'Paid'
   return 'Unpaid'
 }
 
@@ -215,9 +216,9 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     riderId: row.rider_id || undefined,
     riderName: row.rider_name_snapshot || row.rider_name || undefined,
     cashierName: formatName(row.cashier_user_id),
-    customerName: row.customer_name || detail?.metadata?.customer_name || row.customer_id || 'Guest',
-    customerPhone: row.customer_phone || detail?.metadata?.customer_phone || undefined,
-    customerAddress: detail?.metadata?.customer_address || undefined,
+    customerName: row.customer_name || detail?.metadata?.customer_name || (detail as any)?.customer?.first_name || 'Guest',
+    customerPhone: row.customer_phone || detail?.metadata?.customer_phone || (detail as any)?.customer?.phone || undefined,
+    customerAddress: detail?.metadata?.customer_address || (detail as any)?.customer?.address || undefined,
     isVip: detail?.metadata?.is_vip === 'true' || detail?.metadata?.is_vip === true || detail?.metadata?.is_vip === 1 || String(detail?.metadata?.is_vip) === '1' || row.is_vip === 1 || row.is_vip === true || !!(detail as any)?.customer?.is_vip || false,
     tableNumber: row.table_id || null,
     guestCount: 1,
@@ -232,7 +233,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     businessDate: row.business_date,
     status: mapLifecycleState(row.lifecycle_state),
     kitchenStatus: mapKitchenState(row.kitchen_state),
-    paymentStatus: mapPaymentState(row.payment_state),
+    paymentStatus: mapPaymentState(row.payment_state, row.receipt_paid_stamp ?? detail?.metadata?.receipt_paid_stamp),
     timestamp: parseBackendDate(row.created_at),
     lastEdited: parseBackendDate(row.updated_at),
     isEdited: Boolean(row.is_edited),

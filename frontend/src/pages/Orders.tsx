@@ -237,8 +237,8 @@ export default function Orders() {
 
   const handlePaymentStatusChange = async (order: Order, newStatus: string) => {
     try {
-      if (newStatus === 'Paid' && order.paymentStatus !== 'Paid') {
-        await apiClient.post(`/payments/order/${order.id}`, { amount_received: order.total, payment_method: 'CASH' })
+      if (newStatus === 'Paid' || newStatus === 'Unpaid') {
+        await apiClient.put(`/orders/${order.id}/meta`, { receipt_paid_stamp: newStatus === 'Paid' })
       }
       updateOrder(order.id, { paymentStatus: newStatus as any })
       addTimelineEvent(order.id, { event: "Payment Status Changed", remarks: `Changed to ${newStatus}`, cashier: user?.name || "Ahmed" })
@@ -274,6 +274,9 @@ export default function Orders() {
     try {
       if (newStatus === 'Completed' && order.status !== 'Completed') {
         await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'COMPLETED' })
+      }
+      if (newStatus === 'Cancelled' && order.status !== 'Cancelled') {
+        await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'CANCELLED' })
       }
       updateOrder(order.id, { status: newStatus as any })
       addTimelineEvent(order.id, { event: "Order Status Changed", remarks: `Changed to ${newStatus}`, cashier: user?.name || "Ahmed" })
@@ -376,7 +379,7 @@ export default function Orders() {
       )
 
       if (hasThermalPrinter) {
-        const result = await printerState.printReceipt(order.id, user?.id || user?.name || 'cashier')
+        const result = await printerState.printReceipt(order.id, user?.id || user?.name || 'cashier', order.paymentStatus === 'Paid')
         if (result?.job_id) {
           console.log(`[Orders] Thermal print job queued: ${result.job_id}`)
           return // Success — don't open browser popup
@@ -432,13 +435,14 @@ export default function Orders() {
   const handleMarkPaid = async (order: Order) => {
     try {
       if (order.paymentStatus === 'Paid') {
+        await apiClient.put(`/orders/${order.id}/meta`, { receipt_paid_stamp: false })
         updateOrder(order.id, { paymentStatus: 'Unpaid' })
         addTimelineEvent(order.id, { event: "Marked Unpaid", remarks: "Marked unpaid from Order History", cashier: user?.name || "Ahmed" })
         addAuditLog(order.id, { actionType: "Payment Status Changed", who: user?.name || "Ahmed", oldValue: "Paid", newValue: "Unpaid", reason: "Toggle from History" })
         await syncOrdersFromBackend()
         if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: "Unpaid" } : null)
       } else {
-        await apiClient.post(`/payments/order/${order.id}`, { amount_received: order.total, payment_method: 'CASH' })
+        await apiClient.put(`/orders/${order.id}/meta`, { receipt_paid_stamp: true })
         updateOrder(order.id, { paymentStatus: 'Paid' })
         addTimelineEvent(order.id, { event: "Marked Paid", remarks: "Marked paid from Order History", cashier: user?.name || "Ahmed" })
         addAuditLog(order.id, { actionType: "Payment Received", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: "Paid", reason: "Action from History" })
@@ -486,7 +490,7 @@ export default function Orders() {
     }
     try {
       if (deleteDialog.mode === 'one' && deleteDialog.order) {
-        const res: any = await deleteOrder(deleteDialog.order.id)
+        const res: any = await deleteOrder(deleteDialog.order.id, pin)
         if (res?.success === false) {
           alert(res.message || 'Failed to delete order')
           return
@@ -494,7 +498,7 @@ export default function Orders() {
         if (selectedOrder?.id === deleteDialog.order.id) setSelectedOrder(null)
       } else {
         for (const id of selectedOrderIds) {
-          try { await deleteOrder(id) } catch { /* continue */ }
+          try { await deleteOrder(id, pin) } catch { /* continue */ }
         }
         setSelectedOrderIds(new Set())
       }

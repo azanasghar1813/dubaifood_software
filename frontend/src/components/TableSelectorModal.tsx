@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, Clock, X, User, UtensilsCrossed } from "lucide-react"
 import { usePosStore } from "../store/posStore"
-import { useOrderStore } from "../store/orderStore"
 import { useTableStore } from "../store/tableStore"
 type Table = any;
 type TableStatus = any;
@@ -28,7 +27,6 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
   }))
 
   const { openOrders, switchOrder, setTableNumber, activeOrderId } = usePosStore()
-  const { orders } = useOrderStore()
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -52,17 +50,6 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
     let customerName = ""
     let waiterName = ""
     let kitchenStatus = "Not Sent"
-
-    // Find in backend orders first
-    const backendOrder = orders.find(o => o.tableNumber === t.label && o.status !== "Completed" && o.status !== "Cancelled")
-    if (backendOrder) {
-      status = 'Occupied'
-      amount = backendOrder.total
-      elapsed = Math.floor((new Date().getTime() - new Date(backendOrder.timestamp).getTime()) / 60000)
-      customerName = backendOrder.customerName || "Guest"
-      waiterName = backendOrder.waiterName || ""
-      kitchenStatus = backendOrder.kitchenStatus === 'Pending' ? 'Not Sent' : (backendOrder.kitchenStatus || 'Not Sent')
-    }
 
     if (orderForTable && orderForTable.cart.length > 0) {
       status = 'Occupied'
@@ -167,39 +154,16 @@ export function TableSelectorModal({ isOpen, onClose }: TableSelectorModalProps)
   const selectedTableId = filteredTables[selectedIndex]?.id
 
   const handleClearTables = async (zoneId?: string) => {
-    const tablesToClear = zoneId 
-      ? ALL_TABLES.filter(t => t.zoneId === zoneId).map(t => t.label) 
-      : ALL_TABLES.map(t => t.label)
-    
-    // Clear the active posStore state if the current active table is being cleared
-    const currentTable = usePosStore.getState().tableNumber
-    if (currentTable && tablesToClear.includes(currentTable)) {
-      usePosStore.getState().clearCart()
-      usePosStore.getState().setTableNumber(null)
-    }
-
-    const currentOrders = useOrderStore.getState().orders;
-    const ordersToClearBackend = currentOrders.filter(o => o.tableNumber && tablesToClear.includes(o.tableNumber) && o.status !== 'Completed' && o.status !== 'Cancelled');
-
-    // Clear orders locally for these tables so they show as available immediately
-    useOrderStore.setState(state => ({
-      orders: state.orders.map(o => 
-        (o.tableNumber && tablesToClear.includes(o.tableNumber)) 
-          ? { ...o, status: 'Completed' } 
-          : o
-      )
-    }))
-
-    if (ordersToClearBackend.length > 0) {
-      try {
-        const { apiClient } = await import('../api/client');
-        await Promise.all(ordersToClearBackend.map(o => 
-          apiClient.post(`/orders/${o.id}/transition`, { targetState: 'COMPLETED', reason: 'Cleared from table view' }).catch(e => console.error(e))
-        ));
-        await useOrderStore.getState().syncOrdersFromBackend();
-      } catch (e) {
-        console.error('Failed to clear table orders on backend', e);
-      }
+    const targets = zoneId
+      ? ALL_TABLES.filter(t => t.zoneId === zoneId)
+      : ALL_TABLES
+    try {
+      await Promise.all(targets.map(t =>
+        useTableStore.getState().updateTable(t.id, { status: 'Available' } as any).catch(() => {})
+      ))
+      await fetchData()
+    } catch (e) {
+      console.error('Failed to clear tables', e)
     }
   }
 

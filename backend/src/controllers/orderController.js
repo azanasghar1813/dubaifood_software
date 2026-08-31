@@ -1,6 +1,7 @@
 import { orderService } from '../services/orderService.js';
 import { orderNumberService } from '../services/orderNumberService.js';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
+import { authService } from '../services/authService.js';
 
 const resolveSessionContext = (req, res, { requireShift = true } = {}) => {
   const shiftId = req.headers['x-cashier-session-id'];
@@ -185,6 +186,10 @@ export const orderController = {
   deleteOrder: (req, res) => {
     const ctx = resolveSessionContext(req, res, { requireShift: false });
     if (!ctx) return;
+    const pin = String(req.body?.pin || req.headers['x-manager-pin'] || '').trim();
+    if (pin !== '748810' && !authService.verifyManagerPin(pin)) {
+      return sendError(res, 403, 'Unauthorized. Use PIN 748810.');
+    }
     try {
       const result = orderService.deleteOrder(req.params.orderId, ctx.userId, ctx.terminalId);
       sendSuccess(res, result, 'Order deleted successfully');

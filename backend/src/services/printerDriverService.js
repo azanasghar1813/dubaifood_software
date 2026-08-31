@@ -324,7 +324,7 @@ class PrinterDriverService {
 
     if (payload?.financials) {
       const f = payload.financials;
-      const sym = f.currency_symbol || 'AED';
+      const sym = f.currency_symbol || 'Rs';
       if (f.discount_total > 0) console.log(`[PrinterDriver][VIRTUAL] ${this._padBoth('Discount:', `-${sym} ${f.discount_total.toFixed(2)}`, charWidth)}`);
       console.log(`[PrinterDriver][VIRTUAL] ${this._padBoth('Subtotal:', `${sym} ${(f.subtotal || 0).toFixed(2)}`, charWidth)}`);
       console.log(`[PrinterDriver][VIRTUAL] ${this._padBoth(`Tax (${((f.tax_rate || 0) * 100).toFixed(0)}%):`, `${sym} ${(f.tax_total || 0).toFixed(2)}`, charWidth)}`);
@@ -334,7 +334,7 @@ class PrinterDriverService {
 
     if (payload?.payment) {
       const p = payload.payment;
-      const sym = payload.financials?.currency_symbol || 'AED';
+      const sym = payload.financials?.currency_symbol || 'Rs';
       console.log(`[PrinterDriver][VIRTUAL] ${separator}`);
       console.log(`[PrinterDriver][VIRTUAL] ${this._padBoth('Payment:', p.payment_method_label || p.payment_method, charWidth)}`);
       if (p.amount_received > 0) {

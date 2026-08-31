@@ -153,18 +153,13 @@ export const RecentOrdersModal: React.FC<RecentOrdersModalProps> = ({ isOpen, on
   }, [isOpen, selectedOrder, onClose, overrideModalOrder, filteredOrders])
 
   const handleEditOrder = async (order: Order) => {
-    const cashierName = user?.name || 'Cashier'
-
-    // If locked by someone else → show override modal
-    if (order.isLocked && order.lockedBy !== cashierName) {
-      setOverrideModalOrder(order)
-      return
-    }
-    // Already being edited by this session → just close
     if (order.id === editingOrderId) { onClose(); return }
-    lockOrder(order.id, cashierName)
-    await loadOrderForEdit(order)
-    onClose()
+    try {
+      await loadOrderForEdit(order)
+      onClose()
+    } catch (e: any) {
+      alert(e?.message || 'Could not load this order for edit.')
+    }
   }
 
   const handleManagerOverride = async () => {

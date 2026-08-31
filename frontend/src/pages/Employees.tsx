@@ -26,6 +26,10 @@ export default function Employees() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [selectedEmp, setSelectedEmp] = useState<any | null>(null)
   const [drawerMode, setDrawerMode] = useState<"view" | "edit" | "add">("view")
+  const [pinDialogEmp, setPinDialogEmp] = useState<any | null>(null)
+  const [newPinValue, setNewPinValue] = useState("")
+  const [pinSaving, setPinSaving] = useState(false)
+  const [pinError, setPinError] = useState("")
 
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -128,15 +132,30 @@ export default function Employees() {
 
   // Reset PIN
   const handleResetPIN = (emp: any) => {
-    const newPin = prompt(`Enter new 4-digit PIN for ${emp.name}:`)
-    if (!newPin) return
-    if (newPin.length !== 4 || isNaN(Number(newPin))) {
-      alert("PIN must be exactly 4 numerical digits.")
+    setPinDialogEmp(emp)
+    setNewPinValue("")
+    setPinError("")
+  }
+
+  const confirmResetPIN = async () => {
+    if (!pinDialogEmp) return
+    if (newPinValue.length !== 4 || isNaN(Number(newPinValue))) {
+      setPinError("PIN must be exactly 4 numerical digits.")
       return
     }
-    setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, pin: newPin, pinStatus: "Configured" } : e))
-    setSelectedEmp((prev: any) => prev ? { ...prev, pin: newPin, pinStatus: "Configured" } : null)
-    alert(`PIN for ${emp.name} updated successfully to: ${newPin}`)
+    try {
+      setPinSaving(true)
+      setPinError("")
+      await employeeService.resetPin(pinDialogEmp.id, newPinValue)
+      setEmployees(prev => prev.map(e => e.id === pinDialogEmp.id ? { ...e, pinStatus: "Configured" } : e))
+      setSelectedEmp((prev: any) => prev && prev.id === pinDialogEmp.id ? { ...prev, pinStatus: "Configured" } : prev)
+      setPinDialogEmp(null)
+      setNewPinValue("")
+    } catch (e: any) {
+      setPinError(e?.response?.data?.error || e?.message || "Could not reset PIN.")
+    } finally {
+      setPinSaving(false)
+    }
   }
 
   // Add / Edit handlers
@@ -909,6 +928,28 @@ export default function Employees() {
           </div>
         )}
       </AnimatePresence>
+
+      {pinDialogEmp && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-card w-full max-w-sm rounded-2xl border border-border p-5 space-y-3">
+            <h3 className="font-black text-foreground">Reset PIN for {pinDialogEmp.name}</h3>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              value={newPinValue}
+              onChange={(e) => setNewPinValue(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="4-digit PIN"
+              className="w-full h-11 rounded-xl border border-border bg-secondary px-3 font-black tracking-widest"
+            />
+            {pinError && <p className="text-xs font-bold text-red-500">{pinError}</p>}
+            <div className="flex gap-2">
+              <button type="button" onClick={() => { setPinDialogEmp(null); setNewPinValue(""); setPinError("") }} className="flex-1 h-11 rounded-xl border border-border font-black">Cancel</button>
+              <button type="button" disabled={pinSaving} onClick={confirmResetPIN} className="flex-1 h-11 rounded-xl bg-primary text-white font-black disabled:opacity-50">{pinSaving ? 'Saving...' : 'Save PIN'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

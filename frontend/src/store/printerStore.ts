@@ -62,7 +62,7 @@ interface PrinterState {
   fetchQueue:      (filters?: Record<string, any>) => Promise<void>
   fetchQueueStats: () => Promise<void>
   enqueuePrintJob: (job: { type: string; printerType: PrinterType; content: string }) => void
-  printReceipt:    (orderId: string, cashierUserId: string) => Promise<{ job_id: string } | null>
+  printReceipt:    (orderId: string, cashierUserId: string, printPaid?: boolean) => Promise<{ job_id: string } | null>
   reprintJob:      (jobId: string, cashierUserId: string, reason?: string) => Promise<any>
   printKitchen:    (orderId: string, cashierUserId: string) => Promise<any>
   openCashDrawer:  (cashierUserId: string) => Promise<any>
@@ -146,9 +146,9 @@ export const usePrinterStore = create<PrinterState>((set, get) => ({
     set(state => ({ printQueue: [newJob, ...state.printQueue] }))
   },
 
-  printReceipt: async (orderId, cashierUserId) => {
+  printReceipt: async (orderId, cashierUserId, printPaid) => {
     try {
-      const result = await apiClient.post(`/print/receipt/${orderId}`, { cashier_user_id: cashierUserId })
+      const result = await apiClient.post(`/print/receipt/${orderId}`, { cashier_user_id: cashierUserId, print_paid: !!printPaid })
       if (result) {
         // Refresh queue after enqueue
         setTimeout(() => get().fetchQueue(), 300)

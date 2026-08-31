@@ -98,6 +98,7 @@ interface POSState {
   resumeOrder: (orderId: string) => Promise<void>
   completeOrder: (payments?: any[], discountTotal?: number, printPaid?: boolean) => Promise<{ success: boolean; orderId?: string }>
   clearCart: () => void
+  resetAfterPlace: () => Promise<void>
   
   // Legacy accessors
   getSubtotal: () => number
@@ -209,16 +210,6 @@ export const usePosStore = create<POSState>()(
   },
 
   loadOrderForEdit: async (order) => {
-    // Attempt to lock the order on the backend
-    try {
-      const lockRes = await apiClient.post(`/orders/${order.id}/lock`)
-      if (!(lockRes as any).success) {
-        throw new Error('Order is currently locked by another device.')
-      }
-    } catch (e: any) {
-      throw new Error(e?.response?.data?.message || e.message || 'Order is locked by another device')
-    }
-
     // Silently clear the backend cart WITHOUT triggering fetchDraftOrder
     // This prevents the race condition where fetchDraftOrder overwrites the edit cart
     try { await apiClient.delete('/cart') } catch {}
@@ -282,14 +273,22 @@ export const usePosStore = create<POSState>()(
       checkoutIdempotencyKey: null,
       paymentIdempotencyKeys: {},
       orderType: order?.orderType || order?.order_type || (backendOrder?.order_type === 'DINE_IN' ? 'Dine In' : backendOrder?.order_type === 'TAKEAWAY' ? 'Takeaway' : backendOrder?.order_type === 'DELIVERY' ? 'Delivery' : get().orderType),
-      tableNumber: order?.tableNumber || order?.table_id || backendOrder?.table_id || null,
+      tableNumber: order?.tableNumber || order?.table_id || backendOrder?.table_number || backendOrder?.table_id || null,
       waiterId: order?.waiterId || order?.waiter_id || backendOrder?.waiter_id || null,
       waiterName: order?.waiterName || order?.waiter_name || backendOrder?.waiter_name_snapshot || backendOrder?.waiter_name || null,
       riderId: order?.riderId || order?.rider_id || backendOrder?.rider_id || null,
       riderName: order?.riderName || order?.rider_name || backendOrder?.rider_name_snapshot || backendOrder?.rider_name || null,
       isVipOrder: !!(order?.isVip || backendOrder?.is_vip || backendOrder?.metadata?.is_vip === 'true' || backendOrder?.metadata?.is_vip === true || backendOrder?.customer?.is_vip),
-      customer: order?.customerName ? { name: order.customerName, phone: order.customerPhone || order.customer_phone, is_vip: !!(order?.isVip || backendOrder?.customer?.is_vip) } : get().customer,
-      deliveryCharges: Number(order.deliveryCharges || order.delivery_charges || order.metadata?.delivery_charges || backendOrder?.delivery_fee || 0)
+      customer: (() => {
+        const name = order?.customerName || backendOrder?.metadata?.customer_name || (backendOrder?.customer ? [backendOrder.customer.first_name, backendOrder.customer.last_name].filter(Boolean).join(' ') : null)
+        const phone = order?.customerPhone || order?.customer_phone || backendOrder?.metadata?.customer_phone || backendOrder?.customer?.phone || null
+        const address = order?.customerAddress || backendOrder?.metadata?.customer_address || backendOrder?.customer?.address || null
+        const id = order?.customerId || order?.customer_id || backendOrder?.customer_id || backendOrder?.customer?.id || null
+        const vip = !!(order?.isVip || backendOrder?.customer?.is_vip || backendOrder?.metadata?.is_vip === 'true')
+        if (!name && !phone && !id) return null
+        return { id, name: name || 'Guest', phone, address, is_vip: vip, notes: order?.notes || backendOrder?.metadata?.customer_notes || null }
+      })(),
+      deliveryCharges: Number(order.deliveryCharges || order.deliveryCharge || order.delivery_charges || order.metadata?.delivery_charges || backendOrder?.delivery_fee || 0)
     })
   },
 
@@ -540,7 +539,9 @@ export const usePosStore = create<POSState>()(
           is_vip: state.isVipOrder || !!state.customer?.is_vip || !!state.customer?.isVip || false,
           table_id: state.tableNumber || order.table_id || null,
           waiter_id: state.waiterId || order.waiter_id || null,
+          waiter_name_snapshot: state.waiterName || null,
           rider_id: state.riderId || order.rider_id || null,
+          rider_name_snapshot: state.riderName || null,
           notes: order.notes || order.customer_notes || null,
           branch_id: order.branch_id || 'DEFAULT_BRANCH',
           business_date: order.business_date,
@@ -570,10 +571,14 @@ export const usePosStore = create<POSState>()(
           await apiClient.put(`/orders/${order.id}/meta`, {
             is_vip: state.isVipOrder || !!state.customer?.is_vip || !!state.customer?.isVip || false,
             customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || order.customer_id || null,
+            customer_name: state.customer?.name || null,
+            customer_phone: state.customer?.phone || null,
+            customer_address: state.customer?.address || null,
             waiter_id: state.waiterId || order.waiter_id || null,
             waiter_name_snapshot: state.waiterName || null,
             rider_id: state.riderId || order.rider_id || null,
             rider_name_snapshot: state.riderName || null,
+            receipt_paid_stamp: printPaid,
           })
         } catch (e) {
           console.warn('Could not persist VIP / staff meta on numbered order', e)
@@ -590,8 +595,10 @@ export const usePosStore = create<POSState>()(
 
       const paymentKeys = get().paymentIdempotencyKeys;
       const updatedPaymentKeys = { ...paymentKeys };
+      const dueNow = Number((order as any).due_total ?? (order as any)?.totals?.due_total ?? 0);
 
       for (let i = 0; i < payments.length; i++) {
+        if (dueNow <= 0) break;
         const p = payments[i];
         const method = String(p.method || p.paymentMethod || 'CASH').toUpperCase().replace(/ /g, '_')
         if (method === 'LATER' || method === 'UNPAID') continue;
@@ -615,10 +622,7 @@ export const usePosStore = create<POSState>()(
       
       set({ paymentIdempotencyKeys: updatedPaymentKeys });
 
-      // Draft order is now completed. Fetch a new draft order and sync history.
-      set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, waiterName: null, riderId: null, riderName: null, isVipOrder: false, checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
-      await get().fetchDraftOrder()
-      // Immediately sync order history for instant status updates
+      await get().resetAfterPlace()
       useOrderStore.getState().syncOrdersFromBackend()
       return { success: true, orderId: order.id }
     } catch (e) {
@@ -629,8 +633,30 @@ export const usePosStore = create<POSState>()(
     }
   },
 
+  resetAfterPlace: async () => {
+    const orderType = get().orderType
+    set({
+      activeOrder: null,
+      cart: [],
+      editingOrderId: null,
+      customer: null,
+      tableNumber: null,
+      waiterId: null,
+      waiterName: null,
+      riderId: null,
+      riderName: null,
+      deliveryCharges: 0,
+      isVipOrder: false,
+      checkoutIdempotencyKey: null,
+      paymentIdempotencyKeys: {},
+      orderType
+    })
+    await get().fetchDraftOrder()
+  },
+
   clearCart: () => {
-    set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, waiterName: null, riderId: null, riderName: null, deliveryCharges: 0, isVipOrder: false, checkoutIdempotencyKey: null, paymentIdempotencyKeys: {} })
+    const orderType = get().orderType
+    set({ activeOrder: null, cart: [], editingOrderId: null, customer: null, tableNumber: null, waiterId: null, waiterName: null, riderId: null, riderName: null, deliveryCharges: 0, isVipOrder: false, checkoutIdempotencyKey: null, paymentIdempotencyKeys: {}, orderType })
     void cartService.clearCart().catch(() => {})
     void get().fetchDraftOrder()
   },
@@ -709,7 +735,13 @@ export const usePosStore = create<POSState>()(
     set({ customer, isVipOrder: customer ? vip : false })
     try {
       const state = get();
-      const meta = { customer_id: customer?.id || null, is_vip: customer ? vip : false };
+      const meta = {
+        customer_id: customer?.id || null,
+        is_vip: customer ? vip : false,
+        customer_name: customer?.name || null,
+        customer_phone: customer?.phone || null,
+        customer_address: customer?.address || null
+      };
       if (state.editingOrderId && state.activeOrder && state.activeOrder.order_number) {
         const res = await apiClient.put(`/orders/${state.editingOrderId}/meta`, meta);
         if ((res as any).success) {
@@ -803,15 +835,7 @@ export const usePosStore = create<POSState>()(
   },
   toggleTax: () => set((state) => ({ isTaxEnabled: !state.isTaxEnabled })),
   clearEditMode: async () => {
-    const editingId = get().editingOrderId;
-    if (editingId) {
-      try {
-        await apiClient.post(`/orders/${editingId}/unlock`)
-      } catch (e) {
-        console.error('Failed to unlock order:', e)
-      }
-    }
-    set({ editingOrderId: null })
+    await get().resetAfterPlace()
   },
   switchOrder: (orderId) => {
     const existing = useOrderStore.getState().orders.find((o: any) => o.id === orderId)

@@ -12,17 +12,17 @@ export const runSettingsSeeder = (db) => {
   
   const defaultSettings = [
     // General
-    { key: 'business_name', val: 'Dubai Food Software POS', cat: 'GENERAL', desc: 'The official name of the business' },
+    { key: 'business_name', val: 'Dubai Foods', cat: 'GENERAL', desc: 'The official name of the business' },
     { key: 'business_address', val: 'Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)', cat: 'GENERAL', desc: 'Main physical address' },
     { key: 'phone_number', val: '0308-8020784, 0345-6420784', cat: 'GENERAL', desc: 'Main contact number' },
-    { key: 'whatsapp_number', val: '+971 50 123 4567', cat: 'GENERAL', desc: 'WhatsApp support number' },
+    { key: 'whatsapp_number', val: '0308-8020784, 0345-6420784', cat: 'GENERAL', desc: 'WhatsApp support number' },
     { key: 'email_address', val: 'contact@dubaifood.com', cat: 'GENERAL', desc: 'Support email address' },
-    { key: 'timezone', val: 'Asia/Dubai', cat: 'GENERAL', desc: 'Business timezone' },
+    { key: 'timezone', val: 'Asia/Karachi', cat: 'GENERAL', desc: 'Business timezone' },
     
     // Financial
-    { key: 'currency_code', val: 'AED', cat: 'FINANCIAL', desc: 'Default currency code' },
-    { key: 'currency_symbol', val: 'د.إ', cat: 'FINANCIAL', desc: 'Currency symbol' },
-    { key: 'tax_rate_percent', val: '5.00', cat: 'FINANCIAL', desc: 'Default VAT rate' },
+    { key: 'currency_code', val: 'PKR', cat: 'FINANCIAL', desc: 'Default currency code' },
+    { key: 'currency_symbol', val: 'Rs', cat: 'FINANCIAL', desc: 'Currency symbol' },
+    { key: 'tax_rate_percent', val: '0', cat: 'FINANCIAL', desc: 'Default VAT rate' },
     { key: 'service_charge_percent', val: '7', cat: 'FINANCIAL', desc: 'Default Service Charge' },
     
     // Operations
@@ -38,13 +38,22 @@ export const runSettingsSeeder = (db) => {
     if (res.changes > 0) inserted++;
   }
 
-  // Existing DBs keep INSERT OR IGNORE values — force the live receipt address/phone.
-  db.prepare(`UPDATE business_settings SET value = ? WHERE key = 'business_address'`).run(
-    'Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)'
-  );
-  db.prepare(`UPDATE business_settings SET value = ? WHERE key = 'phone_number'`).run(
-    '0308-8020784, 0345-6420784'
-  );
+  const forceSettings = [
+    ['business_name', 'Dubai Foods'],
+    ['business_address', 'Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)'],
+    ['address', 'Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)'],
+    ['phone_number', '0308-8020784, 0345-6420784'],
+    ['phone', '0308-8020784, 0345-6420784'],
+    ['whatsapp_number', '0308-8020784, 0345-6420784'],
+    ['timezone', 'Asia/Karachi'],
+    ['currency_code', 'PKR'],
+    ['currency_symbol', 'Rs'],
+    ['tax_rate_percent', '0']
+  ];
+  const forceStmt = db.prepare('UPDATE business_settings SET value = ? WHERE key = ?');
+  for (const [key, val] of forceSettings) {
+    forceStmt.run(val, key);
+  }
 
   // Insert default printers for UI kitchen selections
   const insertPrinter = db.prepare('INSERT OR IGNORE INTO printers (id, name, type, station_type) VALUES (?, ?, ?, ?)');

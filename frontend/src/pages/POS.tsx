@@ -177,7 +177,7 @@ export default function POS() {
     waiterId, setWaiterId, waiterName, setWaiterName,
     riderId, setRiderId, riderName, setRiderName,
     isTaxEnabled, toggleTax, menuContext, setMenuContext,
-    editingOrderId, clearEditMode, completeOrder,
+    editingOrderId, clearEditMode, completeOrder, resetAfterPlace,
     deliveryCharges, setDeliveryCharges,
     fetchDraftOrder, financeConfig, activeOrderId, activeOrder, isVipOrder,
     previewOrderNumber
@@ -186,6 +186,76 @@ export default function POS() {
   const { orderCounter } = useOrderStore()
 
   const { user } = useAuthStore()
+
+  const handleSendKot = async () => {
+    try {
+      const { usePrinterStore } = await import("../store/printerStore")
+      const state = usePosStore.getState()
+      const wasEditing = !!state.editingOrderId
+      let currentOrderId = state.editingOrderId || ((state.activeOrder as any)?.order_number ? state.activeOrder?.id : null)
+
+      if (!currentOrderId || !(state.activeOrder as any)?.order_number) {
+        const checkoutKey = crypto.randomUUID()
+        const checkoutResult: any = await cartService.checkout({
+          order_type: state.orderType === 'Delivery' ? 'DELIVERY' : state.orderType === 'Takeaway' ? 'TAKEAWAY' : state.orderType === 'Drive Through' ? 'DRIVE_THROUGH' : 'DINE_IN',
+          customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || null,
+          customer_name: state.customer?.name || null,
+          customer_phone: state.customer?.phone || null,
+          customer_address: state.customer?.address || null,
+          is_vip: state.isVipOrder || !!state.customer?.is_vip || !!state.customer?.isVip || false,
+          table_id: state.tableNumber || null,
+          waiter_id: state.waiterId || null,
+          waiter_name_snapshot: state.waiterName || null,
+          rider_id: state.riderId || null,
+          rider_name_snapshot: state.riderName || null,
+          delivery_charges: state.orderType === 'Delivery' ? state.deliveryCharges : 0,
+          service_charge: state.getServiceCharge(),
+          is_tax_enabled: false,
+        }, checkoutKey)
+        if (!checkoutResult?.success) {
+          alert("KOT could not be sent. Checkout failed.")
+          return
+        }
+        const order = checkoutResult.data
+        currentOrderId = order.id
+        usePosStore.setState({
+          activeOrder: { ...order, service_charge: state.getServiceCharge() },
+          previewOrderNumber: order.order_number
+        })
+      }
+
+      if (currentOrderId) {
+        const latest = usePosStore.getState()
+        const preview = {
+          orderNumber: (latest.activeOrder as any)?.order_number || latest.previewOrderNumber,
+          orderType: latest.orderType,
+          tableNumber: latest.tableNumber,
+          cashierName: user?.name || 'Cashier',
+          waiterName: latest.waiterName || null,
+          riderName: latest.riderName || null,
+          isVip: latest.isVipOrder || latest.customer?.is_vip || latest.customer?.isVip || false,
+          notes: orderNotes || null,
+          timestamp: new Date().toISOString(),
+          items: latest.cart.map((item: any) => ({
+            name: item.name,
+            quantity: item.quantity,
+            selectedModifiers: item.selectedModifiers,
+            notes: item.notes,
+            combo_components: item.combo_components || item.comboComponents || []
+          }))
+        }
+        const kot = await usePrinterStore.getState().printKitchen(currentOrderId, user?.id || user?.name || 'cashier')
+        setKotPreview(preview)
+        if (!kot) alert("KOT could not be sent to the kitchen printer. Check USB or LAN. Preview is still shown.")
+        useOrderStore.getState().syncOrdersFromBackend()
+        if (!wasEditing) {
+          await resetAfterPlace()
+        }
+      }
+    } catch {
+      alert("KOT could not be sent. Check kitchen printer (USB or LAN).")
+    }
+  }
 
   const handleProceedToPay = () => {
     if (cart.length === 0) return
@@ -588,14 +658,17 @@ export default function POS() {
 
       if (e.ctrlKey && e.key.toLowerCase() === 'k') {
         e.preventDefault()
-        searchInputRef.current?.focus()
+        if (cart.length > 0) void handleSendKot()
+        return
       }
 
       if (e.ctrlKey && e.key.toLowerCase() === 'd') {
-        if (orderType === 'Delivery') {
-          e.preventDefault()
-          deliveryChargesRef.current?.focus()
+        e.preventDefault()
+        if (usePosStore.getState().orderType !== 'Delivery') {
+          void usePosStore.getState().setOrderType('Delivery')
         }
+        setTimeout(() => deliveryChargesRef.current?.focus(), 50)
+        return
       }
 
       // CTRL + C: Toggle Customer Panel (if not copying text)
@@ -652,10 +725,6 @@ export default function POS() {
             e.preventDefault()
             setTableModalOpen(prev => !prev)
             break
-          case 'd':
-            e.preventDefault()
-            if (cart.length > 0) duplicateItem(cart[0].cartItemId)
-            break
           case 'n':
             if (!e.shiftKey) { // we already handled shift+n
               e.preventDefault()
@@ -665,9 +734,6 @@ export default function POS() {
           case 's':
             e.preventDefault()
             toggleTax()
-            break
-          case 'h':
-            e.preventDefault()
             break
         }
       }
@@ -737,15 +803,14 @@ export default function POS() {
             setRiderModalOpen(false)
           } else if (recentOrdersModalOpen) {
             setRecentOrdersModalOpen(false)
-          } else if (waiterId || waiterName) {
+          } else if (waiterId || waiterName || riderId || riderName || tableNumber || customer || isVipOrder || deliveryCharges) {
             e.preventDefault()
             setWaiterId(null, null)
-          } else if (riderId || riderName) {
-            e.preventDefault()
             setRiderId(null, null)
-          } else if (tableNumber) {
-            e.preventDefault()
             setTableNumber(null)
+            setCustomer(null)
+            setDeliveryCharges(0)
+            usePosStore.setState({ isVipOrder: false })
           } else if (isCartMode) {
             setIsCartMode(false)
           } else {
@@ -834,10 +899,11 @@ export default function POS() {
           if (usePosStore.getState().isLoadingOrder) return
           const selectedCartItem = cart[cartSelectedIndex]
           if (selectedCartItem) {
-            if (selectedCartItem.quantity > 1) {
+            if (editingOrderId && selectedCartItem.editState !== 'new') {
+              setRemovingCartItemId(selectedCartItem.cartItemId)
+            } else if (selectedCartItem.quantity > 1) {
               updateQuantity(selectedCartItem.cartItemId, selectedCartItem.quantity - 1)
             } else {
-              // Remove item and adjust selection index
               removeFromCart(selectedCartItem.cartItemId)
               setCartSelectedIndex(s => Math.max(s - 1, 0))
             }
@@ -1003,8 +1069,8 @@ export default function POS() {
   }, [
     cart, checkoutModalOpen, customizeModalOpen, sizeModalOpen,
     customerModalOpen, tableModalOpen, waiterModalOpen, riderModalOpen, recentOrdersModalOpen,
-    waiterId, waiterName, riderId, riderName, tableNumber,
-    setWaiterId, setRiderId, setTableNumber,
+    waiterId, waiterName, riderId, riderName, tableNumber, customer, isVipOrder, deliveryCharges,
+    setWaiterId, setRiderId, setTableNumber, setDeliveryCharges, handleSendKot,
     activeProductForSize, clearCart, setCustomer, updateQuantity,
     removeFromCart, editingOrderId, clearEditMode, duplicateItem,
     sizeSelectedIndex, gridSelectedIndex,
@@ -1774,33 +1840,28 @@ export default function POS() {
                               key={item.cartItemId || `cart-item-${index}`}
                               className={`border rounded-xl p-3 flex gap-3 relative group transition-all duration-100 ${isCartItemSelected
                                 ? 'bg-orange-500/10 border-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.25)] scale-[1.01]'
-                                : item.editState === 'removed' ? 'bg-background border-border/50 opacity-50' :
+                                : item.editState === 'removed' ? 'bg-red-500/5 border-red-500/40 opacity-80' :
                                   item.editState === 'new' ? 'bg-card border-green-500/50 shadow-[0_0_10px_rgba(34,197,94,0.1)]' :
-                                    item.editState === 'modified' ? 'bg-card border-orange-500/50' : 'bg-card border-border'
+                                    item.editState === 'modified' ? 'bg-card border-red-500/60' : 'bg-card border-border'
                                 }`}
                             >
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <p className={`font-bold text-sm truncate ${item.editState === 'removed' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                  <p className={`font-black text-sm truncate ${item.editState === 'removed' || item.editState === 'modified' ? 'text-red-600' : 'text-foreground'} ${item.editState === 'removed' ? 'line-through' : ''}`}>
                                     {item.name || "Unknown Item"}
                                   </p>
                                   {item.editState === 'new' && <span className="text-[10px] bg-green-500/20 text-green-500 px-1.5 py-0.5 rounded font-bold">NEW</span>}
-                                  {item.editState === 'modified' && <span className="text-[10px] bg-orange-500/20 text-orange-500 px-1.5 py-0.5 rounded font-bold">MODIFIED</span>}
+                                  {item.editState === 'modified' && <span className="text-[10px] bg-red-500/15 text-red-600 px-1.5 py-0.5 rounded font-black">EDITED</span>}
                                 </div>
                                 <div className="flex items-center gap-3 mt-2">
                                   <div className={`flex items-center border border-border rounded-lg bg-secondary ${item.editState === 'removed' ? 'opacity-50 pointer-events-none' : ''}`}>
-                                    <button onClick={async () => {
-                                      if (item.quantity > 1) {
+                                    <button onClick={() => {
+                                      if (editingOrderId && item.editState !== 'new') {
+                                        setRemovingCartItemId(item.cartItemId)
+                                      } else if (item.quantity > 1) {
                                         updateQuantity(item.cartItemId, item.quantity - 1)
                                       } else {
-                                        if (editingOrderId && item.editState !== 'new') {
-                                          const pin = prompt("Voiding an existing item requires Authorization. Enter manager PIN:")
-                                          const ok = pin ? await authService.verifyManagerPin(pin) : false
-                                          if (!ok) { alert("Unauthorized."); return }
-                                          setRemovingCartItemId(item.cartItemId)
-                                        } else {
-                                          removeFromCart(item.cartItemId)
-                                        }
+                                        removeFromCart(item.cartItemId)
                                       }
                                     }} className="p-1 hover:bg-background rounded">
                                       <Minus className="w-4 h-4 text-foreground" />
@@ -1833,7 +1894,7 @@ export default function POS() {
                                 )}
                               </div>
                               <div className="text-right">
-                                <p className={`font-bold ${item.editState === 'removed' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                <p className={`font-black ${item.editState === 'removed' || item.editState === 'modified' ? 'text-red-600' : 'text-foreground'} ${item.editState === 'removed' ? 'line-through' : ''}`}>
                                   Rs {(item.subtotal || 0).toLocaleString()}
                                 </p>
                                 {item.editState !== 'removed' && (
@@ -1976,65 +2037,7 @@ export default function POS() {
                         </span>
                       </button>
                       <button
-                        onClick={async () => {
-                          try {
-                            const { usePrinterStore } = await import("../store/printerStore")
-                            const state = usePosStore.getState()
-                            let currentOrderId = state.editingOrderId || ((state.activeOrder as any)?.order_number ? state.activeOrder?.id : null)
-
-                            if (!currentOrderId || !(state.activeOrder as any)?.order_number) {
-                              const checkoutKey = crypto.randomUUID()
-                              const checkoutResult: any = await cartService.checkout({
-                                order_type: state.orderType === 'Delivery' ? 'DELIVERY' : state.orderType === 'Takeaway' ? 'TAKEAWAY' : state.orderType === 'Drive Through' ? 'DRIVE_THROUGH' : 'DINE_IN',
-                                customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || null,
-                                is_vip: state.isVipOrder || !!state.customer?.is_vip || !!state.customer?.isVip || false,
-                                table_id: state.tableNumber || null,
-                                waiter_id: state.waiterId || null,
-                                rider_id: state.riderId || null,
-                                delivery_charges: state.orderType === 'Delivery' ? state.deliveryCharges : 0,
-                                service_charge: state.getServiceCharge(),
-                                is_tax_enabled: false,
-                              }, checkoutKey)
-                              if (!checkoutResult?.success) {
-                                alert("KOT could not be sent. Checkout failed.")
-                                return
-                              }
-                              const order = checkoutResult.data
-                              currentOrderId = order.id
-                              usePosStore.setState({
-                                activeOrder: { ...order, service_charge: state.getServiceCharge() },
-                                previewOrderNumber: order.order_number
-                              })
-                            }
-
-                            if (currentOrderId) {
-                              const kot = await usePrinterStore.getState().printKitchen(currentOrderId, user?.id || user?.name || 'cashier')
-                              const latest = usePosStore.getState()
-                              const preview = {
-                                orderNumber: (latest.activeOrder as any)?.order_number || latest.previewOrderNumber,
-                                orderType: latest.orderType,
-                                tableNumber: latest.tableNumber,
-                                cashierName: user?.name || 'Cashier',
-                                waiterName: latest.waiterName || null,
-                                riderName: latest.riderName || null,
-                                isVip: latest.isVipOrder || latest.customer?.is_vip || latest.customer?.isVip || false,
-                                notes: orderNotes || null,
-                                timestamp: new Date().toISOString(),
-                                items: latest.cart.map((item: any) => ({
-                                  name: item.name,
-                                  quantity: item.quantity,
-                                  selectedModifiers: item.selectedModifiers,
-                                  notes: item.notes,
-                                  combo_components: item.combo_components || item.comboComponents || []
-                                }))
-                              }
-                              setKotPreview(preview)
-                              if (!kot) alert("KOT could not be sent to the kitchen printer. Check USB or LAN. Preview is still shown.")
-                            }
-                          } catch {
-                            alert("KOT could not be sent. Check kitchen printer (USB or LAN).")
-                          }
-                        }}
+                        onClick={handleSendKot}
                         disabled={cart.length === 0}
                         className="p-1 bg-white hover:bg-red-50 text-red-600 border border-red-200 hover:border-red-400 font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors shadow-sm"
                       >
@@ -2051,7 +2054,7 @@ export default function POS() {
                             )
                             const currentOrderId = usePosStore.getState().editingOrderId || usePosStore.getState().activeOrder?.id
                             if (hasThermal && currentOrderId) {
-                              const result = await ps.printReceipt(currentOrderId, user?.id || user?.name || 'cashier')
+                              const result = await ps.printReceipt(currentOrderId, user?.id || user?.name || 'cashier', isPaidPrint)
                               if (result?.job_id) {
                                 alert("Receipt queued to Thermal Printer")
                                 return // thermal print queued
@@ -2074,14 +2077,16 @@ export default function POS() {
                                id: `draft-${Date.now()}`,
                                orderNumber: activeOrder?.order_number || orderCounter.toString(),
                                orderType,
-                               tableNumber: orderType === 'Dine In' ? tableNumber : null,
-                               customerName: orderType !== 'Dine In' ? (customer?.name || 'Guest') : null,
-                               customerPhone: orderType !== 'Dine In' ? (customer?.phone || null) : null,
-                               customerAddress: orderType === 'Delivery' ? (customer?.address || null) : null,
-                               notes: orderType !== 'Dine In' ? (customer?.notes || null) : null,
+                               tableNumber: tableNumber || null,
+                               customerName: customer?.name || 'Guest',
+                               customerPhone: customer?.phone || null,
+                               customerAddress: customer?.address || null,
+                               notes: customer?.notes || null,
+                               waiterName,
+                               riderName,
                                status: 'Draft',
                                kitchenStatus: 'Pending',
-                               paymentStatus: 'Unpaid',
+                               paymentStatus: isPaidPrint ? 'Paid' : 'Unpaid',
                                total: getNetTotal(),
                                subtotal: getSubtotal(),
                                serviceCharge: getServiceCharge(),
@@ -2095,7 +2100,8 @@ export default function POS() {
                                  quantity: item.quantity,
                                  category: item.category,
                                  selectedModifiers: item.selectedModifiers,
-                                 notes: item.notes
+                                 notes: item.notes,
+                                 combo_components: item.combo_components || (item as any).comboComponents || []
                                })),
                                cashierName: user?.name || 'Cashier',
                                isVip: isVipOrder || customer?.is_vip || customer?.isVip
@@ -2504,11 +2510,13 @@ export default function POS() {
                         id: activeOrderId,
                         orderNumber: activeOrder?.order_number || orderCounter.toString(),
                         orderType,
-                        tableNumber: orderType === 'Dine In' ? tableNumber : null,
-                        customerName: orderType !== 'Dine In' ? (customer?.name || 'Guest') : null,
-                        customerPhone: orderType !== 'Dine In' ? (customer?.phone || null) : null,
-                        customerAddress: orderType === 'Delivery' ? (customer?.address || null) : null,
-                        notes: orderType !== 'Dine In' ? (customer?.notes || null) : null,
+                        tableNumber: tableNumber || null,
+                        customerName: customer?.name || 'Guest',
+                        customerPhone: customer?.phone || null,
+                        customerAddress: customer?.address || null,
+                        notes: customer?.notes || null,
+                        waiterName,
+                        riderName,
                         status: 'Completed',
                         kitchenStatus: 'Completed',
                         paymentStatus: isPaidPrint ? 'Paid' : 'Unpaid',
@@ -2525,10 +2533,12 @@ export default function POS() {
                           quantity: item.quantity,
                           category: item.category,
                           selectedModifiers: item.selectedModifiers,
-                          notes: item.notes
+                          notes: item.notes,
+                          combo_components: item.combo_components || (item as any).comboComponents || []
                         })),
                         cashierName: user?.name || 'Cashier',
-                        isVip: isVipOrder || customer?.is_vip || customer?.isVip
+                        isVip: isVipOrder || customer?.is_vip || customer?.isVip,
+                        paymentMethod: method
                       }
 
                       const shouldPay = String(method) !== 'Later'
@@ -2564,7 +2574,7 @@ export default function POS() {
                         )
                         if (finalOrderId) {
                           if (hasThermal) {
-                            const result = await ps.printReceipt(finalOrderId, user?.id || user?.name || 'cashier')
+                            const result = await ps.printReceipt(finalOrderId, user?.id || user?.name || 'cashier', isPaidPrint)
                             if (result?.job_id) {
                               thermalPrintQueued = true
                             }
@@ -2716,7 +2726,12 @@ export default function POS() {
                   <button
                     onClick={() => {
                       if (removalReason && removingCartItemId) {
-                        removeFromCart(removingCartItemId, removalReason)
+                        const target = cart.find((c: any) => c.cartItemId === removingCartItemId)
+                        if (target && target.quantity > 1) {
+                          updateQuantity(removingCartItemId, target.quantity - 1)
+                        } else {
+                          removeFromCart(removingCartItemId, removalReason)
+                        }
                         setRemovingCartItemId(null)
                         setRemovalReason("")
                       }

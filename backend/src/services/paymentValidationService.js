@@ -22,7 +22,6 @@ class PaymentValidationService {
     }
 
     const terminalStates = [
-      OrderLifecycleState.COMPLETED,
       OrderLifecycleState.CANCELLED,
       OrderLifecycleState.REFUNDED,
       OrderLifecycleState.ARCHIVED
@@ -34,7 +33,8 @@ class PaymentValidationService {
       );
     }
 
-    if (order.payment_state === PaymentState.PAID) {
+    const due = Number(order.due_total);
+    if (order.payment_state === PaymentState.PAID && Number.isFinite(due) && due <= 0) {
       throw new Error(
         `Order ${order.order_number} has already been fully paid. No further payments accepted.`
       );

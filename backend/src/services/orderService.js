@@ -31,12 +31,6 @@ class OrderService {
     if (order.lifecycle_state === 'CANCELLED' || order.lifecycle_state === 'ARCHIVED') {
       throw new Error(`Order ${order.order_number} is ${order.lifecycle_state} and cannot be modified.`);
     }
-
-    if (terminalId === 'SYSTEM' || !terminalId) return order; // System processes bypass lock
-    
-    if (order.locked_by && order.locked_by !== terminalId) {
-      throw new Error(`Order is currently locked by device ${order.locked_by}. Please wait or unlock it first.`);
-    }
     return order;
   }
   /**
@@ -94,9 +88,49 @@ class OrderService {
       }
     }
     order.is_vip = order.metadata?.is_vip === 'true' || order.metadata?.is_vip === true || order.customer?.is_vip === 1 || order.customer?.is_vip === true;
+    this._enrichPeopleAndTable(order);
 
     // Cache if active
     orderCacheService.upsertOrder(order);
+    return order;
+  }
+
+  _displayUserName(userId, snapshot) {
+    if (snapshot) return snapshot;
+    if (!userId) return null;
+    try {
+      const u = dbEngine.prepare('SELECT first_name, last_name, username FROM users WHERE id = ?').get(userId);
+      if (!u) return null;
+      const n = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+      return n || u.username || null;
+    } catch {
+      return null;
+    }
+  }
+
+  _enrichPeopleAndTable(order) {
+    if (!order) return order;
+    try {
+      if (order.table_id) {
+        let tableName = null;
+        try {
+          const dt = dbEngine.prepare('SELECT table_number FROM dining_tables WHERE id = ? OR table_number = ?').get(order.table_id, String(order.table_id));
+          tableName = dt?.table_number || null;
+        } catch { /* ignore */ }
+        if (!tableName) {
+          try {
+            const fl = dbEngine.prepare('SELECT name FROM tables WHERE id = ? OR name = ?').get(order.table_id, String(order.table_id));
+            tableName = fl?.name || null;
+          } catch { /* ignore */ }
+        }
+        order.table_number = tableName || order.table_id;
+      }
+    } catch {
+      order.table_number = order.table_id || null;
+    }
+    order.cashier_name = this._displayUserName(order.cashier_user_id, null);
+    order.waiter_name = this._displayUserName(order.waiter_id, order.waiter_name_snapshot);
+    order.rider_name = this._displayUserName(order.rider_id, order.rider_name_snapshot);
     return order;
   }
 
@@ -112,14 +146,15 @@ class OrderService {
 
       let subtotal = 0;
       let taxTotal = 0;
-      let discountTotal = 0;
+      let lineDiscountTotal = 0;
 
       for (const item of items) {
         subtotal += item.subtotal;
         taxTotal += item.tax_amount;
-        discountTotal += item.discount_amount;
+        lineDiscountTotal += item.discount_amount;
       }
 
+      const discountTotal = Math.max(lineDiscountTotal, Number(order.discount_total) || 0);
       const grandTotal = subtotal + taxTotal - discountTotal + order.tip_total + order.delivery_fee + order.service_charge;
       const paidTotal = orderPaymentRepository.getTotalPaidForOrder(orderId);
       const dueTotal = Math.max(0, grandTotal - paidTotal);
@@ -521,6 +556,19 @@ class OrderService {
       if (meta.delivery_charges !== undefined) {
         updates.delivery_fee = meta.delivery_charges;
       }
+      if (meta.customer_name !== undefined) {
+        orderMetadataRepository.setMeta(orderId, 'customer_name', meta.customer_name || '');
+      }
+      if (meta.customer_phone !== undefined) {
+        orderMetadataRepository.setMeta(orderId, 'customer_phone', meta.customer_phone || '');
+      }
+      if (meta.customer_address !== undefined) {
+        orderMetadataRepository.setMeta(orderId, 'customer_address', meta.customer_address || '');
+      }
+      if (meta.receipt_paid_stamp !== undefined || meta.print_paid !== undefined) {
+        const paid = meta.receipt_paid_stamp === true || meta.receipt_paid_stamp === 'true' || meta.print_paid === true;
+        orderMetadataRepository.setMeta(orderId, 'receipt_paid_stamp', paid ? 'true' : 'false');
+      }
       if (meta.is_vip !== undefined) {
         orderMetadataRepository.setMeta(orderId, 'is_vip', meta.is_vip ? 'true' : 'false');
       } else if (meta.customer_id) {
@@ -581,20 +629,9 @@ class OrderService {
    * Lock an order for editing.
    */
   lockOrder(orderId, terminalId, userId) {
-    return dbEngine.transaction(() => {
-      const order = this._enforceLock(orderId, null); // Check immutability first
-      
-      if (order.locked_by && order.locked_by !== terminalId) {
-        throw new Error(`Order is currently locked by device ${order.locked_by}`);
-      }
-
-      const updated = orderRepository.update(orderId, { locked_by: terminalId });
-      
-      activityLogService.logActivity(userId, 'ORDER_LOCKED', 'ORDER', orderId, { terminalId });
-      syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', { locked_by: terminalId });
-
-      return this._hydrateOrder(updated);
-    });
+    const order = orderRepository.findById(orderId);
+    if (!order) throw new Error('Order not found.');
+    return this._hydrateOrder(order);
   }
 
   /**

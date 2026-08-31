@@ -430,14 +430,9 @@ export default function Products() {
 
   // Variants config inside form helper
   const handleAddVariant = () => {
-    const name = prompt("Enter variant name (e.g. Extra Cheese, Spicy, Large):")
-    if (!name) return
-    const priceStr = prompt("Enter price adjustment (e.g. 50, 100) or leave blank for 0:")
-    const price = priceStr ? parseFloat(priceStr) : 0
-
     setSelectedProduct({
       ...selectedProduct,
-      variants: [...(selectedProduct.variants || []), { name, price }]
+      variants: [...(selectedProduct.variants || []), { name: "", price: 0 }]
     })
   }
 

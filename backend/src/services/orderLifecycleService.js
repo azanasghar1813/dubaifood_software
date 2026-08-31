@@ -14,6 +14,7 @@ import { syncService } from './syncService.js';
 import { orderCacheService } from './orderCacheService.js';
 import { kitchenService } from './kitchenService.js';
 import { dbEngine } from '../database/sqlite.js';
+import { releaseTableIfIdle } from '../controllers/tableController.js';
 
 class OrderLifecycleService {
   /**
@@ -125,6 +126,10 @@ class OrderLifecycleService {
 
       // Execute update
       const updatedOrder = orderRepository.update(orderId, updates);
+
+      if (targetLifecycleState === OrderLifecycleState.COMPLETED || targetLifecycleState === OrderLifecycleState.CANCELLED) {
+        try { releaseTableIfIdle(order.table_id); } catch { /* table release is best-effort */ }
+      }
 
       // Record Timeline Entry
       orderTimelineService.recordEvent(orderId, userId, 'STATE_TRANSITION', {

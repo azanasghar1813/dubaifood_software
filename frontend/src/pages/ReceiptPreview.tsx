@@ -17,7 +17,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
   const orderType    = order?.orderType    ?? "Dine In"
   const tableNumber  = order?.tableNumber  ?? null
   const cashier      = order?.cashierName  ?? "Cashier"
-  const customerName = order?.customerName ?? null
+  const customerName = order?.customerName || 'Guest'
   const customerPhone = order?.customerPhone ?? null
   const customerAddress = order?.customerAddress ?? null
   const isVip        = !!(
@@ -30,6 +30,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
   const receiptPhone = settings.phoneNumber || '0308-8020784, 0345-6420784'
   const notes        = order?.notes        ?? null
   const paymentStatus = order?.paymentStatus ?? "Unpaid"
+  const paymentMethod = (order as any)?.paymentMethod || (order as any)?.payments?.[0]?.method || null
   const timestamp    = order ? new Date(order.timestamp) : new Date()
   const dateStr      = timestamp.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
   const timeStr      = timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -122,13 +123,14 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     <!-- Order Details -->
     <div style="font-size:11px;display:flex;flex-direction:column;gap:3px;margin-bottom:12px">
       <div><span style="margin-right:4px;font-weight:900;">Order ID:</span>#${orderNumber}</div>
-      ${isDelivery && customerName ? `<div style="display:flex"><span style="margin-right:4px;font-weight:900;">Customer:</span><span>${customerName} ${customerPhone ? '- '+customerPhone : ''} ${customerAddress ? '- '+customerAddress : ''}</span></div>` : ''}
-      ${!isDelivery && tableNumber && tableNumber !== 'N/A' ? `<div><span style="margin-right:4px;font-weight:900;">Table No:</span>${tableNumber}</div>` : ''}
+      <div style="display:flex"><span style="margin-right:4px;font-weight:900;">Customer:</span><span>${customerName}${customerPhone ? ' - '+customerPhone : ''}${customerAddress ? ' - '+customerAddress : ''}</span></div>
+      ${tableNumber && tableNumber !== 'N/A' ? `<div><span style="margin-right:4px;font-weight:900;">Table No:</span>${tableNumber}</div>` : ''}
       <div><span style="margin-right:4px;font-weight:900;">Order Type:</span>${orderType}</div>
       <div><span style="margin-right:4px;font-weight:900;">Cashier:</span>${cashier}</div>
       ${isDelivery && (order as any)?.riderName ? `<div><span style="margin-right:4px;font-weight:900;">Rider:</span>${(order as any).riderName}</div>` : ''}
       ${!isDelivery && (order as any)?.waiterName ? `<div><span style="margin-right:4px;font-weight:900;">Waiter:</span>${(order as any).waiterName}</div>` : ''}
       <div><span style="margin-right:4px;font-weight:900;">Status:</span>${paymentStatus}</div>
+      ${paymentMethod && String(paymentMethod) !== 'Later' ? `<div><span style="margin-right:4px;font-weight:900;">Payment:</span>${paymentMethod}</div>` : ''}
       <div><span style="margin-right:4px;font-weight:900;">Time:</span>${dateStr}, ${timeStr}</div>
       ${isVip ? `<div style="text-align:center;padding:4px 0;margin-top:6px;font-weight:900;font-size:14px;">** VIP ORDER **</div>` : ''}
     </div>
@@ -189,20 +191,21 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       {/* Order Details */}
       <div className="text-[11px] flex flex-col gap-0.5 text-black mb-4">
         <div><span className="mr-1 font-black">Order ID:</span>#{orderNumber}</div>
-        {isDelivery && customerName && (
-          <div className="flex gap-1">
+        <div className="flex gap-1">
              <span className="shrink-0 font-black">Customer:</span>
-             <span className="break-words">{customerName} {customerPhone ? '- '+customerPhone : ''} {customerAddress ? '- '+customerAddress : ''}</span>
-          </div>
-        )}
-        {!isDelivery && tableNumber && tableNumber !== 'N/A' && (
+             <span className="break-words">{customerName}{customerPhone ? ' - '+customerPhone : ''}{customerAddress ? ' - '+customerAddress : ''}</span>
+        </div>
+        {tableNumber && tableNumber !== 'N/A' && (
           <div><span className="mr-1 font-black">Table No:</span>{tableNumber}</div>
         )}
         <div><span className="mr-1 font-black">Order Type:</span>{orderType}</div>
         <div><span className="mr-1 font-black">Cashier:</span>{cashier}</div>
-        {isDelivery && (order as any)?.riderName && <div><span className="mr-1 font-black">Rider:</span>{(order as any).riderName}</div>}
-        {!isDelivery && (order as any)?.waiterName && <div><span className="mr-1 font-black">Waiter:</span>{(order as any).waiterName}</div>}
+        {(order as any)?.riderName && <div><span className="mr-1 font-black">Rider:</span>{(order as any).riderName}</div>}
+        {(order as any)?.waiterName && <div><span className="mr-1 font-black">Waiter:</span>{(order as any).waiterName}</div>}
         <div><span className="mr-1 font-black">Status:</span>{paymentStatus}</div>
+        {paymentMethod && String(paymentMethod) !== 'Later' && (
+          <div><span className="mr-1 font-black">Payment:</span>{paymentMethod}</div>
+        )}
         <div><span className="mr-1 font-black">Time:</span>{dateStr}, {timeStr}</div>
         {isVip && (
           <div className="font-black uppercase text-sm py-1 mt-2 text-center">** VIP ORDER **</div>

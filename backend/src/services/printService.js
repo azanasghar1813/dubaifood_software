@@ -13,6 +13,7 @@ import { orderMetadataRepository } from '../repositories/orderMetadataRepository
 import { customerRepository } from '../repositories/customerRepository.js';
 import { paymentReceiptRepository } from '../repositories/paymentReceiptRepository.js';
 import { configService } from './configService.js';
+import { orderService } from './orderService.js';
 
 /**
  * PrintService — the public API for all print operations.
@@ -75,31 +76,21 @@ class PrintService {
       || order?.metadata?.receipt_paid_stamp === 'true'
       || order?.metadata?.receipt_paid_stamp === true;
 
-    let payload;
-    if (receipts.length === 0) {
-      const payment = {
-        id: 'unpaid-preview',
-        payment_method: paidStamp ? 'CASH' : 'UNPAID',
-        payment_method_label: paidStamp ? 'PAID' : 'UNPAID',
-        amount: order.grand_total,
-        amount_received: paidStamp ? order.grand_total : 0,
-        change_returned: 0,
-        cashier_user_id: cashierUserId,
-        created_at: new Date().toISOString()
-      };
-      payload = receiptGeneratorService.buildFromOrder(order, payment, {
-        printerWidth: printer?.paper_width || 80,
-        copies: printerConfig.copies || 1,
-        cashDrawer: false,
-      });
-    } else {
-      const receipt = receipts[receipts.length - 1];
-      payload = receiptGeneratorService.buildPrintPayload(receipt, {
-        printerWidth: printer?.paper_width || 80,
-        copies: printerConfig.copies || 1,
-        cashDrawer: false,
-      });
-    }
+    const lastPayment = (order.payments && order.payments[order.payments.length - 1]) || {
+      id: 'unpaid-preview',
+      payment_method: receipts.length ? (receipts[receipts.length - 1]?.payload?.payment?.payment_method || null) : null,
+      payment_method_label: null,
+      amount: order.grand_total,
+      amount_received: paidStamp ? order.grand_total : 0,
+      change_returned: 0,
+      cashier_user_id: cashierUserId,
+      created_at: new Date().toISOString()
+    };
+    const payload = receiptGeneratorService.buildFromOrder(order, lastPayment, {
+      printerWidth: printer?.paper_width || 80,
+      copies: printerConfig.copies || 1,
+      cashDrawer: false,
+    });
 
     if (payload.order) payload.order.receipt_paid_stamp = paidStamp;
 
@@ -338,6 +329,8 @@ class PrintService {
   }
 
   _loadOrder(orderId) {
+    const hydrated = orderService.getOrderById(orderId);
+    if (hydrated) return hydrated;
     const order = orderRepository.findById(orderId);
     if (!order) throw new Error(`Order ${orderId} not found.`);
     order.items = orderItemRepository.findItemsByOrderId(orderId);

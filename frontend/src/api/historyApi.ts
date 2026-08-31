@@ -54,6 +54,7 @@ export interface HistoryOrderRow {
   customer_name?:        string | null;
   customer_phone?:       string | null;
   is_vip?:               number | boolean | string | null;
+  receipt_paid_stamp?:   number | boolean | string | null;
   table_id:              string | null;
   waiter_id?:            string | null;
   waiter_name?:          string | null;
@@ -235,8 +236,11 @@ export async function fetchReprintLog(orderId: string): Promise<{ success: boole
 /**
  * Delete an order permanently.
  */
-export async function deleteOrder(orderId: string): Promise<{ success: boolean; message?: string }> {
-  return apiClient.delete(`/orders/${orderId}`);
+export async function deleteOrder(orderId: string, pin?: string): Promise<{ success: boolean; message?: string }> {
+  return apiClient.delete(`/orders/${orderId}`, {
+    data: { pin },
+    headers: pin ? { 'x-manager-pin': pin } : undefined
+  } as any);
 }
 
 /**

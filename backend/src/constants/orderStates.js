@@ -68,7 +68,8 @@ export const AllowedLifecycleTransitions = Object.freeze({
   ],
   [OrderLifecycleState.COMPLETED]: [
     OrderLifecycleState.REFUNDED,
-    OrderLifecycleState.ARCHIVED
+    OrderLifecycleState.ARCHIVED,
+    OrderLifecycleState.CANCELLED
   ],
   [OrderLifecycleState.CANCELLED]: [
     OrderLifecycleState.ARCHIVED,

@@ -28,9 +28,9 @@ class ReceiptService {
 
     // ── Business Information ──────────────────────────────────────────────────
     const business = {
-      name: businessProfile.business_name || 'Restaurant',
-      address: businessProfile.address || '',
-      phone: businessProfile.phone || '',
+      name: businessProfile.business_name || 'Dubai Foods',
+      address: businessProfile.address || 'Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)',
+      phone: businessProfile.phone || '0308-8020784, 0345-6420784',
       email: businessProfile.email || '',
       tax_id: businessProfile.tax_id || '',
       logo_url: businessProfile.logo_url || null,
@@ -43,8 +43,18 @@ class ReceiptService {
       order_id: order.id,
       order_number: order.order_number,
       order_type: order.order_type,
-      table_id: order.table_id || null,
+      table_id: order.table_number || order.table_id || null,
+      table_number: order.table_number || order.table_id || null,
       customer_id: order.customer_id || null,
+      customer_name: order.metadata?.customer_name || (order.customer ? [order.customer.first_name, order.customer.last_name].filter(Boolean).join(' ') : null) || 'Guest',
+      customer_phone: order.metadata?.customer_phone || order.customer?.phone || null,
+      customer_address: order.metadata?.customer_address || order.customer?.address || null,
+      waiter_name: order.waiter_name || order.waiter_name_snapshot || null,
+      rider_name: order.rider_name || order.rider_name_snapshot || null,
+      is_vip: !!(order.is_vip || order.customer?.is_vip || order.metadata?.is_vip === 'true' || order.metadata?.is_vip === true),
+      cashier_name: order.cashier_name || null,
+      receipt_paid_stamp: order.metadata?.receipt_paid_stamp === 'true' || order.metadata?.receipt_paid_stamp === true || false,
+      payment_method: payment?.payment_method || payment?.payment_method_label || null,
       business_date: order.business_date,
       created_at: order.created_at,
       cashier_user_id: order.cashier_user_id,
@@ -99,15 +109,17 @@ class ReceiptService {
     // ── Order Financials ──────────────────────────────────────────────────────
     const financials = {
       subtotal: order.subtotal,
-      tax_total: order.tax_total,
+      tax_total: 0,
       discount_total: order.discount_total,
       tip_total: order.tip_total || 0,
       delivery_fee: order.delivery_fee || 0,
+      service_charge: order.service_charge || 0,
       grand_total: order.grand_total,
-      paid_total: order.grand_total,    // At this point, order is fully paid
-      tax_name: financeConfig.tax_name || 'VAT',
-      tax_rate: financeConfig.tax_rate || 0.07,
-      is_tax_inclusive: !!(financeConfig.tax_inclusive)
+      paid_total: order.grand_total,
+      tax_name: '',
+      tax_rate: 0,
+      is_tax_inclusive: false,
+      currency_symbol: 'Rs'
     };
 
     // ── Payment Details ───────────────────────────────────────────────────────

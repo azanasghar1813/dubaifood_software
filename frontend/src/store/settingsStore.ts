@@ -27,19 +27,20 @@ export const useSettingsStore = create<SettingsState>()(
       taxRate: 0,
       serviceChargeRate: 5,
       deliveryChargeRate: 50,
-      currencySymbol: "AED",
+      currencySymbol: "Rs",
       receiptFooter: "Thank you for dining with us! Please come again.",
       
       updateSettings: (settings) => set((state) => ({ ...state, ...settings }))
     }),
     {
       name: 'settings-storage',
-      version: 3,
+      version: 4,
       migrate: (persistedState: any, version: number) => {
-        const next = { ...persistedState, taxRate: 0 }
-        if (!version || version < 3) {
+        const next = { ...persistedState, taxRate: 0, currencySymbol: "Rs" }
+        if (!version || version < 4) {
           next.address = "Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)"
           next.phoneNumber = "0308-8020784, 0345-6420784"
+          next.currencySymbol = "Rs"
         }
         return next
       },

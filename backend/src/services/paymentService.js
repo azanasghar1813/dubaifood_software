@@ -18,6 +18,7 @@ import { syncService } from './syncService.js';
 import { kitchenService } from './kitchenService.js';
 import { printService } from './printService.js';
 import { OrderLifecycleState, PaymentState } from '../constants/orderStates.js';
+import { releaseTableIfIdle } from '../controllers/tableController.js';
 import crypto from 'crypto';
 
 /**
@@ -218,6 +219,9 @@ class PaymentService {
       }
 
       const updatedRawOrder = orderRepository.update(orderId, orderUpdates);
+      if (newLifecycleState === OrderLifecycleState.COMPLETED) {
+        try { releaseTableIfIdle(liveOrder.table_id); } catch { /* best-effort */ }
+      }
 
       // ── 3d. Generate + save receipt payload ─────────────────────────────
       // Build hydrated order for the receipt (items already loaded above)

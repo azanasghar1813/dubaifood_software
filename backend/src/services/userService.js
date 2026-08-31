@@ -10,7 +10,7 @@ const enforceRoleHierarchy = (actorId, targetRoleId = null, targetUserId = null)
   
   const actorRoleName = actor.role_name;
   
-  if (actorRoleName === 'Super Admin' || actorRoleName === 'Owner') {
+  if (actorRoleName === 'Super Admin' || actorRoleName === 'Super Administrator' || actorRoleName === 'Owner') {
     return; // Super Admin and Owner can do anything
   }
   
@@ -129,7 +129,7 @@ export const userService = {
 
     const updatedUser = userRepository.findById(targetUserId);
     activityLogService.logActivity(actorId, 'PIN_RESET', 'USER', targetUserId, {});
-    syncService.queueSyncEvent('USER', targetUserId, 'UPDATED', { pin_reset: true }, updatedUser.sync_version || 1);
+    syncService.queueSyncEvent('USER', targetUserId, 'UPDATED', { pin_reset: true, pin_code: hashedPin }, updatedUser.sync_version || 1);
   },
   
   changeMyPin: (userId, oldPin, newPin) => {

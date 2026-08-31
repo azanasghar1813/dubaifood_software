@@ -86,6 +86,11 @@ class HistoryRepository {
           (SELECT CASE WHEN is_vip IN (1, '1', 'true') THEN 1 ELSE 0 END FROM customers c WHERE c.id = o.customer_id),
           0
         ) AS is_vip,
+        COALESCE(
+          (SELECT CASE WHEN LOWER(CAST(meta_value AS TEXT)) IN ('true', '1') THEN 1 ELSE 0 END
+           FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'receipt_paid_stamp' LIMIT 1),
+          0
+        ) AS receipt_paid_stamp,
         o.service_charge AS service_charge,
         o.delivery_fee AS delivery_charges,
         (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM activity_logs al WHERE al.entity_id = o.id AND al.action IN ('ITEM_REMOVED', 'ITEM_ADDED', 'QUANTITY_CHANGED', 'ORDER_UPDATED')) AS is_edited

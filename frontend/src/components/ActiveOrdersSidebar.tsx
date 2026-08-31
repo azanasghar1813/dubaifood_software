@@ -182,10 +182,11 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
   const handleEdit = async (order: Order) => {
     try {
       await loadOrderForEdit(order)
-    } catch(e) {
+      onClose()
+    } catch(e: any) {
       console.error(e)
+      alert(e?.message || 'Could not load this order for edit.')
     }
-    onClose()
   }
 
   const handleSendKot = async (e: React.MouseEvent | null, order: Order) => {
@@ -241,16 +242,25 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
       )
 
       if (hasThermalPrinter) {
-        const result = await printerState.printReceipt(order.id, user?.id || user?.name || 'cashier')
+        const result = await printerState.printReceipt(order.id, user?.id || user?.name || 'cashier', order.paymentStatus === 'Paid')
         if (result?.job_id) {
           console.log(`[ActiveOrdersSidebar] Thermal print job queued: ${result.job_id}`)
-          return // Success â€” don't open browser popup
+          return
         }
       }
     } catch (e) {
       console.warn('[ActiveOrdersSidebar] Backend print failed, falling back to browser preview:', e)
     }
 
+    try {
+      const { fetchOrderDetail } = await import('../api/historyApi')
+      const { mapHistoryDetailToOrder } = await import('../store/orderStore')
+      const res = await fetchOrderDetail(order.id)
+      if (res.success && res.data) {
+        setPrintOrder(mapHistoryDetailToOrder(res.data, res.data))
+        return
+      }
+    } catch { /* fallback */ }
     setPrintOrder(order)
   }
 

@@ -10,6 +10,9 @@ export function releaseTableIfIdle(tableRef) {
     `).get(tableRef);
     if (!active || Number(active.c) === 0) {
       dbEngine.prepare(`UPDATE tables SET status = 'Available' WHERE id = ? OR name = ?`).run(tableRef, tableRef);
+      try {
+        dbEngine.prepare(`UPDATE dining_tables SET status = 'Available' WHERE id = ? OR table_number = ?`).run(tableRef, String(tableRef));
+      } catch { /* dining_tables may not have status */ }
     }
   } catch (e) {
     console.warn('Failed to release floor table:', e.message);
