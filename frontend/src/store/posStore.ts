@@ -5,6 +5,7 @@ import { apiClient } from '../api/client'
 import { useOrderStore } from './orderStore'
 import { configApi } from '../api/configApi'
 import { useSettingsStore } from './settingsStore'
+import { newId } from '../utils/uuid'
 
 const mapCartItems = (items: any[] = []) => (items || []).map((item: any) => {
   const vName = item.variant_name || item.variant?.variant_name_snapshot || item.variants?.[0]?.variant_name_snapshot
@@ -254,7 +255,7 @@ export const usePosStore = create<POSState>()(
       const quantity = i.quantity || 1;
       return {
       ...i,
-      cartItemId: i.cartItemId || i._cart_item_id || i.id || crypto.randomUUID(),
+      cartItemId: i.cartItemId || i._cart_item_id || i.id || newId(),
       name: i.name && i.name.includes('(') ? i.name : (() => {
         const vName = i.variant_name || i.variant?.variant_name_snapshot || i.variants?.[0]?.variant_name_snapshot
         const base = i.product_name_snapshot || i.product_name || i.name || 'Item'
@@ -518,15 +519,18 @@ export const usePosStore = create<POSState>()(
 
   completeOrder: async (payments: any[] = [], discountTotal: number = 0, printPaid: boolean = false): Promise<{ success: boolean; orderId?: string }> => {
     const state = get()
-    if (!state.activeOrder) return { success: false }
+    if (!state.activeOrder) {
+      await get().fetchDraftOrder()
+    }
+    if (!get().activeOrder) return { success: false }
     
     set({ isLoadingOrder: true })
     try {
-      let order = state.activeOrder as any
+      let order = get().activeOrder as any
       
-      let checkoutKey = state.checkoutIdempotencyKey;
+      let checkoutKey = get().checkoutIdempotencyKey;
       if (!checkoutKey) {
-        checkoutKey = crypto.randomUUID();
+        checkoutKey = newId();
         set({ checkoutIdempotencyKey: checkoutKey });
       }
 
@@ -605,7 +609,7 @@ export const usePosStore = create<POSState>()(
         if (method === 'LATER' || method === 'UNPAID') continue;
         let paymentKey = updatedPaymentKeys[i];
         if (!paymentKey) {
-          paymentKey = crypto.randomUUID();
+          paymentKey = newId();
           updatedPaymentKeys[i] = paymentKey;
         }
 

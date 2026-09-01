@@ -22,6 +22,7 @@ import { menuService } from "../services/menuService"
 import { cartService } from "../services/posServices/cartService"
 import { authService } from "../services/authService"
 import { apiClient } from "../api/client"
+import { newId } from "../utils/uuid"
 import { CustomerPanelModal } from "../components/CustomerPanelModal"
 import { TableSelectorModal } from "../components/TableSelectorModal"
 import { WaiterSelectorModal } from "../components/WaiterSelectorModal"
@@ -192,7 +193,7 @@ export default function POS() {
       let currentOrderId = state.editingOrderId || ((state.activeOrder as any)?.order_number ? state.activeOrder?.id : null)
 
       if (!currentOrderId || !(state.activeOrder as any)?.order_number) {
-        const checkoutKey = crypto.randomUUID()
+        const checkoutKey = newId()
         const checkoutResult: any = await cartService.checkout({
           order_type: state.orderType === 'Delivery' ? 'DELIVERY' : state.orderType === 'Takeaway' ? 'TAKEAWAY' : state.orderType === 'Drive Through' ? 'DRIVE_THROUGH' : 'DINE_IN',
           customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || null,

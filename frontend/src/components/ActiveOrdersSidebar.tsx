@@ -249,17 +249,14 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     try {
       const { usePrinterStore } = await import("../store/printerStore")
       const printerState = usePrinterStore.getState()
-      
-      const hasThermalPrinter = printerState.printers.some(
-        (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
-      )
-
-      if (hasThermalPrinter) {
-        const result = await printerState.printReceipt(order.id, user?.id || user?.name || 'cashier', order.paymentStatus === 'Paid')
-        if (result?.job_id) {
-          console.log(`[ActiveOrdersSidebar] Thermal print job queued: ${result.job_id}`)
-          return
-        }
+      if (!printerState.printers.length) {
+        await printerState.fetchPrinters()
+      }
+      const result = await printerState.printReceipt(order.id, user?.id || user?.name || 'cashier', order.paymentStatus === 'Paid')
+      const jobId = result?.job_id || result?.data?.job_id
+      if (jobId) {
+        alert("Bill sent to the counter printer. Pick it up at the till.")
+        return
       }
     } catch (e) {
       console.warn('[ActiveOrdersSidebar] Backend print failed, falling back to browser preview:', e)
@@ -493,7 +490,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                         }`}
                       >
                         <Printer className="w-3.5 h-3.5" />
-                        Print
+                        Print Bill
                       </button>
 
                       <button
