@@ -101,7 +101,6 @@ export const pushSyncEvents = async (req, res) => {
           delete entityData.sync_version;
           delete entityData.synced_at;
           delete entityData.sync_hash;
-          delete entityData.show_on_login;
           delete entityData.failed_login_attempts;
           delete entityData.locked_until;
           delete entityData.force_pin_change;

@@ -58,7 +58,8 @@ class ReceiptService {
       business_date: order.business_date,
       created_at: order.created_at,
       cashier_user_id: order.cashier_user_id,
-      branch_id: order.branch_id
+      branch_id: order.branch_id,
+      notes: order.notes || null
     };
 
     // ── Line Items with full snapshots ────────────────────────────────────────

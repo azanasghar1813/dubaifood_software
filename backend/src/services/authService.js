@@ -70,7 +70,8 @@ export const authService = {
 
       const permissions = userRepository.getUserPermissions(user.role_id);
       const role = roleRepository.findById(user.role_id);
-      if (role && role.name === 'Super Admin') {
+      const roleName = String(role?.name || '').trim().toLowerCase();
+      if (roleName === 'super admin' || roleName === 'super administrator' || roleName === 'owner') {
         if (!permissions.includes('*')) {
           permissions.push('*');
         }

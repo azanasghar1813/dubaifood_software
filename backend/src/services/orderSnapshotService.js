@@ -14,7 +14,7 @@ class OrderSnapshotService {
    * @param {Object} params { productId, variantId, modifiers, addons, comboComponents, quantity, notes }
    * @returns {Object} Full snapshot structure ready for repository insertion
    */
-  createItemSnapshot({ productId, variantId = null, modifiers = [], addons = [], comboComponents = [], quantity = 1, notes = null }) {
+  createItemSnapshot({ productId, variantId = null, variant_name = null, modifiers = [], addons = [], comboComponents = [], quantity = 1, notes = null }) {
     let product = productRepository.findById(productId);
     let isDeal = false;
 
@@ -35,23 +35,32 @@ class OrderSnapshotService {
     let variantSnapshot = null;
     let resolvedVariant = null;
 
-    // 1. Process Variant Snapshot if variantId specified
+    // 1. Process Variant Snapshot if a size/variant was chosen
     if (variantId) {
       resolvedVariant = variantRepository.findById(variantId);
-      if (resolvedVariant) {
-        // If variant has explicit price, override base or treat as price adjustment
-        const priceAdj = Number(resolvedVariant.price) - baseUnitPrice;
-        variantSnapshot = {
-          id: crypto.randomUUID(),
-          order_item_id: itemId,
-          variant_id: resolvedVariant.id,
-          variant_name_snapshot: resolvedVariant.name,
-          variant_sku_snapshot: resolvedVariant.sku || resolvedVariant.product_code || null,
-          price_adjustment: priceAdj > 0 ? priceAdj : 0
-        };
-        if (Number(resolvedVariant.price) > 0) {
-          baseUnitPrice = Number(resolvedVariant.price);
-        }
+    }
+    if (!resolvedVariant && variant_name) {
+      try {
+        resolvedVariant = (variantRepository.findByProduct(productId) || []).find(
+          (v) => String(v.name || '').trim().toLowerCase() === String(variant_name).trim().toLowerCase()
+            && v.lifecycle_state !== 'DELETED'
+        ) || null;
+      } catch {
+        resolvedVariant = null;
+      }
+    }
+    if (resolvedVariant) {
+      const priceAdj = Number(resolvedVariant.price) - baseUnitPrice;
+      variantSnapshot = {
+        id: crypto.randomUUID(),
+        order_item_id: itemId,
+        variant_id: resolvedVariant.id,
+        variant_name_snapshot: resolvedVariant.name,
+        variant_sku_snapshot: resolvedVariant.sku || resolvedVariant.product_code || null,
+        price_adjustment: priceAdj > 0 ? priceAdj : 0
+      };
+      if (Number(resolvedVariant.price) > 0) {
+        baseUnitPrice = Number(resolvedVariant.price);
       }
     }
 

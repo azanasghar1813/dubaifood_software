@@ -11,10 +11,22 @@ router.use(authenticate);
 // Self-service route (doesn't require MANAGE_USERS, just an active session)
 router.post('/change-pin', userController.changeMyPin);
 
+const staffListPerms = ['MANAGE_USERS', 'VIEW_ORDERS', 'VIEW_REPORTS', 'VIEW_CASHIERS', 'VIEW_POS', 'VIEW_DASHBOARD'];
+
+const listStaff = (req, res) => {
+  const perms = req.user?.permissions || [];
+  if (perms.includes('*') || perms.includes('MANAGE_USERS')) {
+    return userController.getAll(req, res);
+  }
+  return userController.getDirectory(req, res);
+};
+
+router.get('/', authorize(staffListPerms), listStaff);
+router.get('/directory', authorize(staffListPerms), userController.getDirectory);
+
 // Admin routes
 router.use(authorize('MANAGE_USERS'));
 
-router.get('/', userController.getAll);
 router.get('/:id', userController.getById);
 router.post('/', userController.create);
 router.put('/:id', userController.update);

@@ -73,7 +73,9 @@ export const AllowedLifecycleTransitions = Object.freeze({
   ],
   [OrderLifecycleState.CANCELLED]: [
     OrderLifecycleState.ARCHIVED,
-    OrderLifecycleState.DRAFT
+    OrderLifecycleState.DRAFT,
+    OrderLifecycleState.ACTIVE,
+    OrderLifecycleState.HELD
   ],
   [OrderLifecycleState.REFUNDED]: [
     OrderLifecycleState.ARCHIVED
@@ -88,7 +90,7 @@ export const AllowedKitchenTransitions = Object.freeze({
   [KitchenState.READY]: [KitchenState.SERVED, KitchenState.COMPLETED, KitchenState.CANCELLED],
   [KitchenState.SERVED]: [KitchenState.COMPLETED],
   [KitchenState.COMPLETED]: [],
-  [KitchenState.CANCELLED]: []
+  [KitchenState.CANCELLED]: [KitchenState.PENDING, KitchenState.SENT, KitchenState.PREPARING]
 });
 
 export const AllowedPaymentTransitions = Object.freeze({

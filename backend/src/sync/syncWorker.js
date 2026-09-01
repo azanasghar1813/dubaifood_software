@@ -17,6 +17,21 @@ const LOCAL_SETTING_KEYS = new Set([
   'last_sync_fixed_v1'
 ]);
 
+function isSuperRoleName(name) {
+  const n = String(name || '').trim().toLowerCase();
+  return n === 'super admin' || n === 'super administrator';
+}
+
+function applyShowOnLoginSetting(key, value) {
+  if (!String(key || '').startsWith('user_show_on_login_')) return;
+  const userId = String(key).slice('user_show_on_login_'.length);
+  if (!userId) return;
+  const show = (value === '0' || value === 0) ? 0 : 1;
+  try {
+    dbEngine.prepare('UPDATE users SET show_on_login = ? WHERE id = ?').run(show, userId);
+  } catch { /* users table may lack column */ }
+}
+
 function applyRoleAcl(raw) {
   let data;
   try { data = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return; }
@@ -179,7 +194,6 @@ class SyncWorker {
     delete payload.sync_status;
     delete payload.synced_at;
     delete payload.sync_hash;
-    delete payload.show_on_login;
     delete payload.failed_login_attempts;
     delete payload.locked_until;
     delete payload.force_pin_change;
@@ -399,7 +413,6 @@ class SyncWorker {
                      delete record.sync_status;
                      delete record.synced_at;
                      delete record.sync_hash;
-                     delete record.show_on_login;
                      delete record.failed_login_attempts;
                      delete record.locked_until;
                      delete record.force_pin_change;
@@ -608,7 +621,9 @@ class SyncWorker {
 
             const conflictCol = tableName === 'application_settings' && validColumns.has('key') ? 'key' : 'id';
             const placeholders = keys.map(() => '?').join(', ');
-            const updateSet = keys.filter(k => k !== conflictCol).map(k => `${k} = excluded.${k}`).join(', ');
+            const updateCols = keys.filter((k) => k !== conflictCol)
+              .filter((k) => !(tableName === 'users' && k === 'show_on_login'));
+            const updateSet = updateCols.map(k => `${k} = excluded.${k}`).join(', ');
             const stmt = dbEngine.prepare(`INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${placeholders}) ON CONFLICT(${conflictCol}) DO UPDATE SET ${updateSet}`);
 
             for (const rawItem of items) {
@@ -623,6 +638,21 @@ class SyncWorker {
               }
               if (tableName === 'users' && (item.id === SYSTEM_USER_ID || String(item.username || '').toLowerCase() === 'system_user')) {
                 continue;
+              }
+              if (tableName === 'users' && item.id) {
+                const localUser = dbEngine.prepare(`
+                  SELECT u.role_id, u.show_on_login, r.name as role_name
+                  FROM users u LEFT JOIN roles r ON r.id = u.role_id
+                  WHERE u.id = ?
+                `).get(item.id);
+                if (localUser) {
+                  if (isSuperRoleName(localUser.role_name)) {
+                    item.role_id = localUser.role_id;
+                  }
+                  if (item.show_on_login === undefined || item.show_on_login === null) {
+                    item.show_on_login = localUser.show_on_login;
+                  }
+                }
               }
               if (tableName === 'orders') {
                 if (item.table_id && !existsId('dining_tables', item.table_id) && !existsId('tables', item.table_id)) item.table_id = null;
@@ -680,6 +710,7 @@ class SyncWorker {
           upsertData('application_settings', gathered.application_settings);
           for (const row of gathered.application_settings || []) {
             if (String(row.key || '').startsWith('role_acl_')) applyRoleAcl(row.value);
+            applyShowOnLoginSetting(row.key, row.value);
           }
 
           if (gathered.orders.length > 0) {

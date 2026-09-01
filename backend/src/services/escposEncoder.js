@@ -152,8 +152,9 @@ class EscPosEncoder {
         parts.push(this._encodeText(`Cashier: ${cashierLabel}`, iconvEncoding));
         parts.push(this._lf());
       }
-      if (o.notes) {
-        parts.push(this._encodeText(`Notes: ${o.notes}`, iconvEncoding));
+      const orderNotes = o.notes || payload.notes;
+      if (orderNotes) {
+        parts.push(this._encodeText(`NOTE: ${orderNotes}`, iconvEncoding));
         parts.push(this._lf());
       }
       parts.push(this._separator(charWidth, iconvEncoding));

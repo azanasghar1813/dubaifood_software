@@ -403,6 +403,8 @@ export default function POS() {
           'Appetizers',
           'Sandwich',
           'Extra Toppings',
+          'Hot & Cold Drinks',
+          'Special Drinks',
           'Chicken',
           'Mutton',
           'Beef',
@@ -415,8 +417,6 @@ export default function POS() {
           'Noodles',
           'Soups',
           'Salads',
-          'Hot & Cold Drinks',
-          'Special Drinks',
           'Ice Cream',
           'Bar-B-Q Platers'
         ];
@@ -484,7 +484,7 @@ export default function POS() {
           e.preventDefault()
           const matchedSize = activeProductForSize.variants?.[sizeSelectedIndex]
           if (matchedSize) {
-            addToCart({ ...activeProductForSize, variant_id: matchedSize.id, name: `${activeProductForSize.name} (${matchedSize.name})`, price: matchedSize.price, code: matchedSize.code || activeProductForSize.code });
+            addToCart({ ...activeProductForSize, variant_id: matchedSize.id, variant_snapshot: matchedSize.name, variant_name: matchedSize.name, name: `${activeProductForSize.name} (${matchedSize.name})`, price: matchedSize.price, code: matchedSize.code || activeProductForSize.code });
             setSizeModalOpen(false);
             setActiveProductForSize(null);
             setSearchQuery("");
@@ -497,7 +497,7 @@ export default function POS() {
         const matchedSizeByLetter = activeProductForSize.variants?.find((s: any) => s.name.charAt(0).toLowerCase() === key);
         if (matchedSizeByLetter) {
           e.preventDefault();
-          addToCart({ ...activeProductForSize, variant_id: matchedSizeByLetter.id, name: `${activeProductForSize.name} (${matchedSizeByLetter.name})`, price: matchedSizeByLetter.price, code: matchedSizeByLetter.code || activeProductForSize.code });
+          addToCart({ ...activeProductForSize, variant_id: matchedSizeByLetter.id, variant_snapshot: matchedSizeByLetter.name, variant_name: matchedSizeByLetter.name, name: `${activeProductForSize.name} (${matchedSizeByLetter.name})`, price: matchedSizeByLetter.price, code: matchedSizeByLetter.code || activeProductForSize.code });
           setSizeModalOpen(false);
           setActiveProductForSize(null);
           setSearchQuery("");
@@ -1366,7 +1366,8 @@ export default function POS() {
           name: `${product.name} (${variant.name})`,
           price: variant.price,
           code: variant.code || product.code,
-          variant_snapshot: variant.name
+          variant_snapshot: variant.name,
+          variant_name: variant.name
         });
         setSearchQuery("");
         searchInputRef.current?.focus();
@@ -2067,16 +2068,44 @@ export default function POS() {
                             }
                           } catch { /* fallback */ }
                           
-                          const currentOrderId = usePosStore.getState().editingOrderId || usePosStore.getState().activeOrder?.id
+                          const pos = usePosStore.getState()
+                          const currentOrderId = pos.editingOrderId || pos.activeOrder?.id
+                          const liveCart = pos.cart || cart
+                          const receiptFromCart = {
+                            items: liveCart.map((item: any) => ({
+                              id: item.id,
+                              name: item.name,
+                              price: item.price,
+                              quantity: item.quantity,
+                              category: item.category,
+                              selectedModifiers: item.selectedModifiers,
+                              notes: item.notes,
+                              combo_components: item.combo_components || item.comboComponents || []
+                            })),
+                            subtotal: getSubtotal(),
+                            serviceCharge: getServiceCharge(),
+                            deliveryCharge: orderType === 'Delivery' ? (deliveryCharges || 0) : 0,
+                            total: getNetTotal(),
+                            notes: orderNotes || null
+                          }
                           if (currentOrderId) {
                              try {
                                const { fetchOrderDetail } = await import('../api/historyApi')
                                const { mapHistoryDetailToOrder } = await import('../store/orderStore')
                                const res = await fetchOrderDetail(currentOrderId)
                                if (res.success && res.data) {
-                                 setPrintOrder(mapHistoryDetailToOrder(res.data, res.data))
+                                 const fullOrder = mapHistoryDetailToOrder(res.data, res.data)
+                                 setPrintOrder({
+                                   ...fullOrder,
+                                   ...receiptFromCart,
+                                   paymentStatus: isPaidPrint ? 'Paid' : (fullOrder.paymentStatus || 'Unpaid')
+                                 })
+                               } else {
+                                 setPrintOrder({ ...receiptFromCart, id: currentOrderId, orderNumber: activeOrder?.order_number || orderCounter.toString(), orderType, tableNumber, customerName: customer?.name || 'Guest', cashierName: user?.name || 'Cashier', timestamp: new Date().toISOString() } as any)
                                }
-                             } catch(e) {}
+                             } catch(e) {
+                               setPrintOrder({ ...receiptFromCart, id: currentOrderId, orderNumber: activeOrder?.order_number || orderCounter.toString(), orderType, tableNumber, customerName: customer?.name || 'Guest', cashierName: user?.name || 'Cashier', timestamp: new Date().toISOString() } as any)
+                             }
                           } else {
                              const fullOrderData = {
                                id: `draft-${Date.now()}`,
@@ -2086,7 +2115,7 @@ export default function POS() {
                                customerName: customer?.name || 'Guest',
                                customerPhone: customer?.phone || null,
                                customerAddress: customer?.address || null,
-                               notes: customer?.notes || null,
+                               notes: orderNotes || null,
                                waiterName,
                                riderName,
                                status: 'Draft',
@@ -2267,7 +2296,7 @@ export default function POS() {
                       key={size.id || `size-${size.name}-${index}`}
                       onMouseEnter={() => setSizeSelectedIndex(index)}
                       onClick={() => {
-                        addToCart({ ...activeProductForSize, variant_id: size.id, name: `${activeProductForSize.name} (${size.name})`, price: size.price, code: size.code || activeProductForSize.code });
+                        addToCart({ ...activeProductForSize, variant_id: size.id, variant_snapshot: size.name, variant_name: size.name, name: `${activeProductForSize.name} (${size.name})`, price: size.price, code: size.code || activeProductForSize.code });
                         setSizeModalOpen(false);
                         setActiveProductForSize(null);
                       }}
@@ -2519,7 +2548,7 @@ export default function POS() {
                         customerName: customer?.name || 'Guest',
                         customerPhone: customer?.phone || null,
                         customerAddress: customer?.address || null,
-                        notes: customer?.notes || null,
+                        notes: orderNotes || null,
                         waiterName,
                         riderName,
                         status: 'Completed',

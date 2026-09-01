@@ -6,6 +6,19 @@ import { useOrderStore } from './orderStore'
 import { configApi } from '../api/configApi'
 import { useSettingsStore } from './settingsStore'
 
+const mapCartItems = (items: any[] = []) => (items || []).map((item: any) => {
+  const vName = item.variant_name || item.variant?.variant_name_snapshot || item.variants?.[0]?.variant_name_snapshot
+  const baseName = item.product_name_snapshot || item.product_name || item.name || 'Unknown'
+  return {
+    ...item,
+    name: vName ? `${baseName} (${vName})` : baseName,
+    price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0,
+    cartItemId: item._cart_item_id || item.cartItemId || item.id,
+    selectedModifiers: item.modifiers || item.selectedModifiers || [],
+    combo_components: item.combo_components || item.comboComponents || []
+  }
+})
+
 export interface OrderItem {
   id: string
   product_id: string
@@ -209,7 +222,7 @@ export const usePosStore = create<POSState>()(
         set({ 
           activeOrder: res.data, 
           previewOrderNumber,
-          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] }))
+          cart: mapCartItems(res.data?.items)
         })
       }
     } catch (e) {
@@ -242,7 +255,11 @@ export const usePosStore = create<POSState>()(
       return {
       ...i,
       cartItemId: i.cartItemId || i._cart_item_id || i.id || crypto.randomUUID(),
-      name: i.name || (i.variant_name ? `${i.product_name_snapshot || i.product_name || 'Item'} (${i.variant_name})` : (i.product_name_snapshot || i.product_name || 'Item')),
+      name: i.name && i.name.includes('(') ? i.name : (() => {
+        const vName = i.variant_name || i.variant?.variant_name_snapshot || i.variants?.[0]?.variant_name_snapshot
+        const base = i.product_name_snapshot || i.product_name || i.name || 'Item'
+        return vName ? `${base} (${vName})` : base
+      })(),
       price,
       quantity,
       subtotal: i.subtotal ?? (price * quantity),
@@ -310,7 +327,8 @@ export const usePosStore = create<POSState>()(
       if (state.editingOrderId) {
         res = await apiClient.post(`/orders/${state.editingOrderId}/items`, {
           product_id: product.id,
-          variant_id: product.variant_id,
+          variant_id: product.variant_id || null,
+          variant_name: product.variant_snapshot || product.variant_name || null,
           quantity,
           modifiers: selectedModifiers,
           comboComponents: product.combo_components,
@@ -319,7 +337,8 @@ export const usePosStore = create<POSState>()(
       } else {
         res = await cartService.addItem({
           product_id: product.id,
-          variant_id: product.variant_id,
+          variant_id: product.variant_id || null,
+          variant_name: product.variant_snapshot || product.variant_name || null,
           quantity,
           modifiers: selectedModifiers,
           comboComponents: product.combo_components,
@@ -330,14 +349,7 @@ export const usePosStore = create<POSState>()(
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ 
-            ...item, 
-            name: item.variant_name ? `${item.product_name_snapshot || item.product_name || item.name} (${item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Unknown'), 
-            price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, 
-            cartItemId: item._cart_item_id || item.cartItemId || item.id, 
-            selectedModifiers: item.modifiers || item.selectedModifiers || [],
-            combo_components: item.combo_components || item.comboComponents || []
-          }))
+          cart: mapCartItems(res.data?.items)
         })
       }
     } catch (e) {
@@ -361,14 +373,7 @@ export const usePosStore = create<POSState>()(
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ 
-            ...item, 
-            name: item.variant_name ? `${item.product_name_snapshot || item.product_name || item.name} (${item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Unknown'), 
-            price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, 
-            cartItemId: item._cart_item_id || item.cartItemId || item.id, 
-            selectedModifiers: item.modifiers || item.selectedModifiers || [],
-            combo_components: item.combo_components || item.comboComponents || []
-          }))
+          cart: mapCartItems(res.data?.items)
         })
       }
     } catch (e) {
@@ -392,14 +397,7 @@ export const usePosStore = create<POSState>()(
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ 
-            ...item, 
-            name: item.variant_name ? `${item.product_name_snapshot || item.product_name || item.name} (${item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Unknown'), 
-            price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, 
-            cartItemId: item._cart_item_id || item.cartItemId || item.id, 
-            selectedModifiers: item.modifiers || item.selectedModifiers || [],
-            combo_components: item.combo_components || item.comboComponents || []
-          }))
+          cart: mapCartItems(res.data?.items)
         })
       }
     } catch (e) {
@@ -420,7 +418,7 @@ export const usePosStore = create<POSState>()(
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] }))
+          cart: mapCartItems(res.data?.items)
         })
       }
     } catch (e) {
@@ -441,7 +439,7 @@ export const usePosStore = create<POSState>()(
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] }))
+          cart: mapCartItems(res.data?.items)
         })
       }
     } catch (e) {
@@ -470,14 +468,7 @@ export const usePosStore = create<POSState>()(
       if ((res as any).success) {
         set({ 
           activeOrder: res.data, 
-          cart: (res.data?.items || []).map((item: any) => ({ 
-            ...item, 
-            name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), 
-            price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, 
-            cartItemId: item._cart_item_id || item.cartItemId || item.id, 
-            selectedModifiers: item.modifiers || item.selectedModifiers || [], 
-            combo_components: item.combo_components || item.comboComponents || [] 
-          }))
+          cart: mapCartItems(res.data?.items)
         })
       }
     } catch (e) {
@@ -513,7 +504,7 @@ export const usePosStore = create<POSState>()(
           activeOrder: res.data, 
           checkoutIdempotencyKey: null,
           paymentIdempotencyKeys: {},
-          cart: (res.data?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] }))
+          cart: mapCartItems(res.data?.items)
         })
       }
       return res
@@ -575,7 +566,7 @@ export const usePosStore = create<POSState>()(
         }
 
         order = (checkoutResult as any).data
-        set({ activeOrder: order, cart: (order?.items || []).map((item: any) => ({ ...item, name: item.variant_name ? `${item.product_name} (${item.variant_name})` : (item.product_name || 'Unknown'), price: item.final_unit_price ?? item.unit_price ?? item.price ?? 0, cartItemId: item._cart_item_id || item.cartItemId || item.id, selectedModifiers: item.modifiers || item.selectedModifiers || [], combo_components: item.combo_components || item.comboComponents || [] })) })
+        set({ activeOrder: order, cart: mapCartItems(order?.items) })
       } else if (order?.id) {
         try {
           await apiClient.put(`/orders/${order.id}/meta`, {

@@ -292,18 +292,24 @@ export default function UsersPermissions() {
     return groups
   }, [permissions])
 
+  const isFullAccessUser = currentUser?.permissions?.includes('*')
+    || currentUser?.role === 'Super Admin'
+    || currentUser?.role === 'Super Administrator'
+    || currentUser?.role === 'Owner'
+    || String(currentUser?.username || '').toLowerCase() === 'admin'
+
   // Role filtering logic based on logged in user
   const canManageRole = (roleName: string) => {
-    if (currentUser?.role === 'Super Admin') return true
+    if (isFullAccessUser) return true
     if (currentUser?.role === 'Admin') {
-      return roleName !== 'Super Admin' && roleName !== 'Admin'
+      return roleName !== 'Super Admin' && roleName !== 'Super Administrator' && roleName !== 'Admin' && roleName !== 'Owner'
     }
-    return true // Default fallback for other roles if they somehow access this
+    return false
   }
   const availableRoles = roles.filter(r => canManageRole(r.name))
 
   // Access Control for the whole screen
-  if (!hasPermission('VIEW_USERS') && currentUser?.role !== 'Admin' && currentUser?.role !== 'Super Admin') {
+  if (!hasPermission('VIEW_USERS') && currentUser?.role !== 'Admin' && currentUser?.role !== 'Super Admin' && currentUser?.role !== 'Super Administrator' && currentUser?.role !== 'Owner') {
     return (
       <div className="h-full flex items-center justify-center min-h-[calc(100vh-100px)]">
         <div className="text-center space-y-4">

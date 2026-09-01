@@ -39,6 +39,8 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [activeInput, setActiveInput] = useState<number>(1) // 0: Name, 1: Phone, 2: Address, 3: Notes, 4: Fav, 5: VIP, 6: Save
 
+  const QUICK_ADDRESSES = ['Layyah Road', 'Faisalabad Road', 'Fatehpur Road', 'Multan Road']
+
   const fetchCustomers = async () => {
     try {
       const res: any = await customerService.getCustomers()
@@ -239,6 +241,18 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
     setSuggestedCustomer(null)
   }
 
+  const applyQuickAddress = (address: string) => {
+    setNewAddress(address)
+    const digits = searchQuery.replace(/[^0-9]/g, '')
+    if (!newPhone && digits.length >= 3) {
+      let val = digits.slice(0, 11)
+      if (val.length > 4) val = val.slice(0, 4) + '-' + val.slice(4)
+      setNewPhone(val)
+    }
+    setActiveInput(2)
+    setTimeout(() => addressRef.current?.focus(), 50)
+  }
+
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value.replace(/[^0-9]/g, '');
     val = val.slice(0, 11);
@@ -383,6 +397,23 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
                   placeholder="Search by Phone, Name, Address or VIP..."
                   className="w-full h-10 pl-9 pr-4 rounded-xl bg-secondary border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold"
                 />
+              </div>
+              <div className="grid grid-cols-4 gap-1.5 mt-3">
+                {QUICK_ADDRESSES.map((addr) => (
+                  <button
+                    key={addr}
+                    type="button"
+                    onClick={() => applyQuickAddress(addr)}
+                    className={`h-9 px-1 rounded-lg border text-[10px] leading-tight font-black transition-colors ${
+                      newAddress === addr
+                        ? 'bg-orange-500 text-white border-orange-500'
+                        : 'bg-secondary border-border text-foreground hover:border-orange-500 hover:text-orange-600'
+                    }`}
+                    title={addr}
+                  >
+                    {addr}
+                  </button>
+                ))}
               </div>
             </div>
             

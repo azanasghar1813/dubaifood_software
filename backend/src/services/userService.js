@@ -1,35 +1,62 @@
 import { userRepository } from '../repositories/userRepository.js';
 import { roleRepository } from '../repositories/roleRepository.js';
+import { settingsRepository } from '../repositories/settingsRepository.js';
 import { activityLogService } from './activityLogService.js';
 import { securityUtils } from '../utils/security.js';
 import { syncService } from './syncService.js';
 
+const FULL_ACCESS_ROLES = new Set(['super admin', 'super administrator', 'owner']);
+const PROTECTED_ROLES = new Set(['super admin', 'super administrator', 'owner', 'admin']);
+
+const normalizeRole = (name) => String(name || '').trim().toLowerCase();
+
+const isFullAccessRole = (name) => FULL_ACCESS_ROLES.has(normalizeRole(name));
+
+const isProtectedRole = (name) => PROTECTED_ROLES.has(normalizeRole(name));
+
+const actorHasFullAccess = (actor) => {
+  if (!actor) return false;
+  if (isFullAccessRole(actor.role_name)) return true;
+  try {
+    const perms = userRepository.getUserPermissions(actor.role_id) || [];
+    return perms.includes('*');
+  } catch {
+    return false;
+  }
+};
+
+const queueShowOnLogin = (userId, showOnLogin) => {
+  if (!userId) return;
+  const value = (showOnLogin === false || showOnLogin === 0) ? '0' : '1';
+  settingsRepository.updateApplicationSettings('SYNC', {
+    [`user_show_on_login_${userId}`]: value
+  });
+};
+
 const enforceRoleHierarchy = (actorId, targetRoleId = null, targetUserId = null) => {
   const actor = userRepository.findById(actorId);
   if (!actor) throw new Error('Actor not found');
-  
-  const actorRoleName = actor.role_name;
-  
-  if (actorRoleName === 'Super Admin' || actorRoleName === 'Super Administrator' || actorRoleName === 'Owner') {
-    return; // Super Admin and Owner can do anything
+
+  if (actorHasFullAccess(actor)) {
+    return;
   }
-  
-  if (actorRoleName === 'Admin') {
+
+  if (normalizeRole(actor.role_name) === 'admin') {
     if (targetRoleId) {
       const targetRole = roleRepository.findById(targetRoleId);
-      if (targetRole && (targetRole.name === 'Super Admin' || targetRole.name === 'Owner' || targetRole.name === 'Admin')) {
+      if (targetRole && isProtectedRole(targetRole.name)) {
         throw new Error('Admins cannot assign Super Admin, Owner, or Admin roles');
       }
     }
     if (targetUserId) {
       const targetUser = userRepository.findById(targetUserId);
-      if (targetUser && (targetUser.role_name === 'Super Admin' || targetUser.role_name === 'Owner' || targetUser.role_name === 'Admin')) {
+      if (targetUser && isProtectedRole(targetUser.role_name)) {
         throw new Error('Admins cannot modify Super Admin, Owner, or other Admin accounts');
       }
     }
     return;
   }
-  
+
   throw new Error('Unauthorized role management');
 };
 
@@ -72,6 +99,7 @@ export const userService = {
     
     activityLogService.logActivity(actorId, 'USER_CREATED', 'USER', newUserId, { username: userData.username, role: role.name });
     syncService.queueSyncEvent('USER', newUserId, 'CREATED', { username: userData.username }, 1);
+    try { queueShowOnLogin(newUserId, userData.showOnLogin); } catch { /* sync is best-effort */ }
     return newUserId;
   },
 
@@ -96,6 +124,7 @@ export const userService = {
     const updatedUser = userRepository.findById(targetUserId);
     activityLogService.logActivity(actorId, 'USER_UPDATED', 'USER', targetUserId, { roleChanged: user.role_id !== updateData.roleId });
     syncService.queueSyncEvent('USER', targetUserId, 'UPDATED', {}, updatedUser.sync_version || 1);
+    try { queueShowOnLogin(targetUserId, updateData.showOnLogin); } catch { /* sync is best-effort */ }
   },
 
   updateUserStatus: (actorId, targetUserId, isActive) => {

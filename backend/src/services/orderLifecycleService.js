@@ -12,6 +12,7 @@ import { orderTimelineService } from './orderTimelineService.js';
 import { activityLogService } from './activityLogService.js';
 import { syncService } from './syncService.js';
 import { orderCacheService } from './orderCacheService.js';
+import { historyCacheService } from './historyCacheService.js';
 import { kitchenService } from './kitchenService.js';
 import { dbEngine } from '../database/sqlite.js';
 import { releaseTableIfIdle } from '../controllers/tableController.js';
@@ -21,9 +22,15 @@ class OrderLifecycleService {
    * Evaluates if a proposed lifecycle transition is allowed.
    */
   canTransitionLifecycle(currentState, targetState) {
-    if (currentState === targetState) return true;
-    const allowed = AllowedLifecycleTransitions[currentState] || [];
-    return allowed.includes(targetState);
+    if (!currentState || !targetState) return false;
+    const from = String(currentState).toUpperCase();
+    const to = String(targetState).toUpperCase();
+    if (from === to) return true;
+    if (from === 'CANCELLED' && (to === 'ACTIVE' || to === 'DRAFT' || to === 'HELD' || to === 'ARCHIVED')) {
+      return true;
+    }
+    const allowed = AllowedLifecycleTransitions[from] || AllowedLifecycleTransitions[currentState] || [];
+    return allowed.includes(targetState) || allowed.includes(to);
   }
 
   /**
@@ -117,6 +124,16 @@ class OrderLifecycleService {
         updates.held_at = null;
       }
 
+      if (targetLifecycleState === OrderLifecycleState.CANCELLED) {
+        if (this.canTransitionKitchen(order.kitchen_state, KitchenState.CANCELLED)) {
+          updates.kitchen_state = KitchenState.CANCELLED;
+        }
+      }
+      if (currentLifecycle === OrderLifecycleState.CANCELLED && targetLifecycleState === OrderLifecycleState.ACTIVE) {
+        if (order.kitchen_state === KitchenState.CANCELLED && this.canTransitionKitchen(KitchenState.CANCELLED, KitchenState.PENDING)) {
+          updates.kitchen_state = KitchenState.PENDING;
+        }
+      }
       if (targetLifecycleState === OrderLifecycleState.COMPLETED) {
         updates.completed_at = new Date().toISOString();
       }
@@ -168,6 +185,7 @@ class OrderLifecycleService {
 
       // Update/Invalidate Cache
       orderCacheService.upsertOrder(updatedOrder);
+      try { historyCacheService.invalidateOrder(orderId); } catch { /* optional */ }
 
       // Notify kitchen workflow when the order becomes eligible for production.
       kitchenService.onOrderLifecycleChange(updatedOrder, {

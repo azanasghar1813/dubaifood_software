@@ -18,6 +18,7 @@ import { OrderLifecycleState } from '../constants/orderStates.js';
 import { releaseTableIfIdle } from '../controllers/tableController.js';
 import { cartService } from './cartService.js';
 import { orderCreationService } from './orderCreationService.js';
+import { historyCacheService } from './historyCacheService.js';
 import crypto from 'crypto';
 
 class OrderService {
@@ -88,8 +89,17 @@ class OrderService {
       }
     }
     order.is_vip = order.metadata?.is_vip === 'true' || order.metadata?.is_vip === true || String(order.metadata?.is_vip) === '1' || order.customer?.is_vip === 1 || order.customer?.is_vip === true;
+    for (const item of order.items || []) {
+      const v = item.variant || (item.variants && item.variants[0]) || null;
+      if (v) {
+        item.variant = v;
+        item.variant_id = item.variant_id || v.variant_id || v.id;
+        item.variant_name = v.variant_name_snapshot || v.name || item.variant_name;
+      }
+    }
     this._enrichPeopleAndTable(order);
 
+    try { historyCacheService.invalidateOrder(order.id); } catch { /* optional */ }
     // Cache if active
     orderCacheService.upsertOrder(order);
     return order;
@@ -295,6 +305,7 @@ class OrderService {
       const snapshot = orderSnapshotService.createItemSnapshot({
         productId: itemInput.product_id,
         variantId: itemInput.variant_id || null,
+        variant_name: itemInput.variant_name || null,
         modifiers: itemInput.modifiers || [],
         addons: itemInput.addons || [],
         comboComponents: itemInput.comboComponents || [],
@@ -354,6 +365,7 @@ class OrderService {
         order_number: order.order_number
       });
 
+      try { historyCacheService.invalidateOrder(orderId); } catch { /* optional */ }
       return updatedOrder;
     });
   }

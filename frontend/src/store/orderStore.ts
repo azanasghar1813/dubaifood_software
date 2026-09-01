@@ -155,7 +155,11 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     cartItemId: item.id || `${row.id}-item-${index}`,
     id: item.product_id || item.id || `${row.id}-product-${index}`,
     variant_id: item.variant_id || null,
-    name: (item.variant?.variant_name_snapshot || item.variant_name) ? `${item.product_name_snapshot || item.product_name || item.name || 'Item'} (${item.variant?.variant_name_snapshot || item.variant_name})` : (item.product_name_snapshot || item.product_name || item.name || 'Item'),
+    name: (() => {
+      const vName = item.variant?.variant_name_snapshot || item.variant_name || item.variants?.[0]?.variant_name_snapshot
+      const base = item.product_name_snapshot || item.product_name || item.name || 'Item'
+      return vName ? `${base} (${vName})` : base
+    })(),
     price: Number(item.final_unit_price ?? item.unit_price ?? item.price ?? 0),
     quantity: Number(item.quantity ?? 1),
     subtotal: Number(item.subtotal ?? (Number(item.final_unit_price ?? item.unit_price ?? item.price ?? 0) * Number(item.quantity ?? 1))),

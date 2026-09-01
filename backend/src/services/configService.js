@@ -66,6 +66,19 @@ class ConfigService {
       ).run();
     } catch { /* column or table may not exist yet */ }
 
+    try {
+      const superRole = dbEngine.prepare(
+        `SELECT id FROM roles WHERE name IN ('Super Admin', 'Super Administrator') ORDER BY CASE name WHEN 'Super Admin' THEN 0 ELSE 1 END LIMIT 1`
+      ).get();
+      if (superRole) {
+        dbEngine.prepare(
+          `UPDATE users SET role_id = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE lower(trim(username)) = 'admin'
+             AND role_id != ?`
+        ).run(superRole.id, superRole.id);
+      }
+    } catch { /* roles/users may not exist yet */ }
+
     console.log('[ConfigService] In-memory configuration cache loaded.');
   }
 

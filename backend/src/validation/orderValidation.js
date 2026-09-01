@@ -12,6 +12,7 @@ export const createOrderSchema = z.object({
 export const addItemSchema = z.object({
   product_id: z.string().uuid({ message: 'Product ID must be a valid UUID' }),
   variant_id: z.string().uuid().optional().nullable(),
+  variant_name: z.string().optional().nullable(),
   modifiers: z.array(z.object({
     modifier_id: z.string().uuid(),
     group_id: z.string().uuid().optional().nullable(),

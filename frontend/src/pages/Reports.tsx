@@ -166,9 +166,9 @@ export default function Reports() {
     })
 
     // Fetch cashiers list
-    apiClient.get('/users').then(res => {
+    apiClient.get('/users').then((res: any) => {
       setCashiers(res.data || [])
-    }).catch(console.error)
+    }).catch(() => {})
   }, [timeRange, filterCashier, filterPayment, customDateFrom, customDateTo])
 
   const groupedSales = useMemo(() => {

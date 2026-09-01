@@ -47,6 +47,23 @@ export const userController = {
     }
   },
 
+  getDirectory: (req, res) => {
+    try {
+      const users = userService.getAllUsers().map((u) => ({
+        id: u.id,
+        username: u.username,
+        first_name: u.first_name,
+        last_name: u.last_name,
+        name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username,
+        role_name: u.role_name,
+        is_active: u.is_active
+      }));
+      res.status(200).json({ data: users });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+
   getById: (req, res) => {
     try {
       const user = userService.getUserById(req.params.id);

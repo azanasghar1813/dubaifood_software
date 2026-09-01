@@ -18,6 +18,7 @@ import {
   Utensils, DollarSign, Calendar, Info, Copy, Server, MoreVertical, Trash2
 } from "lucide-react"
 import { deleteOrder } from "../api/historyApi"
+import { DateUtils } from "../utils/dateUtils"
 
 // Theme Colors
 
@@ -110,7 +111,7 @@ export default function Orders() {
 
   const [allUsers, setAllUsers] = useState<any[]>([])
   useEffect(() => {
-    apiClient.get('/users').then((res: any) => setAllUsers(res.data || res)).catch(console.error)
+    apiClient.get('/users').then((res: any) => setAllUsers(res.data || res)).catch(() => {})
   }, [])
 
   // Pagination
@@ -153,7 +154,7 @@ export default function Orders() {
         }
       }
     }
-    syncOrdersFromBackend()
+    refetchHistory()
     setSelectedOrderIds(new Set())
   }
 
@@ -172,7 +173,7 @@ export default function Orders() {
         }
       }
     }
-    syncOrdersFromBackend()
+    refetchHistory()
     setSelectedOrderIds(new Set())
   }
 
@@ -189,28 +190,31 @@ export default function Orders() {
     setCurrentPage(1)
   }, [searchQuery, filterDate, customDateFrom, customDateTo, filterType, filterPayment, filterOrderState, filterUser, sortBy])
 
-  // Refetch orders when backend-driven filters (Date) change
-  useEffect(() => {
+  const historyFilters = useMemo(() => {
     let preset = filterDate.toUpperCase().replace(/ /g, '_');
-    if (preset === 'ALL_TIME') preset = 'ALL_TIME';
     if (preset === 'MONTHLY') preset = 'THIS_MONTH';
-
-    const filters: any = {};
+    const filters: Record<string, string> = {};
     if (preset === 'CUSTOM_DATE' || preset === 'CUSTOM_RANGE') {
       if (customDateFrom && customDateTo) {
         filters.date_preset = 'CUSTOM_DATE';
         filters.date_from = customDateFrom;
         filters.date_to = customDateTo;
-      } else {
-        // Wait for both dates
-        return;
       }
     } else {
       filters.date_preset = preset;
     }
-
-    syncOrdersFromBackend(filters);
+    return filters;
   }, [filterDate, customDateFrom, customDateTo])
+
+  const refetchHistory = () => syncOrdersFromBackend(historyFilters)
+
+  // Refetch orders when backend-driven filters (Date) change
+  useEffect(() => {
+    if ((filterDate === 'Custom Date' || filterDate === 'Custom Range') && (!customDateFrom || !customDateTo)) {
+      return;
+    }
+    refetchHistory();
+  }, [historyFilters])
 
   // Initial Data Fetch
   useEffect(() => {
@@ -231,7 +235,7 @@ export default function Orders() {
   // Actions
   const handleRefresh = async () => {
     setIsRefreshing(true)
-    await syncOrdersFromBackend()
+    await refetchHistory()
     setTimeout(() => setIsRefreshing(false), 500)
   }
 
@@ -243,7 +247,7 @@ export default function Orders() {
       updateOrder(order.id, { paymentStatus: newStatus as any })
       addTimelineEvent(order.id, { event: "Payment Status Changed", remarks: `Changed to ${newStatus}`, cashier: user?.name || "Ahmed" })
       addAuditLog(order.id, { actionType: "Payment Status Changed", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: newStatus, reason: "Manual change from badge" })
-      await syncOrdersFromBackend()
+      await refetchHistory()
       if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: newStatus as any } : null)
     } catch (e) { console.error(e) }
   }
@@ -265,7 +269,7 @@ export default function Orders() {
       updateOrder(order.id, { kitchenStatus: newStatus as any })
       addTimelineEvent(order.id, { event: "Kitchen Status Changed", remarks: `Changed to ${newStatus}`, cashier: user?.name || "Ahmed" })
       addAuditLog(order.id, { actionType: "Kitchen Status Changed", who: user?.name || "Ahmed", oldValue: order.kitchenStatus, newValue: newStatus, reason: "Manual change from badge" })
-      await syncOrdersFromBackend()
+      await refetchHistory()
       if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, kitchenStatus: newStatus as any } : null)
     } catch (e) { console.error(e) }
   }
@@ -281,7 +285,7 @@ export default function Orders() {
       updateOrder(order.id, { status: newStatus as any })
       addTimelineEvent(order.id, { event: "Order Status Changed", remarks: `Changed to ${newStatus}`, cashier: user?.name || "Ahmed" })
       addAuditLog(order.id, { actionType: "Status Changed", who: user?.name || "Ahmed", oldValue: order.status, newValue: newStatus, reason: "Manual change from badge" })
-      await syncOrdersFromBackend()
+      await refetchHistory()
       if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: newStatus as any } : null)
     } catch (e) { console.error(e) }
   }
@@ -407,19 +411,25 @@ export default function Orders() {
     alert(`Duplicating Order #${order.orderNumber} is scheduled for a future update.`)
   }
 
-  const handleCancelOrder = (order: Order) => {
-    if (order.status === 'Cancelled') {
-      updateOrder(order.id, { status: "Active", kitchenStatus: "Pending" })
-      addTimelineEvent(order.id, { event: "Order Uncancelled", remarks: "Uncancelled from Order History", cashier: user?.name || "Ahmed" })
-      addAuditLog(order.id, { actionType: "Status Changed", who: user?.name || "Ahmed", oldValue: "Cancelled", newValue: "Active", reason: "Uncancel" })
-      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: "Active", kitchenStatus: "Pending" } : null)
-    } else {
-      const reason = prompt("Reason for cancelling this order:")
-      if (reason === null) return
+  const handleCancelOrder = async (order: Order) => {
+    const isCancelled = order.status === 'Cancelled'
+    try {
+      if (isCancelled) {
+        await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'DRAFT' })
+        await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'ACTIVE' })
+        updateOrder(order.id, { status: "Active", kitchenStatus: "Pending" })
+        addTimelineEvent(order.id, { event: "Order Recovered", remarks: "Recovered from cancelled", cashier: user?.name || "Ahmed" })
+        await refetchHistory()
+        if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: "Active", kitchenStatus: "Pending" } : null)
+        return
+      }
+      await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'CANCELLED' })
       updateOrder(order.id, { status: "Cancelled", kitchenStatus: "Cancelled" })
-      addTimelineEvent(order.id, { event: "Order Cancelled", remarks: reason || "Cancelled from Order History", cashier: user?.name || "Ahmed" })
-      addAuditLog(order.id, { actionType: "Order Cancelled", who: user?.name || "Ahmed", oldValue: order.status, newValue: "Cancelled", reason: reason || "Manager override via OCC" })
+      addTimelineEvent(order.id, { event: "Order Cancelled", remarks: "Cancelled from order history", cashier: user?.name || "Ahmed" })
+      await refetchHistory()
       if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: "Cancelled", kitchenStatus: "Cancelled" } : null)
+    } catch (e: any) {
+      alert(e?.response?.data?.message || e?.message || (isCancelled ? 'Could not recover this order.' : 'Could not cancel this order.'))
     }
   }
 
@@ -439,14 +449,14 @@ export default function Orders() {
         updateOrder(order.id, { paymentStatus: 'Unpaid' })
         addTimelineEvent(order.id, { event: "Marked Unpaid", remarks: "Marked unpaid from Order History", cashier: user?.name || "Ahmed" })
         addAuditLog(order.id, { actionType: "Payment Status Changed", who: user?.name || "Ahmed", oldValue: "Paid", newValue: "Unpaid", reason: "Toggle from History" })
-        await syncOrdersFromBackend()
+        await refetchHistory()
         if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: "Unpaid" } : null)
       } else {
         await apiClient.put(`/orders/${order.id}/meta`, { receipt_paid_stamp: true })
         updateOrder(order.id, { paymentStatus: 'Paid' })
         addTimelineEvent(order.id, { event: "Marked Paid", remarks: "Marked paid from Order History", cashier: user?.name || "Ahmed" })
         addAuditLog(order.id, { actionType: "Payment Received", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: "Paid", reason: "Action from History" })
-        await syncOrdersFromBackend()
+        await refetchHistory()
         if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: "Paid" } : null)
       }
     } catch (e) {
@@ -460,14 +470,14 @@ export default function Orders() {
         updateOrder(order.id, { status: 'Active', kitchenStatus: 'Pending' })
         addTimelineEvent(order.id, { event: "Marked Incomplete", remarks: "Marked incomplete from Order History", cashier: user?.name || "Ahmed" })
         addAuditLog(order.id, { actionType: "Status Changed", who: user?.name || "Ahmed", oldValue: "Completed", newValue: "Active", reason: "Action from History" })
-        await syncOrdersFromBackend()
+        await refetchHistory()
         if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: "Active", kitchenStatus: "Pending" } : null)
       } else {
         await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'COMPLETED' })
         updateOrder(order.id, { status: 'Completed', kitchenStatus: 'Served' })
         addTimelineEvent(order.id, { event: "Marked Complete", remarks: "Marked complete from Order History", cashier: user?.name || "Ahmed" })
         addAuditLog(order.id, { actionType: "Status Changed", who: user?.name || "Ahmed", oldValue: order.status, newValue: "Completed", reason: "Action from History" })
-        await syncOrdersFromBackend()
+        await refetchHistory()
         if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: "Completed", kitchenStatus: "Served" } : null)
       }
     } catch (e) {
@@ -504,7 +514,7 @@ export default function Orders() {
       }
       setDeleteDialog(null)
       setDeletePin('')
-      await syncOrdersFromBackend()
+      await refetchHistory()
     } catch (e: any) {
       console.error(e)
       alert(e?.response?.data?.message || e?.message || 'Error deleting order.')
@@ -514,6 +524,13 @@ export default function Orders() {
   // Filter Logic
   const filteredAndSortedOrders = useMemo(() => {
     let result = orders.filter(order => {
+      const bd = order.businessDate || DateUtils.getBusinessDate(order.timestamp)
+      if (filterDate === 'Today' && bd !== DateUtils.getBusinessDate()) return false
+      if (filterDate === 'Yesterday' && bd !== DateUtils.getYesterdayBusinessDate()) return false
+      if (filterDate === 'Monthly' && !bd.startsWith(DateUtils.getBusinessMonthStart().slice(0, 7))) return false
+      if (filterDate === 'Custom Date' && customDateFrom && bd !== customDateFrom) return false
+      if (filterDate === 'Custom Range' && customDateFrom && customDateTo && (bd < customDateFrom || bd > customDateTo)) return false
+
       // Global Search Match
       const q = searchQuery.toLowerCase().trim()
       const searchMatches = !q ||
@@ -553,7 +570,7 @@ export default function Orders() {
     })
 
     return result
-  }, [orders, searchQuery, filterDate, filterType, filterPayment, filterOrderState, filterUser, sortBy])
+  }, [orders, searchQuery, filterDate, customDateFrom, customDateTo, filterType, filterPayment, filterOrderState, filterUser, sortBy])
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredAndSortedOrders.length / itemsPerPage)
@@ -795,10 +812,11 @@ export default function Orders() {
                     </div>
                   </td>
                   <td className="p-4 text-right">
-                    <div className="grid grid-cols-4 gap-1 w-[140px] ml-auto" onClick={e => e.stopPropagation()}>
+                    <div className="grid grid-cols-5 gap-1 w-[175px] ml-auto" onClick={e => e.stopPropagation()}>
                       <button onClick={() => setSelectedOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" title="View Details"><FileText className="w-4 h-4" /></button>
                       <button onClick={() => handlePrintReceipt(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-primary transition-colors flex items-center justify-center" title="Print/Reprint Receipt"><Printer className="w-4 h-4" /></button>
                       <button onClick={() => handleEditClick(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-amber-500 transition-colors flex items-center justify-center" title="Edit Order"><Pencil className="w-4 h-4" /></button>
+                      <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCancelOrder(order) }} className={`p-2 hover:bg-secondary rounded-lg transition-colors flex items-center justify-center ${order.status === 'Cancelled' ? 'text-emerald-500 hover:text-emerald-600' : 'text-muted-foreground hover:text-red-500'}`} title={order.status === 'Cancelled' ? 'Recover Order' : 'Cancel Order'}>{order.status === 'Cancelled' ? <RotateCcw className="w-4 h-4" /> : <Ban className="w-4 h-4" />}</button>
                       <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteOrder(order) }} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-red-600 transition-colors flex items-center justify-center" title="Delete Order"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>

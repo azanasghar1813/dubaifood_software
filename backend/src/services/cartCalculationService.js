@@ -49,12 +49,22 @@ class CartCalculationService {
     // 1. Resolve variant price
     if (!isDeal && itemInput.variant_id) {
       resolvedVariant = variantRepository.findById(itemInput.variant_id);
-      if (resolvedVariant && Number(resolvedVariant.price) > 0) {
-        variantPriceAdj = Number(resolvedVariant.price) - baseUnitPrice;
-        baseUnitPrice = Number(resolvedVariant.price);
-        variantName = resolvedVariant.name;
-        variantSku = resolvedVariant.sku || resolvedVariant.product_code || null;
+    }
+    if (!isDeal && !resolvedVariant && itemInput.variant_name) {
+      try {
+        resolvedVariant = (variantRepository.findByProduct(itemInput.product_id) || []).find(
+          (v) => String(v.name || '').trim().toLowerCase() === String(itemInput.variant_name).trim().toLowerCase()
+            && v.lifecycle_state !== 'DELETED'
+        ) || null;
+      } catch {
+        resolvedVariant = null;
       }
+    }
+    if (resolvedVariant && Number(resolvedVariant.price) > 0) {
+      variantPriceAdj = Number(resolvedVariant.price) - baseUnitPrice;
+      baseUnitPrice = Number(resolvedVariant.price);
+      variantName = resolvedVariant.name;
+      variantSku = resolvedVariant.sku || resolvedVariant.product_code || null;
     }
 
     // 2. Modifier price adjustments

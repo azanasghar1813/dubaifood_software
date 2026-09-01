@@ -34,6 +34,7 @@ const comboComponentInputSchema = z.object({
 export const addItemToCartSchema = z.object({
   product_id: z.string().uuid({ message: 'product_id must be a valid UUID' }),
   variant_id: z.string().uuid().optional().nullable(),
+  variant_name: z.string().optional().nullable(),
   modifiers: z.array(modifierInputSchema).optional().default([]),
   addons: z.array(addonInputSchema).optional().default([]),
   comboComponents: z.array(comboComponentInputSchema).optional().default([]),

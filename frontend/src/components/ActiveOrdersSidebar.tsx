@@ -5,7 +5,7 @@ import {
   Receipt, Edit,
   AlertCircle, ChevronRight,
   CheckCircle2, PlusCircle, CreditCard,
-  Utensils, Printer, Phone, Loader2
+  Utensils, Printer, Phone, Loader2, Ban
 } from "lucide-react"
 import { useOrderStore, mapHistoryDetailToOrder } from "../store/orderStore"
 import type { Order, OrderStatus, KitchenStatus, PaymentStatus } from "../store/orderStore"
@@ -215,6 +215,19 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     }
   }
 
+  const handleCancel = async (e: React.MouseEvent | null, order: Order) => {
+    if (e) e.stopPropagation()
+    if (order.status === 'Cancelled') return
+    try {
+      await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'CANCELLED' })
+      useOrderStore.getState().updateOrder(order.id, { status: 'Cancelled', kitchenStatus: 'Cancelled' })
+      await syncOrdersFromBackend()
+    } catch (err: any) {
+      console.error(err)
+      alert(err?.response?.data?.message || err?.message || 'Could not cancel this order.')
+    }
+  }
+
   const handleMarkComplete = async (e: React.MouseEvent | null, order: Order) => {
     if (e) e.stopPropagation()
     const confirmMsg = `Mark order #${order.orderNumber} as COMPLETED?\nTotal: PKR ${order.total.toLocaleString()}`
@@ -280,7 +293,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed inset-y-0 right-0 w-full md:w-[450px] bg-card border-l border-border/50 shadow-2xl z-50 flex flex-col"
+            className="fixed inset-y-0 right-0 w-full md:w-[620px] bg-card border-l border-border/50 shadow-2xl z-50 flex flex-col"
           >
             <div className="flex items-center justify-between p-4 border-b border-border/50">
               <div>
@@ -481,6 +494,14 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                       >
                         <Printer className="w-3.5 h-3.5" />
                         Print
+                      </button>
+
+                      <button
+                        onClick={(e) => handleCancel(e, order)}
+                        className="flex-1 min-w-[80px] flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-[11px] font-bold leading-tight bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 transition-colors"
+                      >
+                        <Ban className="w-3.5 h-3.5" />
+                        Cancel
                       </button>
                     </div>
                   </motion.div>

@@ -64,10 +64,13 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       const combos = item.combo_components?.length
         ? `<div style="font-size:10px;font-weight:400;margin-top:2px">${item.combo_components.map((c: any) => `- ${c.quantity > 1 ? c.quantity + 'x ' : ''}${c.product_name_snapshot || ''}${c.variant_snapshot ? ' (' + c.variant_snapshot + ')' : ''}`).join('<br>')}</div>`
         : ''
+      const itemNotes = item.notes
+        ? `<div style="font-size:10px;font-weight:700;margin-top:2px">Note: ${item.notes}</div>`
+        : ''
       return `
         <tr style="border-bottom:2px solid #000;">
           <td style="padding:4px;border-right:2px solid #000;text-align:center;text-transform:uppercase;">
-            <div style="${itemNameClass}">${item.name}</div>${mods}${combos}
+            <div style="${itemNameClass}">${item.name}</div>${mods}${combos}${itemNotes}
           </td>
           <td style="padding:4px;border-right:2px solid #000;text-align:center;font-weight:500;font-size:13px;vertical-align:middle;">${item.quantity}</td>
           <td style="padding:4px;text-align:center;font-weight:500;vertical-align:middle;white-space:nowrap;">Rs ${itemTotal.toFixed(2)}</td>
@@ -140,6 +143,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
 
     <!-- Items -->
     <div style="margin-bottom:12px">${itemsHtml}</div>
+    ${notes ? `<div style="margin-bottom:12px;font-weight:900;border-top:2px dashed #000;padding-top:6px;font-size:11px;">NOTE: ${notes}</div>` : ''}
 
     <!-- Totals -->
     <div style="font-size:11px;display:flex;flex-direction:column;align-items:flex-end;padding-right:2px;margin-bottom:12px">
@@ -242,6 +246,9 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
                 {(item as any).combo_components?.map((c: any, cidx: number) => (
                   <div key={cidx} className="text-[10px] font-normal">- {c.quantity > 1 ? `${c.quantity}x ` : ''}{c.product_name_snapshot} {c.variant_snapshot && `(${c.variant_snapshot})`}</div>
                 ))}
+                {item.notes && (
+                  <div className="text-[10px] font-bold">Note: {item.notes}</div>
+                )}
               </td>
               <td className="text-center py-1 px-1 border-r-2 border-black font-medium text-xs align-middle">{item.quantity}</td>
               <td className="text-center py-1 px-1 font-medium whitespace-nowrap align-middle">
@@ -252,6 +259,10 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
           })}
         </tbody>
       </table>
+
+      {notes && (
+        <div className="mb-4 font-black border-t-2 border-dashed border-black pt-2 text-[11px]">NOTE: {notes}</div>
+      )}
 
       {/* Totals */}
       <div className="flex flex-col items-end text-[11px] space-y-0.5 mb-6 w-full pr-1">
