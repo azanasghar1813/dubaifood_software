@@ -253,7 +253,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
         await printerState.fetchPrinters()
       }
       const result = await printerState.printReceipt(order.id, user?.id || user?.name || 'cashier', order.paymentStatus === 'Paid')
-      const jobId = result?.job_id || result?.data?.job_id
+      const jobId = result?.job_id
       if (jobId) {
         alert("Bill sent to the counter printer. Pick it up at the till.")
         return
