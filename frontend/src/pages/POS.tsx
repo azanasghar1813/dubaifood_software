@@ -1559,8 +1559,13 @@ export default function POS() {
 
           {/* Product Grid */}
           <div className="flex-1 p-4 pt-0 overflow-y-auto custom-scrollbar space-y-8" ref={gridContainerRef}>
-            {categories.filter(c => c.menuContext === 'all' || !c.menuContext || c.menuContext === menuContext).map(cat => {
-              const catProducts = gridFilteredProducts.filter(p => (p.category || categories.find(c => c.id === p.category_id)?.name) === cat.name);
+            {(menuContext === 'Deals'
+              ? [{ id: 'deals-root', name: 'Deals', menuContext: 'Deals' } as any]
+              : categories.filter(c => c.menuContext === 'all' || !c.menuContext || c.menuContext === menuContext)
+            ).map(cat => {
+              const catProducts = menuContext === 'Deals'
+                ? gridFilteredProducts.filter(p => p.isDeal)
+                : gridFilteredProducts.filter(p => (p.category || categories.find(c => c.id === p.category_id)?.name) === cat.name);
               
               if (catProducts.length === 0) return null;
 
@@ -1608,7 +1613,8 @@ export default function POS() {
                                   <div className="w-full text-[10px] overflow-hidden text-center space-y-0.5">
                                     {product.components?.slice(0, gridDensity === 'large' ? 5 : 4).map((c: any, i: number) => {
                                       const productName = c.name || products.find(p => p.id === c.product_id)?.name || categories.find(cat => cat.id === c.target_category_id)?.name || (c.allowed_product_ids ? 'Choice of Item' : 'Item');
-                                      return <p key={i} className="truncate">{c.quantity}x {productName}</p>;
+                                      const variant = c.target_variant_name ? ` (${c.target_variant_name})` : ""
+                                      return <p key={i} className="truncate">{c.quantity}x {productName}{variant}</p>;
                                     })}
                                     {product.components?.length > (gridDensity === 'large' ? 5 : 4) && <p>...</p>}
                                   </div>

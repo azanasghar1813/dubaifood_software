@@ -46,6 +46,8 @@ export default function Products() {
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null)
   const [drawerMode, setDrawerMode] = useState<"view" | "edit" | "add">("view")
   const [isSaving, setIsSaving] = useState(false)
+  const [dealPickerQuery, setDealPickerQuery] = useState("")
+  const [dealVariantPick, setDealVariantPick] = useState<any | null>(null)
 
   // Refs for shortcuts
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -189,7 +191,7 @@ export default function Products() {
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isDrawerOpen, selectedProduct, drawerMode])
+  }, [isDrawerOpen, selectedProduct, drawerMode, mainTab, products])
 
   // KPIs
   const stats = useMemo(() => {
@@ -215,6 +217,58 @@ export default function Products() {
 
     try {
       setIsSaving(true)
+
+      if (selectedProduct.isDeal || (mainTab === "Deals" && selectedProduct.category === "Deals")) {
+        const comps = (selectedProduct.components || []).filter((c: any) => c.product_id)
+        if (!comps.length) {
+          toast.error("Add at least one existing product to this deal")
+          setIsSaving(false)
+          return
+        }
+        const missingVariant = comps.find((c: any) => {
+          const src = products.find(p => p.id === c.product_id)
+          return src?.variants?.length > 0 && !c.target_variant_name
+        })
+        if (missingVariant) {
+          toast.error(`Pick a size/variant for ${missingVariant.name}`)
+          setIsSaving(false)
+          return
+        }
+        if (!selectedProduct.name?.trim()) {
+          toast.error("Deal name is required")
+          setIsSaving(false)
+          return
+        }
+        const dealCodes = products.filter(p => p.isDeal).map(p => parseInt(String(p.code || "").replace(/\D/g, ""), 10) || 0)
+        const nextCode = selectedProduct.code || `D${Math.max(0, ...dealCodes) + 1}`
+        const dealPayload = {
+          name: selectedProduct.name.trim(),
+          code: nextCode,
+          price: Number(selectedProduct.price) || 0,
+          lifecycle_state: selectedProduct.status === "Hidden" ? "HIDDEN" : "ACTIVE",
+          pricing_strategy: "FIXED",
+          is_customizable: 1,
+          components: comps.map((c: any) => ({
+            name: c.name,
+            component_type: "FIXED_PRODUCT",
+            product_id: c.product_id,
+            quantity: Number(c.quantity) || 1,
+            target_variant_name: c.target_variant_name || null
+          }))
+        }
+        if (drawerMode === "add" || !selectedProduct.id) {
+          await menuService.createDeal(dealPayload)
+          toast.success("Deal created")
+        } else {
+          await menuService.updateDeal(selectedProduct.id, dealPayload)
+          toast.success("Deal updated")
+        }
+        setDrawerMode("view")
+        setIsDrawerOpen(false)
+        fetchProductsAndCategories()
+        return
+      }
+
       // Find the category_id from the categoriesList based on the selected category name
       const categoryObj = categoriesList.find(c => c.name === selectedProduct.category)
       
@@ -347,6 +401,24 @@ export default function Products() {
 
   // Handler: Add product trigger
   const handleOpenAdd = () => {
+    if (mainTab === "Deals") {
+      const dealCodes = products.filter(p => p.isDeal).map(p => parseInt(String(p.code || "").replace(/\D/g, ""), 10) || 0)
+      setSelectedProduct({
+        id: "",
+        isDeal: true,
+        name: "",
+        code: `D${Math.max(0, ...dealCodes) + 1}`,
+        category: "Deals",
+        price: 0,
+        status: "Active",
+        components: []
+      })
+      setDealPickerQuery("")
+      setDealVariantPick(null)
+      setDrawerMode("add")
+      setIsDrawerOpen(true)
+      return
+    }
     setSelectedProduct({
       id: "",
       barcode: `8801${Math.floor(100000 + Math.random() * 900000)}`,
@@ -408,13 +480,17 @@ export default function Products() {
 
     if (confirm("Are you sure you want to delete this product?")) {
       try {
-        const res = await menuService.deleteProduct(id)
-        if (res.data) {
-          toast.success("Product deleted")
-          setIsDrawerOpen(false)
-          setSelectedProduct(null)
-          fetchProductsAndCategories()
+        const target = products.find(p => p.id === id)
+        if (target?.isDeal) {
+          await menuService.deleteDeal(id)
+          toast.success("Deal deleted")
+        } else {
+          const res = await menuService.deleteProduct(id)
+          if (res.data) toast.success("Product deleted")
         }
+        setIsDrawerOpen(false)
+        setSelectedProduct(null)
+        fetchProductsAndCategories()
       } catch (error: any) {
         toast.error(error.response?.data?.error || "Failed to delete product")
       }
@@ -526,7 +602,7 @@ export default function Products() {
               onClick={handleOpenAdd}
               className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-xl text-xs font-black hover:bg-primary/95 shadow-md shadow-primary/10 transition-all active:scale-95"
             >
-              <Plus className="w-4 h-4" /> Add Product [Ctrl+N]
+              <Plus className="w-4 h-4" /> {mainTab === "Deals" ? "Add Deal [Ctrl+N]" : "Add Product [Ctrl+N]"}
             </button>
           )}
         </div>
@@ -702,10 +778,13 @@ export default function Products() {
 
             // GRID VIEW LAYOUT
             <div className="flex flex-col gap-8">
-              {categoriesList
-                .filter((c) => selectedCategory === 'All' ? ((c.menuContext as any) === mainTab || (mainTab === 'Drinks' && (c.name.toLowerCase().includes('drink') || c.name.toLowerCase().includes('beverage')))) : c.name === selectedCategory)
-                .map(cat => {
-                  const catProducts = filteredAndSorted.filter(p => (p.category || categoriesList.find(c => c.id === p.category_id)?.name) === cat.name);
+              {(mainTab === "Deals"
+                ? [{ id: "deals-root", name: "Deals", menuContext: "Deals" }]
+                : categoriesList.filter((c) => selectedCategory === 'All' ? ((c.menuContext as any) === mainTab || (mainTab === 'Drinks' && (c.name.toLowerCase().includes('drink') || c.name.toLowerCase().includes('beverage')))) : c.name === selectedCategory)
+              ).map(cat => {
+                  const catProducts = mainTab === "Deals"
+                    ? filteredAndSorted.filter(p => p.isDeal)
+                    : filteredAndSorted.filter(p => (p.category || categoriesList.find(c => c.id === p.category_id)?.name) === cat.name);
                   if (catProducts.length === 0) return null;
 
                   return (
@@ -729,7 +808,16 @@ export default function Products() {
                               <div>
                                 {/* Thumbnail / Image Simulation */}
                                 <div className="w-full h-24 bg-secondary/30 rounded-xl overflow-hidden border border-border/50 flex items-center justify-center text-muted-foreground relative mb-2.5 shrink-0 group-hover:border-primary/30 transition-colors">
-                                  {product.image ? (
+                                  {product.isDeal ? (
+                                    <div className="w-full h-full flex flex-col items-center justify-center p-1.5 bg-primary/10 text-foreground">
+                                      <div className="w-full text-[9px] font-bold text-center space-y-0.5 overflow-hidden">
+                                        {(product.components || []).slice(0, 4).map((c: any, i: number) => (
+                                          <p key={i} className="truncate">{c.quantity || 1}x {c.name || 'Item'}{c.target_variant_name ? ` (${c.target_variant_name})` : ''}</p>
+                                        ))}
+                                        {(product.components || []).length === 0 && <Package className="w-5 h-5 mx-auto opacity-30" />}
+                                      </div>
+                                    </div>
+                                  ) : product.image ? (
                                     <img src={getImageUrl(product.image)} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                                   ) : (
                                     <Package className="w-6 h-6 opacity-20 group-hover:scale-110 group-hover:opacity-40 transition-all duration-300" />
@@ -809,10 +897,13 @@ export default function Products() {
 
             // TABLE VIEW LAYOUT
             <div className="flex flex-col gap-8">
-              {categoriesList
-                .filter((c) => selectedCategory === 'All' ? ((c.menuContext as any) === mainTab || (mainTab === 'Drinks' && (c.name.toLowerCase().includes('drink') || c.name.toLowerCase().includes('beverage')))) : c.name === selectedCategory)
-                .map(cat => {
-                  const catProducts = filteredAndSorted.filter(p => (p.category || categoriesList.find(c => c.id === p.category_id)?.name) === cat.name);
+              {(mainTab === "Deals"
+                ? [{ id: "deals-root", name: "Deals", menuContext: "Deals" }]
+                : categoriesList.filter((c) => selectedCategory === 'All' ? ((c.menuContext as any) === mainTab || (mainTab === 'Drinks' && (c.name.toLowerCase().includes('drink') || c.name.toLowerCase().includes('beverage')))) : c.name === selectedCategory)
+              ).map(cat => {
+                  const catProducts = mainTab === "Deals"
+                    ? filteredAndSorted.filter(p => p.isDeal)
+                    : filteredAndSorted.filter(p => (p.category || categoriesList.find(c => c.id === p.category_id)?.name) === cat.name);
                   if (catProducts.length === 0) return null;
 
                   return (
@@ -937,10 +1028,14 @@ export default function Products() {
                   <div className="p-6 border-b border-border bg-secondary/30 flex justify-between items-center shrink-0">
                     <div>
                       <h2 className="text-lg font-black text-foreground">
-                        {drawerMode === 'add' ? "Add Menu Product" : drawerMode === 'edit' ? "Edit Menu Product" : "Product details"}
+                        {selectedProduct.isDeal
+                          ? (drawerMode === 'add' ? "Add Deal" : drawerMode === 'edit' ? "Edit Deal" : "Deal details")
+                          : (drawerMode === 'add' ? "Add Menu Product" : drawerMode === 'edit' ? "Edit Menu Product" : "Product details")}
                       </h2>
                       <p className="text-xs text-muted-foreground font-semibold mt-1">
-                        {drawerMode === 'add' ? "Create new database entry" : `Product Code: #${selectedProduct.code}`}
+                        {selectedProduct.isDeal
+                          ? (drawerMode === 'add' ? "Combine existing items into one price" : `Deal Code: #${selectedProduct.code}`)
+                          : (drawerMode === 'add' ? "Create new database entry" : `Product Code: #${selectedProduct.code}`)}
                       </p>
                     </div>
                     <button
@@ -954,7 +1049,219 @@ export default function Products() {
 
                   {/* Form fields */}
                   <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 bg-background/40">
+                    {selectedProduct.isDeal ? (
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-xs uppercase font-black text-muted-foreground">Deal Name</label>
+                          <input
+                            required
+                            disabled={drawerMode === "view"}
+                            type="text"
+                            value={selectedProduct.name}
+                            onChange={e => setSelectedProduct({ ...selectedProduct, name: e.target.value })}
+                            placeholder="e.g. Family Deal"
+                            className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-black text-foreground disabled:opacity-60"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-xs uppercase font-black text-muted-foreground">Deal Code</label>
+                            <input
+                              disabled={drawerMode === "view"}
+                              type="text"
+                              value={selectedProduct.code || ""}
+                              onChange={e => setSelectedProduct({ ...selectedProduct, code: e.target.value })}
+                              className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-bold text-foreground disabled:opacity-60"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs uppercase font-black text-muted-foreground">Deal Price (Rs.)</label>
+                            <input
+                              required
+                              disabled={drawerMode === "view"}
+                              type="number"
+                              value={selectedProduct.price}
+                              onChange={e => setSelectedProduct({ ...selectedProduct, price: parseFloat(e.target.value) || 0 })}
+                              className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-black text-primary disabled:opacity-60"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs uppercase font-black text-muted-foreground">Status</label>
+                          <select
+                            disabled={drawerMode === "view"}
+                            value={selectedProduct.status}
+                            onChange={e => setSelectedProduct({ ...selectedProduct, status: e.target.value })}
+                            className="w-full h-10 px-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-bold text-foreground disabled:opacity-60"
+                          >
+                            <option value="Active">Available (Active)</option>
+                            <option value="Hidden">Not Available (Hidden)</option>
+                          </select>
+                        </div>
 
+                        <div className="space-y-3 border-t border-border pt-4">
+                          <h4 className="text-xs uppercase font-black tracking-wider text-muted-foreground">Included items</h4>
+                          <p className="text-[11px] text-muted-foreground font-semibold">Pick existing menu items. POS shows these names on the deal card instead of a photo.</p>
+                          {(selectedProduct.components || []).map((comp: any, idx: number) => {
+                            const src = products.find(p => p.id === comp.product_id)
+                            const variants = src?.variants || []
+                            return (
+                            <div key={`${comp.product_id}-${comp.target_variant_name || ''}-${idx}`} className="flex items-center gap-2 p-3 bg-secondary/50 border border-border rounded-xl">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-black text-foreground truncate">{comp.name}</p>
+                                {variants.length > 0 && drawerMode !== "view" ? (
+                                  <select
+                                    value={comp.target_variant_name || ""}
+                                    onChange={(e) => {
+                                      const next = [...(selectedProduct.components || [])]
+                                      next[idx] = { ...next[idx], target_variant_name: e.target.value || null }
+                                      setSelectedProduct({ ...selectedProduct, components: next })
+                                    }}
+                                    className="mt-1 w-full h-8 px-2 rounded bg-background border border-border text-[11px] font-bold outline-none"
+                                  >
+                                    <option value="">Select size / variant</option>
+                                    {variants.map((v: any) => (
+                                      <option key={v.id || v.name} value={v.name}>{v.name}{v.price ? ` — Rs. ${v.price}` : ""}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <p className="text-[10px] text-muted-foreground font-bold">{comp.target_variant_name || (variants.length ? "No size selected" : "No variant")}</p>
+                                )}
+                              </div>
+                              {drawerMode !== "view" ? (
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={comp.quantity || 1}
+                                  onChange={(e) => {
+                                    const next = [...(selectedProduct.components || [])]
+                                    next[idx] = { ...next[idx], quantity: parseInt(e.target.value, 10) || 1 }
+                                    setSelectedProduct({ ...selectedProduct, components: next })
+                                  }}
+                                  className="w-16 h-8 px-2 rounded bg-background border border-border text-xs font-bold outline-none"
+                                />
+                              ) : (
+                                <span className="text-xs font-black">{comp.quantity || 1}x</span>
+                              )}
+                              {drawerMode !== "view" && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const next = [...(selectedProduct.components || [])]
+                                    next.splice(idx, 1)
+                                    setSelectedProduct({ ...selectedProduct, components: next })
+                                  }}
+                                  className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                            )
+                          })}
+                          {drawerMode !== "view" && (
+                            <div className="relative">
+                              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                              <input
+                                type="text"
+                                value={dealPickerQuery}
+                                onChange={(e) => setDealPickerQuery(e.target.value)}
+                                placeholder="Search menu to add an item..."
+                                className="w-full h-10 pl-9 pr-3 rounded-xl bg-secondary/80 border border-border focus:border-orange-500 outline-none text-xs font-bold"
+                              />
+                              {dealVariantPick && (
+                                <div className="mt-2 p-3 bg-card border border-orange-500/40 rounded-xl space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-xs font-black text-foreground">Select size for {dealVariantPick.name}</p>
+                                    <button type="button" onClick={() => setDealVariantPick(null)} className="text-muted-foreground hover:text-foreground">
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {(dealVariantPick.variants || []).map((v: any) => (
+                                      <button
+                                        key={v.id || v.name}
+                                        type="button"
+                                        onClick={() => {
+                                          const already = (selectedProduct.components || []).some((c: any) => c.product_id === dealVariantPick.id && String(c.target_variant_name || "") === String(v.name || ""))
+                                          if (already) {
+                                            toast.error("That size is already in this deal")
+                                            return
+                                          }
+                                          setSelectedProduct({
+                                            ...selectedProduct,
+                                            components: [...(selectedProduct.components || []), {
+                                              product_id: dealVariantPick.id,
+                                              name: dealVariantPick.name,
+                                              quantity: 1,
+                                              component_type: "FIXED_PRODUCT",
+                                              target_variant_name: v.name
+                                            }]
+                                          })
+                                          setDealVariantPick(null)
+                                        }}
+                                        className="h-10 px-2 rounded-lg border border-orange-500/30 bg-orange-500/10 text-orange-600 dark:text-orange-400 text-[11px] font-black hover:bg-orange-500 hover:text-white transition-colors"
+                                      >
+                                        {v.name}{v.price ? ` · Rs. ${v.price}` : ""}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {dealPickerQuery.trim().length >= 1 && (
+                                <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-card border border-border rounded-xl shadow-xl">
+                                  {products
+                                    .filter(p => !p.isDeal && p.name?.toLowerCase().includes(dealPickerQuery.toLowerCase()))
+                                    .slice(0, 12)
+                                    .map(p => (
+                                      <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => {
+                                          if (p.variants && p.variants.length > 0) {
+                                            setDealVariantPick(p)
+                                            setDealPickerQuery("")
+                                            return
+                                          }
+                                          const already = (selectedProduct.components || []).some((c: any) => c.product_id === p.id && !c.target_variant_name)
+                                          if (already) {
+                                            toast.error("That item is already in this deal")
+                                            return
+                                          }
+                                          setSelectedProduct({
+                                            ...selectedProduct,
+                                            components: [...(selectedProduct.components || []), {
+                                              product_id: p.id,
+                                              name: p.name,
+                                              quantity: 1,
+                                              component_type: "FIXED_PRODUCT",
+                                              target_variant_name: null
+                                            }]
+                                          })
+                                          setDealPickerQuery("")
+                                        }}
+                                        className="w-full text-left px-3 py-2 text-xs font-bold hover:bg-secondary flex justify-between gap-2"
+                                      >
+                                        <span className="truncate">{p.name}</span>
+                                        <span className="text-muted-foreground shrink-0">{p.variants?.length ? "has sizes" : `#${p.code}`}</span>
+                                      </button>
+                                    ))}
+                                  {products.filter(p => !p.isDeal && p.name?.toLowerCase().includes(dealPickerQuery.toLowerCase())).length === 0 && (
+                                    <div className="px-3 py-2 text-xs text-muted-foreground">No matching products</div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {!(selectedProduct.components || []).length && (
+                            <p className="text-[10px] text-muted-foreground font-semibold italic text-center py-4 bg-secondary/20 rounded-xl border border-dashed border-border">
+                              No items yet. Search and add existing products.
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                    <>
                     {/* Image Selector / Simulator */}
                     <div className="space-y-2">
                       <label className="text-xs uppercase font-black text-muted-foreground">Product Image</label>
@@ -1167,6 +1474,8 @@ export default function Products() {
                         )}
                       </div>
                     </div>
+                    </>
+                    )}
 
                   </div>
 
@@ -1180,7 +1489,7 @@ export default function Products() {
                             onClick={() => setDrawerMode("edit")}
                             className="h-10 px-6 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-black transition-colors flex items-center gap-2 shadow-md shadow-primary/10"
                           >
-                            <Edit2 className="w-3.5 h-3.5" /> Edit Product
+                            <Edit2 className="w-3.5 h-3.5" /> {selectedProduct.isDeal ? "Edit Deal" : "Edit Product"}
                           </button>
                           <button
                             type="button"
@@ -1241,7 +1550,7 @@ export default function Products() {
                               <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving...
                             </>
                           ) : (
-                            "Save Product"
+                            selectedProduct.isDeal ? "Save Deal" : "Save Product"
                           )}
                         </button>
                       </>

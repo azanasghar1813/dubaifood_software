@@ -34,7 +34,7 @@ class DealRepository {
       description: data.description || null,
       price: data.price || 0,
       pricing_strategy: data.pricing_strategy || 'FIXED',
-      lifecycle_state: data.lifecycle_state || 'DRAFT',
+      lifecycle_state: data.lifecycle_state || 'ACTIVE',
       start_date: data.start_date || null,
       end_date: data.end_date || null,
       now

@@ -3,6 +3,15 @@ import { menuCacheService } from './menuCacheService.js';
 import { activityLogService } from './activityLogService.js';
 import { lifecycleService } from './lifecycleService.js';
 import { syncService } from './syncService.js';
+import { settingsRepository } from '../repositories/settingsRepository.js';
+
+function queueDealComponents(dealId) {
+  if (!dealId) return;
+  const comps = dealRepository.getComponents(dealId) || [];
+  settingsRepository.updateApplicationSettings('SYNC', {
+    [`deal_components_${dealId}`]: JSON.stringify(comps)
+  });
+}
 
 class DealService {
   getAllDeals() {
@@ -25,6 +34,7 @@ class DealService {
     );
 
     syncService.queueSyncEvent('DEAL', deal.id, 'CREATED', { code: deal.code }, 1);
+    try { queueDealComponents(deal.id); } catch { /* sync is best-effort */ }
 
     menuCacheService.refresh();
     return this.getDealById(deal.id);
@@ -42,6 +52,7 @@ class DealService {
     );
 
     syncService.queueSyncEvent('DEAL', deal.id, 'UPDATED', {}, deal.version);
+    try { queueDealComponents(deal.id); } catch { /* sync is best-effort */ }
 
     menuCacheService.refresh();
     return this.getDealById(deal.id);

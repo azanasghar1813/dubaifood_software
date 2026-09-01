@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import Database from 'better-sqlite3';
 import config from '../config/index.js';
 import { syncService } from '../services/syncService.js';
 import { dbEngine } from '../database/sqlite.js';
@@ -22,6 +23,41 @@ function isSuperRoleName(name) {
   return n === 'super admin' || n === 'super administrator';
 }
 
+function applyDealComponents(key, value) {
+  if (!String(key || '').startsWith('deal_components_')) return;
+  const dealId = String(key).slice('deal_components_'.length);
+  if (!dealId) return;
+  let comps;
+  try { comps = typeof value === 'string' ? JSON.parse(value) : value; } catch { return; }
+  if (!Array.isArray(comps)) return;
+  const deal = dbEngine.prepare('SELECT id FROM deals WHERE id = ?').get(dealId);
+  if (!deal) return;
+  dbEngine.prepare('DELETE FROM deal_components WHERE deal_id = ?').run(dealId);
+  const insert = dbEngine.prepare(`
+    INSERT INTO deal_components (
+      id, deal_id, name, component_type, product_id, quantity, target_category_id, target_variant_name, allowed_product_ids, price_adjustment
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const comp of comps) {
+    const productId = comp.product_id || null;
+    if (productId && !dbEngine.prepare('SELECT 1 FROM products WHERE id = ?').get(productId)) continue;
+    try {
+      insert.run(
+        comp.id || crypto.randomUUID(),
+        dealId,
+        comp.name || null,
+        comp.component_type || 'FIXED_PRODUCT',
+        productId,
+        Number(comp.quantity) || 1,
+        comp.target_category_id || null,
+        comp.target_variant_name || null,
+        comp.allowed_product_ids || null,
+        Number(comp.price_adjustment) || 0
+      );
+    } catch { /* skip a component that cannot land on this till */ }
+  }
+}
+
 function applyShowOnLoginSetting(key, value) {
   if (!String(key || '').startsWith('user_show_on_login_')) return;
   const userId = String(key).slice('user_show_on_login_'.length);
@@ -39,12 +75,100 @@ function applyRoleAcl(raw) {
   const role = (data.role_id && dbEngine.prepare('SELECT id FROM roles WHERE id = ?').get(data.role_id))
     || (data.name && dbEngine.prepare('SELECT id FROM roles WHERE name = ? COLLATE NOCASE').get(data.name));
   if (!role) return;
+  const incoming = data.permission_codes.map((c) => String(c || '').trim()).filter(Boolean);
+  const localCount = dbEngine.prepare('SELECT COUNT(*) AS c FROM role_permissions WHERE role_id = ?').get(role.id)?.c || 0;
+  // Never let an old empty cloud ACL wipe permissions already assigned on this till.
+  if (incoming.length === 0 && localCount > 0) return;
   dbEngine.prepare('DELETE FROM role_permissions WHERE role_id = ?').run(role.id);
   const insert = dbEngine.prepare('INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)');
-  for (const code of data.permission_codes) {
+  for (const code of incoming) {
     const perm = dbEngine.prepare('SELECT id FROM permissions WHERE code = ?').get(code);
     if (perm) insert.run(role.id, perm.id);
   }
+}
+
+function restoreEmptyRolePermissionsFromPacked() {
+  const packedDbPath = path.join(process.env.PACKED_STORAGE || path.join(process.cwd(), 'backend', 'storage'), 'database', 'pos.db');
+  const liveDbPath = config.paths?.database?.file;
+  if (!packedDbPath || !fs.existsSync(packedDbPath)) return 0;
+  if (liveDbPath && path.resolve(packedDbPath) === path.resolve(liveDbPath)) return 0;
+  let packed;
+  try {
+    packed = new Database(packedDbPath, { readonly: true });
+  } catch {
+    return 0;
+  }
+  let restored = 0;
+  try {
+    const roles = dbEngine.prepare('SELECT id, name FROM roles').all();
+    const insert = dbEngine.prepare('INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)');
+    const insertAcl = dbEngine.prepare(`INSERT INTO application_settings (key, value, description) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`);
+    for (const role of roles) {
+      const localCount = dbEngine.prepare('SELECT COUNT(*) AS c FROM role_permissions WHERE role_id = ?').get(role.id)?.c || 0;
+      if (localCount > 0) continue;
+      const packedRows = packed.prepare(`
+        SELECT p.code
+        FROM role_permissions rp
+        INNER JOIN permissions p ON p.id = rp.permission_id
+        WHERE rp.role_id = ?
+      `).all(role.id);
+      if (!packedRows.length) continue;
+      for (const row of packedRows) {
+        const perm = dbEngine.prepare('SELECT id FROM permissions WHERE code = ?').get(row.code);
+        if (perm) {
+          insert.run(role.id, perm.id);
+          restored += 1;
+        }
+      }
+      insertAcl.run(
+        `role_acl_${role.id}`,
+        JSON.stringify({ role_id: role.id, name: role.name, permission_codes: packedRows.map((r) => r.code) }),
+        'Role screen access'
+      );
+    }
+  } finally {
+    try { packed.close(); } catch { /* ignore */ }
+  }
+  return restored;
+}
+
+function restoreCashierPermissionsIfEmpty() {
+  const cashier = dbEngine.prepare("SELECT id, name FROM roles WHERE name = 'Cashier' COLLATE NOCASE").get();
+  if (!cashier) return 0;
+  const localCount = dbEngine.prepare('SELECT COUNT(*) AS c FROM role_permissions WHERE role_id = ?').get(cashier.id)?.c || 0;
+  if (localCount > 0) return 0;
+  const codes = [
+    'VIEW_TABLES', 'VIEW_ORDERS', 'VIEW_REPORTS', 'VIEW_CATEGORIES',
+    'VIEW_POS', 'VIEW_KITCHEN', 'VIEW_SETTINGS', 'VIEW_DASHBOARD',
+    'VIEW_CUSTOMERS', 'VIEW_SYNC'
+  ];
+  const insert = dbEngine.prepare('INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)');
+  let n = 0;
+  for (const code of codes) {
+    const perm = dbEngine.prepare('SELECT id FROM permissions WHERE code = ?').get(code);
+    if (perm) {
+      insert.run(cashier.id, perm.id);
+      n += 1;
+    }
+  }
+  if (n > 0) {
+    dbEngine.prepare(`
+      INSERT INTO application_settings (key, value, description)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+    `).run(
+      `role_acl_${cashier.id}`,
+      JSON.stringify({ role_id: cashier.id, name: cashier.name, permission_codes: codes }),
+      'Role screen access'
+    );
+    try {
+      const exists = dbEngine.prepare(`SELECT 1 FROM sync_queue WHERE entity_type = 'SETTING' AND entity_id = ? AND status = 'PENDING'`).get(`role_acl_${cashier.id}`);
+      if (!exists) {
+        dbEngine.prepare(`INSERT INTO sync_queue (id, entity_type, entity_id, action, status, payload_version) VALUES (?, 'SETTING', ?, 'UPDATE', 'PENDING', 1)`).run(crypto.randomUUID(), `role_acl_${cashier.id}`);
+      }
+    } catch { /* queue is best-effort */ }
+  }
+  return n;
 }
 
 function floorStatusFromCloud(status) {
@@ -331,6 +455,29 @@ class SyncWorker {
       }
       const tableDedupe = dedupeFloorTablesByName();
       if (tableDedupe > 0) this.logActivity(`Removed ${tableDedupe} duplicate floor tables.`);
+      const restoredRoles = restoreEmptyRolePermissionsFromPacked();
+      if (restoredRoles > 0) this.logActivity(`Restored ${restoredRoles} missing role permissions from packaged catalog.`);
+      const cashierRestored = restoreCashierPermissionsIfEmpty();
+      if (cashierRestored > 0) this.logActivity(`Restored ${cashierRestored} Cashier screen permissions.`);
+      const dealCompFill = dbEngine.prepare("SELECT value FROM application_settings WHERE key = 'deal_components_sync_v1'").get();
+      if (!dealCompFill) {
+        try {
+          const deals = dbEngine.prepare('SELECT id FROM deals').all();
+          const insertS = dbEngine.prepare(`INSERT INTO application_settings (key, value, description) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
+          const insertQ = dbEngine.prepare(`INSERT INTO sync_queue (id, entity_type, entity_id, action, status, payload_version) VALUES (?, 'SETTING', ?, 'UPDATE', 'PENDING', 1)`);
+          for (const deal of deals) {
+            const comps = dbEngine.prepare('SELECT * FROM deal_components WHERE deal_id = ?').all(deal.id);
+            const key = `deal_components_${deal.id}`;
+            insertS.run(key, JSON.stringify(comps), 'Deal included items');
+            const exists = dbEngine.prepare(`SELECT 1 FROM sync_queue WHERE entity_type = 'SETTING' AND entity_id = ? AND status = 'PENDING'`).get(key);
+            if (!exists) insertQ.run(crypto.randomUUID(), key);
+          }
+        } catch (e) {
+          this.logActivity(`Deal components backfill skipped: ${e.message}`, 'error');
+        }
+        dbEngine.prepare("INSERT INTO application_settings (key, value, description) VALUES ('deal_components_sync_v1', '1', 'Queued deal items for cloud sync') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
+        this.logActivity('Queued deal included-items for sync.');
+      }
     } catch (e) {
       this.logActivity(`Failed to repair sync queue/triggers: ${e.message}`, 'error');
     }
@@ -758,6 +905,7 @@ class SyncWorker {
           for (const row of gathered.application_settings || []) {
             if (String(row.key || '').startsWith('role_acl_')) applyRoleAcl(row.value);
             applyShowOnLoginSetting(row.key, row.value);
+            applyDealComponents(row.key, row.value);
           }
 
           if (gathered.orders.length > 0) {
