@@ -47,17 +47,57 @@ function applyRoleAcl(raw) {
   }
 }
 
+function floorStatusFromCloud(status) {
+  const u = String(status || 'Available').trim().toUpperCase();
+  if (u === 'OCCUPIED' || u === 'BUSY' || u === 'IN_USE') return 'Occupied';
+  return 'Available';
+}
+
+function dedupeFloorTablesByName() {
+  const hasTables = dbEngine.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tables'").get();
+  if (!hasTables) return 0;
+  const diningIds = new Set(
+    (dbEngine.prepare('SELECT id FROM dining_tables').all() || []).map((r) => r.id)
+  );
+  const rows = dbEngine.prepare('SELECT id, name FROM tables ORDER BY created_at ASC').all();
+  const keepByName = new Map();
+  for (const row of rows) {
+    const name = String(row.name || '').trim();
+    if (!name) continue;
+    const current = keepByName.get(name.toUpperCase());
+    if (!current) {
+      keepByName.set(name.toUpperCase(), row);
+      continue;
+    }
+    if (!diningIds.has(current.id) && diningIds.has(row.id)) {
+      keepByName.set(name.toUpperCase(), row);
+    }
+  }
+  const keepIds = new Set([...keepByName.values()].map((r) => r.id));
+  let removed = 0;
+  const del = dbEngine.prepare('DELETE FROM tables WHERE id = ?');
+  for (const row of rows) {
+    if (!keepIds.has(row.id)) {
+      del.run(row.id);
+      removed += 1;
+    }
+  }
+  dbEngine.prepare("UPDATE tables SET status = 'Available' WHERE UPPER(status) IN ('OCCUPIED', 'BUSY', 'AVAILABLE')").run();
+  dbEngine.prepare("UPDATE tables SET status = 'Available' WHERE status IS NULL OR TRIM(status) = ''").run();
+  return removed;
+}
+
 function upsertFloorTablesFromDining(rows) {
   if (!rows || !rows.length) return;
   const hasTables = dbEngine.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tables'").get();
   if (!hasTables) return;
   let fallbackCat = dbEngine.prepare('SELECT id FROM table_categories ORDER BY created_at ASC LIMIT 1').get();
   for (const row of rows) {
-    const name = row.table_number || row.name;
+    const name = String(row.table_number || row.name || '').trim();
     if (!name || !row.id) continue;
     let catId = fallbackCat?.id || null;
     if (row.zone) {
-      let cat = dbEngine.prepare('SELECT id FROM table_categories WHERE name = ?').get(row.zone);
+      let cat = dbEngine.prepare('SELECT id FROM table_categories WHERE name = ? COLLATE NOCASE').get(row.zone);
       if (!cat) {
         const newId = crypto.randomUUID();
         dbEngine.prepare('INSERT INTO table_categories (id, name) VALUES (?, ?)').run(newId, row.zone);
@@ -67,15 +107,20 @@ function upsertFloorTablesFromDining(rows) {
       catId = cat.id;
     }
     if (!catId) continue;
+    const existingByName = dbEngine.prepare('SELECT id FROM tables WHERE name = ? COLLATE NOCASE').get(name);
+    if (existingByName) {
+      dbEngine.prepare('UPDATE tables SET category_id = ? WHERE id = ?').run(catId, existingByName.id);
+      continue;
+    }
     dbEngine.prepare(`
       INSERT INTO tables (id, name, category_id, status, created_at)
       VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
-        status = excluded.status,
         category_id = excluded.category_id
-    `).run(row.id, name, catId, row.status || 'Available', row.created_at || null);
+    `).run(row.id, name, catId, floorStatusFromCloud(row.status), row.created_at || null);
   }
+  dedupeFloorTablesByName();
 }
 
 const PENDING_TYPE_MAP = {
@@ -284,6 +329,8 @@ class SyncWorker {
         dbEngine.prepare("INSERT INTO application_settings (key, value, description) VALUES ('role_acl_sync_v1', '1', 'Queued role screen access for cloud sync') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
         this.logActivity('Queued role screen-access for sync.');
       }
+      const tableDedupe = dedupeFloorTablesByName();
+      if (tableDedupe > 0) this.logActivity(`Removed ${tableDedupe} duplicate floor tables.`);
     } catch (e) {
       this.logActivity(`Failed to repair sync queue/triggers: ${e.message}`, 'error');
     }
