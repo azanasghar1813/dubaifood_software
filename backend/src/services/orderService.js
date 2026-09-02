@@ -343,20 +343,30 @@ class OrderService {
         }
       }
 
+      const billBefore = Number(order.grand_total || 0);
+      const addQty = Number(snapshot.item.quantity || 1);
+      const addUnitPrice = Number(snapshot.item.final_unit_price || snapshot.item.base_unit_price || 0);
+      const addLineTotal = Number(snapshot.item.subtotal || addUnitPrice * addQty);
+
       // Recalculate Totals
       const updatedOrder = this.recalculateOrderTotals(orderId);
 
       // Record Timeline Event
       orderTimelineService.recordEvent(orderId, actorUserId, 'ITEM_ADDED', {
         description: `Added ${snapshot.item.quantity}x ${snapshot.item.product_name_snapshot} to order ${order.order_number}`,
-        metadata: { item_id: snapshot.item.id, product_id: snapshot.item.product_id }
+        metadata: { item_id: snapshot.item.id, product_id: snapshot.item.product_id, unit_price: addUnitPrice, line_total: addLineTotal, quantity: addQty }
       });
 
       // Log Activity
       activityLogService.logActivity(actorUserId, 'ITEM_ADDED', 'ORDER', orderId, {
         order_number: order.order_number,
+        item_name: snapshot.item.product_name_snapshot,
         product: snapshot.item.product_name_snapshot,
-        quantity: snapshot.item.quantity
+        quantity: addQty,
+        unit_price: addUnitPrice,
+        line_total: addLineTotal,
+        bill_before: billBefore,
+        bill_after: Number(updatedOrder.grand_total || 0)
       });
 
       // Queue Sync Event
@@ -402,16 +412,28 @@ class OrderService {
         total_amount: newTotalAmount
       });
 
+      const billBefore = Number(order.grand_total || 0);
+      const unitPrice = Number(item.final_unit_price || item.base_unit_price || 0);
+      const oldQty = Number(item.quantity || 0);
+      const lineDelta = unitPrice * (Number(newQuantity) - oldQty);
+
       const updatedOrder = this.recalculateOrderTotals(orderId);
 
       orderTimelineService.recordEvent(orderId, actorUserId, 'ITEM_QUANTITY_CHANGED', {
         description: `Updated quantity of ${item.product_name_snapshot} to ${newQuantity}`,
-        metadata: { item_id: itemId, old_qty: item.quantity, new_qty: newQuantity }
+        metadata: { item_id: itemId, old_qty: oldQty, new_qty: newQuantity, unit_price: unitPrice, line_delta: lineDelta }
       });
 
       activityLogService.logActivity(actorUserId, 'QUANTITY_CHANGED', 'ORDER', orderId, {
         order_number: order.order_number,
-        new_quantity: newQuantity
+        item_name: item.product_name_snapshot,
+        product: item.product_name_snapshot,
+        old_quantity: oldQty,
+        new_quantity: newQuantity,
+        unit_price: unitPrice,
+        line_delta: lineDelta,
+        bill_before: billBefore,
+        bill_after: Number(updatedOrder.grand_total || 0)
       });
 
       return updatedOrder;
@@ -428,17 +450,22 @@ class OrderService {
       orderValidationService.validateItemModification(order, itemId);
 
       const item = orderItemRepository.findItemById(itemId);
+      const billBefore = Number(order.grand_total || 0);
+      const removeQty = Number(item?.quantity || 1);
+      const removeUnitPrice = Number(item?.final_unit_price || item?.base_unit_price || 0);
+      const removeLineTotal = Number(item?.subtotal || removeUnitPrice * removeQty);
+      const itemName = item ? item.product_name_snapshot : 'item';
       orderItemRepository.removeItem(itemId);
 
       const updatedOrder = this.recalculateOrderTotals(orderId);
 
       // If the order has already been sent to kitchen, we should log a reason
       const isSent = order.kitchen_state !== 'PENDING';
-      const description = `Removed ${item ? item.product_name_snapshot : 'item'} from order ${order.order_number}`;
+      const description = `Removed ${itemName} from order ${order.order_number}`;
 
       orderTimelineService.recordEvent(orderId, actorUserId, 'ITEM_REMOVED', {
         description: description + (reason ? ` - Reason: ${reason}` : ''),
-        metadata: { item_id: itemId, reason }
+        metadata: { item_id: itemId, reason, quantity: removeQty, unit_price: removeUnitPrice, line_total: removeLineTotal }
       });
 
       if (isSent && reason) {
@@ -448,14 +475,21 @@ class OrderService {
           action: 'ITEM_VOID',
           entityType: 'ORDER_ITEM',
           entityId: itemId,
-          oldValue: { product_name: item ? item.product_name_snapshot : 'unknown' },
-          newValue: { status: 'REMOVED' },
+          oldValue: { product_name: itemName, quantity: removeQty, unit_price: removeUnitPrice, line_total: removeLineTotal },
+          newValue: { status: 'REMOVED', bill_before: billBefore, bill_after: Number(updatedOrder.grand_total || 0) },
           reason
         });
       }
 
       activityLogService.logActivity(actorUserId, 'ITEM_REMOVED', 'ORDER', orderId, {
         order_number: order.order_number,
+        item_name: itemName,
+        product: itemName,
+        quantity: removeQty,
+        unit_price: removeUnitPrice,
+        line_total: removeLineTotal,
+        bill_before: billBefore,
+        bill_after: Number(updatedOrder.grand_total || 0),
         reason: reason
       });
 

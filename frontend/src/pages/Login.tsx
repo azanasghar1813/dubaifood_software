@@ -5,7 +5,9 @@ import { authService } from "../services/authService"
 import { apiClient } from "../api/client"
 import { useLoadingStore } from "../store/loadingStore"
 import { toast } from "../store/toastStore"
-import { TILL_LETTERS, isAssignedTillPrefix } from "../utils/receiptOrderNumber"
+import { TILL_LETTERS, tillLetterFromPrefix } from "../utils/receiptOrderNumber"
+
+const TILL_CONFIRM_KEY = "till_letter_confirmed_v2"
 import { Lock, User, ChevronDown, Loader2 } from "lucide-react"
 import { motion } from "framer-motion"
 
@@ -14,8 +16,9 @@ export default function Login() {
   const [selectedUsername, setSelectedUsername] = useState("")
   const [pin, setPin] = useState("")
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
-  const [needsDeviceId, setNeedsDeviceId] = useState(false)
+  const [needsDeviceId, setNeedsDeviceId] = useState(() => localStorage.getItem(TILL_CONFIRM_KEY) !== "1")
   const [deviceIdInput, setDeviceIdInput] = useState("")
+  const [currentTillLetter, setCurrentTillLetter] = useState("")
   const [deviceSaving, setDeviceSaving] = useState(false)
   
   const navigate = useNavigate()
@@ -38,14 +41,21 @@ export default function Login() {
     fetchUsers()
     apiClient.get('/health').then((res: any) => {
       const prefix = String(res?.order_prefix || res?.data?.order_prefix || '').trim().toUpperCase()
-      if (!isAssignedTillPrefix(prefix)) setNeedsDeviceId(true)
-    }).catch(() => {})
+      const letter = tillLetterFromPrefix(prefix)
+      if (TILL_LETTERS.includes(letter as typeof TILL_LETTERS[number])) setCurrentTillLetter(letter)
+      const confirmed = localStorage.getItem(TILL_CONFIRM_KEY) === "1"
+      const serverWants = res?.needs_till_confirm === true || res?.data?.needs_till_confirm === true
+      if (!confirmed || serverWants) setNeedsDeviceId(true)
+    }).catch(() => {
+      if (localStorage.getItem(TILL_CONFIRM_KEY) !== "1") setNeedsDeviceId(true)
+    })
   }, [])
 
   const saveDeviceId = async () => {
     setDeviceSaving(true)
     try {
       await apiClient.post('/health/device-id', { order_prefix: deviceIdInput })
+      localStorage.setItem(TILL_CONFIRM_KEY, "1")
       setNeedsDeviceId(false)
       toast.success("Till saved", `Receipts will use ${deviceIdInput.toUpperCase()} - #1, ${deviceIdInput.toUpperCase()} - #2`)
     } catch (e: any) {
@@ -97,10 +107,20 @@ export default function Login() {
       {needsDeviceId && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/90 p-4">
           <div className="w-full max-w-md bg-card border border-border rounded-3xl p-8 shadow-2xl">
-            <h2 className="text-2xl font-black mb-2">Set this till</h2>
-            <p className="text-sm text-muted-foreground font-bold mb-6">
-              Choose A, B, C, D or F once for this computer. Existing tills already set are not changed. Receipts will look like A - #1, B - #1.
+            <h2 className="text-2xl font-black mb-2">Choose this PC letter</h2>
+            <p className="text-sm text-muted-foreground font-bold mb-2">
+              Click A, B, C, D, E or F for THIS computer. Nothing is selected yet — you must tap one. This does not delete orders or today&apos;s sales.
             </p>
+            {currentTillLetter && (
+              <p className="text-sm font-black text-orange-500 mb-6">
+                This PC is currently {currentTillLetter}. First till keep A. Second till pick B.
+              </p>
+            )}
+            {!currentTillLetter && (
+              <p className="text-sm font-black text-orange-500 mb-6">
+                First till = A. Second till = B.
+              </p>
+            )}
             <div className="grid grid-cols-3 gap-3 mb-4">
               {TILL_LETTERS.map((id) => (
                 <button

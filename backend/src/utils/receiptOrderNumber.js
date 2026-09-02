@@ -2,7 +2,7 @@
  * Receipt till letter and order number, e.g. "A - #1" (never "PC-A-1").
  * Stored unique form includes the business date so daily 6 AM reset can restart at #1.
  */
-export const TILL_LETTERS = ['A', 'B', 'C', 'D', 'F'];
+export const TILL_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 export function tillLetterFromPrefix(prefix) {
   const p = String(prefix || '').trim().toUpperCase();

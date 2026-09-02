@@ -1,5 +1,5 @@
 /** Display ticket numbers as "A - #1" / "F - #2". Never prefix an extra #. */
-export const TILL_LETTERS = ['A', 'B', 'C', 'D', 'F'] as const
+export const TILL_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'] as const
 
 export function tillLetterFromPrefix(prefix?: string | null): string {
   const p = String(prefix || '').trim().toUpperCase()

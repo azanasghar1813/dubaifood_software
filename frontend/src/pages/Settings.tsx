@@ -8,7 +8,7 @@ import { configApi } from "../api/configApi"
 import { apiClient } from "../api/client"
 import { wipeOutHistory } from "../api/historyApi"
 import type { BusinessProfile, FinanceConfig, Printer, OrderConfig } from "../api/configApi"
-import { tillLetterFromPrefix } from "../utils/receiptOrderNumber"
+import { tillLetterFromPrefix, TILL_LETTERS } from "../utils/receiptOrderNumber"
 
 
 export default function Settings() {
@@ -28,6 +28,10 @@ export default function Settings() {
   const [updateError, setUpdateError] = useState("")
   const [waiterUrls, setWaiterUrls] = useState<string[]>([])
   const [devicePrefix, setDevicePrefix] = useState<string>("")
+  const [tillLetterDraft, setTillLetterDraft] = useState<string>("")
+  const [tillPin, setTillPin] = useState("")
+  const [tillSaving, setTillSaving] = useState(false)
+  const [tillMessage, setTillMessage] = useState("")
 
   // Form Data
   const [orderConfig, setOrderConfig] = useState<OrderConfig>({
@@ -68,7 +72,10 @@ export default function Settings() {
       try {
         const health: any = await apiClient.get('/health')
         setWaiterUrls(health?.waiter_urls || health?.data?.waiter_urls || [])
-        setDevicePrefix(health?.order_prefix || health?.data?.order_prefix || "")
+        const prefix = health?.order_prefix || health?.data?.order_prefix || ""
+        setDevicePrefix(prefix)
+        const letter = tillLetterFromPrefix(prefix)
+        if (TILL_LETTERS.includes(letter as typeof TILL_LETTERS[number])) setTillLetterDraft(letter)
       } catch { /* ignore */ }
     } catch (e) {
       console.error("Failed to load config", e)
@@ -151,6 +158,31 @@ export default function Settings() {
     if (!api) return;
     await api.installUpdate();
   };
+
+  const currentTillLetter = tillLetterFromPrefix(devicePrefix) || "—"
+
+  const saveTillLetter = async () => {
+    if (!TILL_LETTERS.includes(tillLetterDraft as typeof TILL_LETTERS[number])) {
+      setTillMessage("Select A, B, C, D, E or F.")
+      return
+    }
+    if (!tillPin.trim()) {
+      setTillMessage("Enter owner PIN to change this PC letter.")
+      return
+    }
+    setTillSaving(true)
+    setTillMessage("")
+    try {
+      await apiClient.post('/health/device-id', { order_prefix: tillLetterDraft, pin: tillPin.trim() })
+      setDevicePrefix(`PC-${tillLetterDraft}`)
+      setTillPin("")
+      setTillMessage(`Saved. New tickets on this PC will be ${tillLetterDraft} - #1, ${tillLetterDraft} - #2. Old orders are unchanged.`)
+    } catch (e: any) {
+      setTillMessage(e?.response?.data?.message || e?.message || "Could not save till letter.")
+    } finally {
+      setTillSaving(false)
+    }
+  }
 
   const handleSaveBusiness = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -300,6 +332,54 @@ export default function Settings() {
             <Save className="w-4 h-4" />
             {isSaved ? "Saved Successfully" : isSaving ? "Saving..." : "Save Settings"}
           </button>
+        )}
+      </div>
+
+      <div className="p-6 bg-card border border-orange-500/30 rounded-3xl shadow-sm">
+        <h2 className="text-lg font-black mb-1">This PC letter (A–F)</h2>
+        <p className="text-xs text-muted-foreground font-bold mb-4">
+          Currently assigned: <span className="text-orange-500 font-black text-base">{currentTillLetter}</span>. Enter owner PIN, pick the letter, then save. Orders and sales are not deleted. Only new ticket numbers use the new letter.
+        </p>
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
+          {TILL_LETTERS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => { setTillLetterDraft(id); setTillMessage("") }}
+              className={`h-12 rounded-xl border-2 font-black text-lg transition-all ${
+                tillLetterDraft === id
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : id === currentTillLetter
+                    ? 'bg-orange-500/10 text-orange-500 border-orange-500/40'
+                    : 'bg-secondary border-border text-foreground hover:border-primary/50'
+              }`}
+            >
+              {id}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <input
+            type="password"
+            inputMode="numeric"
+            value={tillPin}
+            onChange={(e) => setTillPin(e.target.value.replace(/\D/g, ''))}
+            placeholder="Owner PIN"
+            className="flex-1 h-12 px-4 rounded-xl border border-border bg-secondary font-black tracking-widest outline-none focus:border-primary"
+          />
+          <button
+            type="button"
+            disabled={tillSaving}
+            onClick={saveTillLetter}
+            className="h-12 px-6 rounded-xl bg-primary text-primary-foreground font-black uppercase disabled:opacity-50"
+          >
+            {tillSaving ? "Saving..." : "Save PC letter"}
+          </button>
+        </div>
+        {tillMessage && (
+          <p className={`text-sm font-bold mt-3 ${tillMessage.startsWith("Saved") ? "text-emerald-500" : "text-red-500"}`}>
+            {tillMessage}
+          </p>
         )}
       </div>
 

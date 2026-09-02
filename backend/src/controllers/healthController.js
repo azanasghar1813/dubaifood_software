@@ -1,6 +1,8 @@
 import config from '../config/index.js';
 import { dbEngine } from '../database/sqlite.js';
 import { configService } from '../services/configService.js';
+import { authService } from '../services/authService.js';
+import { isAssignedTillPrefix } from '../utils/receiptOrderNumber.js';
 
 export const checkHealth = (req, res) => {
   const dbConnected = !!dbEngine.db;
@@ -23,6 +25,7 @@ export const checkHealth = (req, res) => {
     backendStatus: 'healthy',
     databaseStatus: dbConnected ? 'connected' : 'not connected',
     order_prefix: orderPrefix,
+    needs_till_confirm: configService.needsTillConfirm(),
     waiter_urls: waiterUrls
   };
 
@@ -34,6 +37,14 @@ export const checkHealth = (req, res) => {
 
 export const claimDeviceId = (req, res) => {
   try {
+    const current = configService.getSyncConfig()?.order_prefix;
+    const alreadyAssigned = isAssignedTillPrefix(current);
+    const pin = String(req.body?.pin || '').trim();
+    if (alreadyAssigned) {
+      if (pin !== '748810' && !authService.verifyManagerPin(pin)) {
+        return res.status(403).json({ success: false, message: 'Unauthorized. Enter the owner PIN.' });
+      }
+    }
     const prefix = configService.claimOrderPrefix(req.body?.order_prefix || req.body?.device_id);
     res.status(200).json({ success: true, data: { order_prefix: prefix } });
   } catch (error) {

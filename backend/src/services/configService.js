@@ -13,7 +13,7 @@ import path from 'path';
 import config from '../config/index.js';
 import { canonicalTillPrefix, isAssignedTillPrefix } from '../utils/receiptOrderNumber.js';
 
-export const ALLOWED_DEVICE_PREFIXES = ['PC-A', 'PC-B', 'PC-C', 'PC-D', 'PC-F'];
+export const ALLOWED_DEVICE_PREFIXES = ['PC-A', 'PC-B', 'PC-C', 'PC-D', 'PC-E', 'PC-F'];
 
 const isLegacyTillPrefix = (prefix) => {
   const value = String(prefix || '').trim().toUpperCase();
@@ -199,16 +199,25 @@ class ConfigService {
     return this.getApplicationCategory('SYNC');
   }
 
-  claimOrderPrefix(prefix) {
-    const current = this.getSyncConfig().order_prefix;
-    if (isAssignedTillPrefix(current)) {
-      throw new Error('Device ID is already set and cannot be changed.');
+  tillConfirmPath() {
+    return path.join(config.paths.root, '.till-letter-confirmed-v2');
+  }
+
+  needsTillConfirm() {
+    try {
+      return !fs.existsSync(this.tillConfirmPath());
+    } catch {
+      return true;
     }
+  }
+
+  claimOrderPrefix(prefix) {
     const canonical = canonicalTillPrefix(prefix);
     if (!canonical) {
-      throw new Error('Choose A, B, C, D or F for this till.');
+      throw new Error('Choose A, B, C, D, E or F for this till.');
     }
     this.updateApplicationCategory('SYSTEM', 'SYNC', { order_prefix: canonical });
+    try { fs.writeFileSync(this.tillConfirmPath(), canonical); } catch { /* local flag only */ }
     return canonical;
   }
 

@@ -48,44 +48,62 @@ const paymentStatusColors: Record<string, string> = {
   Refunded: "bg-purple-500/10 text-purple-500 border-purple-500/20"
 }
 
-const formatAuditMessage = (actionType: string, oldVal: any, newVal: any) => {
+const formatRs = (n: number) => `Rs ${Number(n).toLocaleString()}`
+
+const parseAuditChange = (actionType: string, oldVal: any, newVal: any) => {
   const safeParse = (str: any) => {
-    try { return JSON.parse(str); } catch { return str; }
-  };
-  const parsedNew = safeParse(newVal);
-  
-  if (actionType === 'ITEM_ADDED') {
-    return `Added ${parsedNew?.quantity || 1}x ${parsedNew?.item_name || 'item'} to cart.`;
+    if (str == null || str === '') return str
+    if (typeof str === 'object') return str
+    try { return JSON.parse(str) } catch { return str }
   }
-  if (actionType === 'QUANTITY_CHANGED') {
-    return `Changed quantity of ${parsedNew?.item_name || 'item'} to ${parsedNew?.new_quantity || parsedNew?.quantity || ''}.`;
+  const parsedNew = safeParse(newVal)
+  const parsedOld = safeParse(oldVal)
+  const obj = (parsedNew && typeof parsedNew === 'object') ? parsedNew : {}
+  const oldObj = (parsedOld && typeof parsedOld === 'object') ? parsedOld : {}
+  const num = (v: any) => {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
   }
-  if (actionType === 'ITEM_REMOVED') {
-    return `Removed ${parsedNew?.item_name || 'item'} from cart.`;
+  const action = String(actionType || '').toUpperCase()
+  const itemName = obj.item_name || obj.product || obj.product_name || obj.product_name_snapshot || oldObj.product_name || oldObj.item_name || 'item'
+  const qty = num(obj.quantity) ?? num(oldObj.quantity)
+  const unitPrice = num(obj.unit_price) ?? num(obj.final_unit_price) ?? num(obj.price) ?? num(oldObj.unit_price)
+  const lineTotal = num(obj.line_total) ?? num(obj.subtotal) ?? (unitPrice != null && qty != null ? unitPrice * qty : null)
+  const billBefore = num(obj.bill_before) ?? num(oldObj.bill_before)
+  const billAfter = num(obj.bill_after) ?? num(obj.grand_total_after)
+
+  if (action.includes('ADDED')) {
+    const q = qty || 1
+    return { tone: 'add' as const, sign: '+', label: `Added ${q}x ${itemName}`, amount: lineTotal ?? unitPrice, billBefore, billAfter }
   }
-  if (actionType === 'ORDER_CREATED') {
-    return `Order created.`;
+  if (action.includes('REMOVED') || action.includes('VOID')) {
+    const q = qty || 1
+    const amount = lineTotal ?? (unitPrice != null ? unitPrice * q : null)
+    return { tone: 'remove' as const, sign: '-', label: `Removed ${q}x ${itemName}`, amount, billBefore, billAfter }
   }
-  if (actionType === 'ORDER_UPDATED' || actionType === 'METADATA_UPDATED') {
-    if (typeof parsedNew === 'object' && parsedNew !== null) {
-       const changes = Object.entries(parsedNew)
-         .filter(([k]) => k !== 'order_number' && k !== 'branch_id')
-         .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
-         .join(', ');
-       return changes ? `Updated: ${changes}` : 'Updated order details.';
-    }
+  if (action.includes('QUANTITY')) {
+    const oldQty = num(obj.old_quantity) ?? num(obj.old_qty)
+    const newQty = num(obj.new_quantity) ?? num(obj.new_qty) ?? qty
+    const down = oldQty != null && newQty != null && newQty < oldQty
+    const deltaQty = oldQty != null && newQty != null ? newQty - oldQty : null
+    const amount = num(obj.line_delta) != null
+      ? Math.abs(num(obj.line_delta) as number)
+      : (unitPrice != null && deltaQty != null ? Math.abs(unitPrice * deltaQty) : unitPrice)
+    const qtyLabel = oldQty != null && newQty != null ? `${oldQty} → ${newQty}` : String(newQty ?? '')
+    return { tone: down ? 'remove' as const : 'add' as const, sign: down ? '-' : '+', label: `Qty ${itemName} ${qtyLabel}`, amount, billBefore, billAfter }
   }
-  
-  // Fallback generic formatting
-  if (typeof parsedNew === 'object' && parsedNew !== null) {
+  if (action === 'ORDER_CREATED') {
+    return { tone: 'neutral' as const, sign: '', label: 'Order created', amount: null, billBefore, billAfter }
+  }
+  if (parsedNew && typeof parsedNew === 'object') {
     const changes = Object.entries(parsedNew)
-      .filter(([k]) => k !== 'order_number' && k !== 'branch_id')
+      .filter(([k]) => !['order_number', 'branch_id', 'bill_before', 'bill_after'].includes(k))
       .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
-      .join(', ');
-    return changes || String(newVal || '-');
+      .join(', ')
+    return { tone: 'neutral' as const, sign: '', label: changes ? `Updated: ${changes}` : 'Updated order details.', amount: null, billBefore, billAfter }
   }
-  return String(newVal || '-');
-};
+  return { tone: 'neutral' as const, sign: '', label: String(newVal || oldVal || '-'), amount: null, billBefore, billAfter }
+}
 
 export default function Orders() {
   const navigate = useNavigate()
@@ -1049,20 +1067,39 @@ export default function Orders() {
                 {activeTab === "history" && (
                   <div className="space-y-4">
                     {selectedOrder.auditLog && selectedOrder.auditLog.length > 0 ? (
-                      selectedOrder.auditLog.map((log, idx) => (
+                      selectedOrder.auditLog.map((log, idx) => {
+                        const info = parseAuditChange(log.actionType, log.oldValue, log.newValue)
+                        return (
                         <div key={idx} className="bg-card border border-border rounded-2xl p-4">
                           <div className="flex justify-between items-start mb-2">
                             <div>
-                              <span className="text-xs font-black bg-secondary px-2 py-1 rounded-md uppercase text-primary border border-primary/20">{log.actionType}</span>
+                              <span className={`text-xs font-black px-2 py-1 rounded-md uppercase border ${
+                                info.tone === 'add' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                                info.tone === 'remove' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+                                'bg-secondary text-primary border-primary/20'
+                              }`}>{log.actionType}</span>
                               <p className="text-sm font-bold mt-2">By {log.who} at {new Date(log.when).toLocaleString()}</p>
                             </div>
                           </div>
-                          <div className="mt-3 bg-secondary/30 p-3 rounded-xl border border-border/50 text-sm font-bold text-emerald-500">
-                            {formatAuditMessage(log.actionType, log.oldValue, log.newValue)}
+                          <div className={`mt-3 p-3 rounded-xl border text-sm font-bold ${
+                            info.tone === 'add' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600' :
+                            info.tone === 'remove' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
+                            'bg-secondary/30 border-border/50 text-foreground'
+                          }`}>
+                            <div className="flex justify-between items-start gap-3">
+                              <span>{info.sign ? `${info.sign} ` : ''}{info.label}</span>
+                              {info.amount != null && (
+                                <span className="whitespace-nowrap">{info.sign}{formatRs(info.amount)}</span>
+                              )}
+                            </div>
+                            {info.billBefore != null && info.billAfter != null && (
+                              <p className="text-xs mt-2 font-bold opacity-80">Bill {formatRs(info.billBefore)} → {formatRs(info.billAfter)}</p>
+                            )}
                           </div>
                           {log.reason && <p className="text-xs font-bold text-muted-foreground mt-3 italic">Reason: {log.reason}</p>}
                         </div>
-                      ))
+                        )
+                      })
                     ) : (
                       <div className="text-center p-12 text-muted-foreground">
                         <History className="w-12 h-12 mx-auto mb-4 opacity-20" />

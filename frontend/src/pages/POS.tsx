@@ -13,7 +13,7 @@ import {
   Tag, XOctagon, Receipt, FileText, XCircle,
   Hash, Phone, Edit, Edit2,
   Store, UtensilsCrossed, Truck, CircleDot,
-  QrCode, Banknote, Clock, Building2, Percent, X, ShoppingCart, Keyboard,
+  QrCode, Banknote, Clock, Building2, Percent, X, ShoppingCart,
 } from "lucide-react"
 import ReceiptPreview from "./ReceiptPreview"
 import KitchenTicketPreview from "./KitchenTicketPreview"
@@ -73,7 +73,6 @@ const getCategoryStyles = (category: string) => {
 
 export default function POS() {
   const [activeCategory, setActiveCategory] = useState("All")
-  const [forceKeyboardOpen, setForceKeyboardOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
   const [isSearchFocused, setIsSearchFocused] = useState(false)
@@ -113,20 +112,12 @@ export default function POS() {
   
   // Responsive State
   const [isDesktop, setIsDesktop] = useState(window.matchMedia('(min-width: 768px)').matches)
-  const [isTouchDevice, setIsTouchDevice] = useState(false)
   const [mobileCartOpen, setMobileCartOpen] = useState(false)
 
   useEffect(() => {
     const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
     const mq = window.matchMedia('(min-width: 768px)')
     mq.addEventListener('change', handler)
-    
-    setIsTouchDevice(
-      'ontouchstart' in window || 
-      navigator.maxTouchPoints > 0 || 
-      window.matchMedia('(pointer: coarse)').matches
-    )
-    
     return () => mq.removeEventListener('change', handler)
   }, [])
 
@@ -562,10 +553,8 @@ export default function POS() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeElement = document.activeElement as HTMLElement
-      const isInput = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA'
-      const inputValue = isInput ? (activeElement as HTMLInputElement).value : ""
-      const isSearchInput = activeElement === searchInputRef.current
-      const isTyping = isInput && (isSearchInput ? inputValue !== "" : true)
+      const isInput = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA' || !!activeElement?.isContentEditable
+      const isTyping = isInput
 
       // 1. Modal specific shortcuts that override everything
       if (dealModalOpen) return;
@@ -1562,10 +1551,8 @@ export default function POS() {
               <input
                 ref={searchInputRef}
                 type="text"
-                readOnly={isTouchDevice && !forceKeyboardOpen}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onBlur={() => setTimeout(() => setForceKeyboardOpen(false), 200)}
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
                     if (searchQuery) {
@@ -2811,30 +2798,6 @@ export default function POS() {
       {/* ReceiptPreview Popup */}
       {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
       {kotPreview && <KitchenTicketPreview order={kotPreview} autoPrint={false} onClose={() => setKotPreview(null)} />}
-
-      {isTouchDevice && (
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (forceKeyboardOpen) {
-              if (searchInputRef.current) {
-                searchInputRef.current.blur();
-              }
-              setForceKeyboardOpen(false);
-            } else {
-              if (searchInputRef.current) {
-                searchInputRef.current.readOnly = false;
-                searchInputRef.current.focus();
-              }
-              setForceKeyboardOpen(true);
-            }
-          }}
-          className="fixed bottom-24 right-4 z-[100] bg-orange-500 text-white p-4 rounded-full shadow-[0_4px_20px_rgba(249,115,22,0.6)] flex items-center justify-center hover:bg-orange-600 active:scale-95 transition-all"
-        >
-          <Keyboard className="w-6 h-6" />
-        </button>
-      )}
     </div>
   )
 }

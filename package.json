@@ -1,7 +1,7 @@
 {
   "name": "restaurant-pos",
   "productName": "Restaurant POS",
-  "version": "1.0.8",
+  "version": "1.0.13",
   "description": "Offline Windows Desktop Restaurant POS",
   "main": "main.js",
   "type": "module",
@@ -90,6 +90,7 @@
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Restaurant POS"

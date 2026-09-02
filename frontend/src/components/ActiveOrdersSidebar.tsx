@@ -5,7 +5,7 @@ import {
   Receipt, Edit,
   AlertCircle, ChevronRight,
   CheckCircle2, PlusCircle, CreditCard,
-  Utensils, Printer, Phone, Loader2, Ban
+  Utensils, Printer, Phone, Loader2, Ban, MapPin
 } from "lucide-react"
 import { useOrderStore, mapHistoryDetailToOrder } from "../store/orderStore"
 import type { Order, OrderStatus, KitchenStatus, PaymentStatus } from "../store/orderStore"
@@ -90,6 +90,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
         (o.customerName && o.customerName.toLowerCase().includes(q)) ||
         (o.tableNumber && o.tableNumber.toString().toLowerCase().includes(q)) ||
         (o.customerPhone && o.customerPhone.toLowerCase().includes(q)) ||
+        (o.customerAddress && o.customerAddress.toLowerCase().includes(q)) ||
         (o.orderType && o.orderType.toLowerCase().includes(q)) ||
         (o.status && o.status.toLowerCase().includes(q)) ||
         (o.paymentStatus && o.paymentStatus.toLowerCase().includes(q)) ||
@@ -412,6 +413,12 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                             )}
                           </span>
                         </div>
+                        {order.customerAddress && (
+                          <div className="flex items-start gap-1 text-sm text-muted-foreground mt-1">
+                            <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-blue-400" />
+                            <span className="line-clamp-2">{order.customerAddress}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="text-right">
                         <div className="font-bold text-lg">

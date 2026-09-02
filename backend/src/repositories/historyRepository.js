@@ -81,6 +81,10 @@ class HistoryRepository {
           (SELECT phone FROM customers c WHERE c.id = o.customer_id)
         ) AS customer_phone,
         COALESCE(
+          (SELECT meta_value FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'customer_address'),
+          (SELECT address FROM customers c WHERE c.id = o.customer_id)
+        ) AS customer_address,
+        COALESCE(
           (SELECT CASE WHEN LOWER(CAST(meta_value AS TEXT)) IN ('true', '1') THEN 1 ELSE 0 END
            FROM order_metadata om WHERE om.order_id = o.id AND om.meta_key = 'is_vip' LIMIT 1),
           (SELECT CASE WHEN is_vip IN (1, '1', 'true') THEN 1 ELSE 0 END FROM customers c WHERE c.id = o.customer_id),

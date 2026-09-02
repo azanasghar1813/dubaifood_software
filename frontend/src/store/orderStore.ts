@@ -223,7 +223,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     cashierName: formatName(row.cashier_user_id),
     customerName: row.customer_name || detail?.metadata?.customer_name || (detail as any)?.customer?.first_name || 'Guest',
     customerPhone: row.customer_phone || detail?.metadata?.customer_phone || (detail as any)?.customer?.phone || undefined,
-    customerAddress: detail?.metadata?.customer_address || (detail as any)?.customer?.address || undefined,
+    customerAddress: detail?.metadata?.customer_address || (detail as any)?.customer?.address || row.customer_address || undefined,
     isVip: detail?.metadata?.is_vip === 'true' || detail?.metadata?.is_vip === true || detail?.metadata?.is_vip === 1 || String(detail?.metadata?.is_vip) === '1' || row.is_vip === 1 || row.is_vip === true || !!(detail as any)?.customer?.is_vip || false,
     tableNumber: row.table_id || null,
     guestCount: 1,
