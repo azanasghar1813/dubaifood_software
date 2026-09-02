@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { CartItem } from './posStore'
 import { fetchOrders, fetchOrderDetail, type HistoryOrderRow, type HistoryOrderDetail } from '../api/historyApi'
+import { formatReceiptOrderNumber } from '../utils/receiptOrderNumber'
 
 export type OrderStatus = 'Draft' | 'Held' | 'Active' | 'Completed' | 'Cancelled' | 'Refunded'
 export type KitchenStatus = 'Pending' | 'Sent' | 'Preparing' | 'Ready' | 'Served' | 'Completed' | 'Cancelled'
@@ -214,7 +215,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
 
   return {
     id: row.id,
-    orderNumber: row.order_number.replace('POS-', '').replace(new RegExp(`^\\d{8}-`), ''),
+    orderNumber: formatReceiptOrderNumber(row.order_number),
     waiterId: row.waiter_id || undefined,
     waiterName: row.waiter_name_snapshot || row.waiter_name || undefined,
     riderId: row.rider_id || undefined,

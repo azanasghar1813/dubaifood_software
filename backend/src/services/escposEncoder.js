@@ -1,4 +1,5 @@
 import iconv from 'iconv-lite';
+import { formatReceiptOrderNumber } from '../utils/receiptOrderNumber.js';
 
 /**
  * ESC/POS Byte Encoder
@@ -107,8 +108,10 @@ class EscPosEncoder {
       const o = payload.order;
       parts.push(this._align('left'));
       parts.push(this._bold(true));
-      parts.push(this._encodeText(`Order: ${o.order_number || 'N/A'}`, iconvEncoding));
+      parts.push(this._tall(true));
+      parts.push(this._encodeText(formatReceiptOrderNumber(o.order_number), iconvEncoding));
       parts.push(this._lf());
+      parts.push(this._tall(false));
       parts.push(this._bold(false));
       parts.push(this._encodeText(`Type : ${o.order_type || ''}`, iconvEncoding));
       parts.push(this._lf());
@@ -145,8 +148,19 @@ class EscPosEncoder {
         parts.push(this._encodeText(`Pay: ${o.payment_method}`, iconvEncoding));
         parts.push(this._lf());
       }
-      parts.push(this._encodeText(`Date : ${o.business_date || ''}`, iconvEncoding));
-      parts.push(this._lf());
+      const { date, time } = this._receiptDateTime(o);
+      parts.push(this._bold(true));
+      parts.push(this._tall(true));
+      if (date) {
+        parts.push(this._encodeText(`Date : ${date}`, iconvEncoding));
+        parts.push(this._lf());
+      }
+      if (time) {
+        parts.push(this._encodeText(`Time : ${time}`, iconvEncoding));
+        parts.push(this._lf());
+      }
+      parts.push(this._tall(false));
+      parts.push(this._bold(false));
       const cashierLabel = o.cashier_name || null;
       if (cashierLabel) {
         parts.push(this._encodeText(`Cashier: ${cashierLabel}`, iconvEncoding));
@@ -405,8 +419,10 @@ class EscPosEncoder {
     const oh = payload.order_header || {};
     parts.push(this._align('left'));
     parts.push(this._bold(true));
-    parts.push(this._encodeText(`Order: ${oh.order_number || 'N/A'}`, iconvEncoding));
+    parts.push(this._tall(true));
+    parts.push(this._encodeText(formatReceiptOrderNumber(oh.order_number), iconvEncoding));
     parts.push(this._lf());
+    parts.push(this._tall(false));
     parts.push(this._bold(false));
     const kotTable = oh.table_number || oh.table_id;
     if (kotTable) {
@@ -586,6 +602,29 @@ class EscPosEncoder {
   _doubleSize(on) {
     // 0x00 = normal, 0x11 = double width + double height
     return this._cmd(GS, 0x21, on ? 0x11 : 0x00);
+  }
+
+  /** GS ! n — Double height only (slightly larger, same width). */
+  _tall(on) {
+    return this._cmd(GS, 0x21, on ? 0x01 : 0x00);
+  }
+
+  _receiptDateTime(order) {
+    const raw = order?.created_at || order?.paid_at;
+    let d = null;
+    if (raw) {
+      const s = String(raw);
+      d = (s.includes('T') || s.includes('Z') || s.includes('+'))
+        ? new Date(s)
+        : new Date(s.replace(' ', 'T') + 'Z');
+    }
+    if (d && !Number.isNaN(d.getTime())) {
+      return {
+        date: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      };
+    }
+    return { date: order?.business_date || '', time: '' };
   }
 
   /** GS V 66 n — Partial cut with n lines feed. */

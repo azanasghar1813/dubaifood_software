@@ -303,7 +303,7 @@ export const RecentOrdersModal: React.FC<RecentOrdersModalProps> = ({ isOpen, on
                   <div>
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h2 className="text-3xl font-black text-foreground flex items-center gap-2">
-                        #{selectedOrder.orderNumber}
+                        {selectedOrder.orderNumber}
                         {selectedOrder.isEdited && <span className={`text-[10px] px-2 py-0.5 rounded uppercase border font-bold tracking-widest leading-none ${selectedOrder.isNegativeEdit ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>Edited</span>}
                       </h2>
                       <span className={`text-xs px-2.5 py-1 rounded-md font-bold uppercase tracking-wide border ${orderStatusColors[selectedOrder.status] || orderStatusColors.Draft}`}>

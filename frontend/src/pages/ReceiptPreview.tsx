@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import { Printer, X } from "lucide-react"
 import type { Order } from "../store/orderStore"
 import { useSettingsStore } from "../store/settingsStore"
+import { formatReceiptOrderNumber } from "../utils/receiptOrderNumber"
 
 interface ReceiptPreviewProps {
   order?: Order
@@ -13,7 +14,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
   const settings = useSettingsStore()
 
   // â”€â”€ data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const orderNumber  = order?.orderNumber || order?.id || "N/A"
+  const orderNumber  = formatReceiptOrderNumber(order?.orderNumber || order?.id)
   const orderType    = order?.orderType    ?? "Dine In"
   const tableNumber  = order?.tableNumber  ?? null
   const cashier      = order?.cashierName  ?? "Cashier"
@@ -101,7 +102,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>Receipt #${orderNumber}</title>
+  <title>Receipt ${orderNumber}</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:sans-serif; background:#fff; color:#000; display:flex; justify-content:center; align-items:flex-start; min-height:100vh; }
@@ -128,7 +129,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
 
     <!-- Order Details -->
     <div style="font-size:11px;display:flex;flex-direction:column;gap:3px;margin-bottom:12px">
-      <div><span style="margin-right:4px;font-weight:900;">Order ID:</span>#${orderNumber}</div>
+      <div style="font-size:15px;font-weight:900;line-height:1.2;">${orderNumber}</div>
       <div style="display:flex"><span style="margin-right:4px;font-weight:900;">Customer:</span><span>${customerName}${customerPhone ? ' - '+customerPhone : ''}${customerAddress ? ' - '+customerAddress : ''}</span></div>
       ${tableNumber && tableNumber !== 'N/A' ? `<div><span style="margin-right:4px;font-weight:900;">Table No:</span>${tableNumber}</div>` : ''}
       <div><span style="margin-right:4px;font-weight:900;">Order Type:</span>${orderType}</div>
@@ -137,7 +138,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       ${!isDelivery && (order as any)?.waiterName ? `<div><span style="margin-right:4px;font-weight:900;">Waiter:</span>${(order as any).waiterName}</div>` : ''}
       <div><span style="margin-right:4px;font-weight:900;">Status:</span>${paymentStatus}</div>
       ${paymentMethod && String(paymentMethod) !== 'Later' ? `<div><span style="margin-right:4px;font-weight:900;">Payment:</span>${paymentMethod}</div>` : ''}
-      <div><span style="margin-right:4px;font-weight:900;">Time:</span>${dateStr}, ${timeStr}</div>
+      <div style="font-size:13px;font-weight:900;">${dateStr}, ${timeStr}</div>
       ${isVip ? `<div style="text-align:center;padding:4px 0;margin-top:6px;font-weight:900;font-size:14px;">** VIP ORDER **</div>` : ''}
     </div>
 
@@ -197,7 +198,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       
       {/* Order Details */}
       <div className="text-[11px] flex flex-col gap-0.5 text-black mb-4">
-        <div><span className="mr-1 font-black">Order ID:</span>#{orderNumber}</div>
+        <div className="text-[15px] font-black leading-tight">{orderNumber}</div>
         <div className="flex gap-1">
              <span className="shrink-0 font-black">Customer:</span>
              <span className="break-words">{customerName}{customerPhone ? ' - '+customerPhone : ''}{customerAddress ? ' - '+customerAddress : ''}</span>
@@ -213,7 +214,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
         {paymentMethod && String(paymentMethod) !== 'Later' && (
           <div><span className="mr-1 font-black">Payment:</span>{paymentMethod}</div>
         )}
-        <div><span className="mr-1 font-black">Time:</span>{dateStr}, {timeStr}</div>
+        <div className="text-[13px] font-black">{dateStr}, {timeStr}</div>
         {isVip && (
           <div className="font-black uppercase text-sm py-1 mt-2 text-center">** VIP ORDER **</div>
         )}
@@ -309,7 +310,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
         <div className="relative w-full max-w-sm max-h-[90vh] flex flex-col bg-card rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
           <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
-            <h3 className="font-bold text-foreground text-sm">Receipt â€” Order #{orderNumber}</h3>
+            <h3 className="font-bold text-foreground text-sm">Receipt — {orderNumber}</h3>
             <div className="flex items-center gap-2">
               <button onClick={doPrint} className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors">
                 <Printer className="w-4 h-4" /> Print

@@ -441,7 +441,7 @@ export const KDS: React.FC = () => {
                               <div className="flex-1">
                                  <div className="flex items-center gap-3">
                                     <h3 className="text-lg font-black tracking-tight">
-                                       #{ticket.orderNumber}
+                                       {ticket.orderNumber}
                                        {ticket.isVip && (
                                           <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-[10px] uppercase font-black bg-yellow-400 text-yellow-950">
                                              VIP
@@ -574,7 +574,7 @@ export const KDS: React.FC = () => {
               <div className="text-sm border-2 border-black p-4 space-y-1 bg-white relative" style={{ fontFamily: 'monospace' }}>
                 <div className="text-2xl font-black mb-2 flex flex-col">
                   <span>Order ID:</span>
-                  <span className="text-3xl mt-1">#{previewTicket.orderNumber}</span>
+                  <span className="text-3xl mt-1 font-black">{previewTicket.orderNumber}</span>
                 </div>
                 {previewTicket.isVip && (
                   <div className="font-black text-lg text-center py-1 my-3 uppercase">

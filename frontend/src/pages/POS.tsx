@@ -30,6 +30,7 @@ import { RiderSelectorModal } from "../components/RiderSelectorModal"
 import { ActiveOrdersSidebar } from "../components/ActiveOrdersSidebar"
 import { DealConfigurationModal } from "../components/DealConfigurationModal"
 import type { PaymentMethod } from "../store/orderStore"
+import { formatReceiptOrderNumber } from "../utils/receiptOrderNumber"
 
 type Product = any
 type Modifier = any
@@ -185,82 +186,185 @@ export default function POS() {
 
   const { user } = useAuthStore()
 
+  const placeCartOrder = async () => {
+    const state = usePosStore.getState()
+    const wasEditing = !!state.editingOrderId
+    let currentOrderId = state.editingOrderId || ((state.activeOrder as any)?.order_number ? state.activeOrder?.id : null)
+
+    if (!currentOrderId || !(state.activeOrder as any)?.order_number) {
+      const checkoutKey = newId()
+      const checkoutResult: any = await cartService.checkout({
+        order_type: state.orderType === 'Delivery' ? 'DELIVERY' : state.orderType === 'Takeaway' ? 'TAKEAWAY' : state.orderType === 'Drive Through' ? 'DRIVE_THROUGH' : 'DINE_IN',
+        customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || null,
+        customer_name: state.customer?.name || null,
+        customer_phone: state.customer?.phone || null,
+        customer_address: state.customer?.address || null,
+        is_vip: state.isVipOrder || !!state.customer?.is_vip || !!state.customer?.isVip || false,
+        table_id: state.tableNumber || null,
+        waiter_id: state.waiterId || null,
+        waiter_name_snapshot: state.waiterName || null,
+        rider_id: state.riderId || null,
+        rider_name_snapshot: state.riderName || null,
+        delivery_charges: state.orderType === 'Delivery' ? state.deliveryCharges : 0,
+        service_charge: state.getServiceCharge(),
+        is_tax_enabled: false,
+      }, checkoutKey)
+      if (!checkoutResult?.success) return { ok: false as const }
+      const order = checkoutResult.data
+      currentOrderId = order.id
+      usePosStore.setState({
+        activeOrder: { ...order, service_charge: state.getServiceCharge() },
+        previewOrderNumber: order.order_number
+      })
+    }
+
+    const latest = usePosStore.getState()
+    try {
+      await apiClient.put(`/orders/${currentOrderId}/meta`, {
+        is_vip: !!(latest.isVipOrder || latest.customer?.is_vip || latest.customer?.isVip),
+        customer_id: (!latest.customer?.is_temp ? latest.customer?.id : null) || null,
+        customer_name: latest.customer?.name || null,
+        customer_phone: latest.customer?.phone || null,
+        customer_address: latest.customer?.address || null,
+        receipt_paid_stamp: isPaidPrint,
+      })
+    } catch { /* persist is best-effort */ }
+
+    return { ok: true as const, currentOrderId, wasEditing, latest }
+  }
+
   const handleSendKot = async () => {
     try {
       const { usePrinterStore } = await import("../store/printerStore")
-      const state = usePosStore.getState()
-      const wasEditing = !!state.editingOrderId
-      let currentOrderId = state.editingOrderId || ((state.activeOrder as any)?.order_number ? state.activeOrder?.id : null)
-
-      if (!currentOrderId || !(state.activeOrder as any)?.order_number) {
-        const checkoutKey = newId()
-        const checkoutResult: any = await cartService.checkout({
-          order_type: state.orderType === 'Delivery' ? 'DELIVERY' : state.orderType === 'Takeaway' ? 'TAKEAWAY' : state.orderType === 'Drive Through' ? 'DRIVE_THROUGH' : 'DINE_IN',
-          customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || null,
-          customer_name: state.customer?.name || null,
-          customer_phone: state.customer?.phone || null,
-          customer_address: state.customer?.address || null,
-          is_vip: state.isVipOrder || !!state.customer?.is_vip || !!state.customer?.isVip || false,
-          table_id: state.tableNumber || null,
-          waiter_id: state.waiterId || null,
-          waiter_name_snapshot: state.waiterName || null,
-          rider_id: state.riderId || null,
-          rider_name_snapshot: state.riderName || null,
-          delivery_charges: state.orderType === 'Delivery' ? state.deliveryCharges : 0,
-          service_charge: state.getServiceCharge(),
-          is_tax_enabled: false,
-        }, checkoutKey)
-        if (!checkoutResult?.success) {
-          alert("KOT could not be sent. Checkout failed.")
-          return
-        }
-        const order = checkoutResult.data
-        currentOrderId = order.id
-        usePosStore.setState({
-          activeOrder: { ...order, service_charge: state.getServiceCharge() },
-          previewOrderNumber: order.order_number
-        })
+      const placed = await placeCartOrder()
+      if (!placed.ok) {
+        alert("KOT could not be sent. Checkout failed.")
+        return
       }
-
-      if (currentOrderId) {
-        const latest = usePosStore.getState()
-        try {
-          await apiClient.put(`/orders/${currentOrderId}/meta`, {
-            is_vip: !!(latest.isVipOrder || latest.customer?.is_vip || latest.customer?.isVip),
-            customer_id: (!latest.customer?.is_temp ? latest.customer?.id : null) || null,
-            customer_name: latest.customer?.name || null,
-            customer_phone: latest.customer?.phone || null,
-            customer_address: latest.customer?.address || null,
-          })
-        } catch { /* VIP persist is best-effort before KOT */ }
-        const preview = {
-          orderNumber: (latest.activeOrder as any)?.order_number || latest.previewOrderNumber,
-          orderType: latest.orderType,
-          tableNumber: latest.tableNumber,
-          cashierName: user?.name || 'Cashier',
-          waiterName: latest.waiterName || null,
-          riderName: latest.riderName || null,
-          isVip: latest.isVipOrder || latest.customer?.is_vip || latest.customer?.isVip || false,
-          notes: orderNotes || null,
-          timestamp: new Date().toISOString(),
-          items: latest.cart.map((item: any) => ({
-            name: item.name,
-            quantity: item.quantity,
-            selectedModifiers: item.selectedModifiers,
-            notes: item.notes,
-            combo_components: item.combo_components || item.comboComponents || []
-          }))
-        }
-        const kot = await usePrinterStore.getState().printKitchen(currentOrderId, user?.id || user?.name || 'cashier')
-        setKotPreview(preview)
-        if (!kot) alert("KOT could not be sent to the kitchen printer. Check USB or LAN. Preview is still shown.")
-        useOrderStore.getState().syncOrdersFromBackend()
-        if (!wasEditing) {
-          await resetAfterPlace()
-        }
+      const { currentOrderId, wasEditing, latest } = placed
+      if (!currentOrderId) {
+        alert("KOT could not be sent. Checkout failed.")
+        return
+      }
+      const preview = {
+        orderNumber: formatReceiptOrderNumber((latest.activeOrder as any)?.order_number || latest.previewOrderNumber),
+        orderType: latest.orderType,
+        tableNumber: latest.tableNumber,
+        cashierName: user?.name || 'Cashier',
+        waiterName: latest.waiterName || null,
+        riderName: latest.riderName || null,
+        isVip: latest.isVipOrder || latest.customer?.is_vip || latest.customer?.isVip || false,
+        notes: orderNotes || null,
+        timestamp: new Date().toISOString(),
+        items: latest.cart.map((item: any) => ({
+          name: item.name,
+          quantity: item.quantity,
+          selectedModifiers: item.selectedModifiers,
+          notes: item.notes,
+          combo_components: item.combo_components || item.comboComponents || []
+        }))
+      }
+      const kot = await usePrinterStore.getState().printKitchen(currentOrderId, user?.id || user?.name || 'cashier')
+      setKotPreview(preview)
+      if (!kot) alert("KOT could not be sent to the kitchen printer. Check USB or LAN. Preview is still shown.")
+      useOrderStore.getState().syncOrdersFromBackend()
+      if (!wasEditing) {
+        await resetAfterPlace()
       }
     } catch {
       alert("KOT could not be sent. Check kitchen printer (USB or LAN).")
+    }
+  }
+
+  const handlePrintReceiptFromCart = async () => {
+    try {
+      const placed = await placeCartOrder()
+      if (!placed.ok) {
+        alert("Order could not be placed. Receipt was not printed.")
+        return
+      }
+      const { currentOrderId, wasEditing, latest } = placed
+      if (!currentOrderId) {
+        alert("Order could not be placed. Receipt was not printed.")
+        return
+      }
+      const liveCart = latest.cart || cart
+      const receiptFromCart = {
+        items: liveCart.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          category: item.category,
+          selectedModifiers: item.selectedModifiers,
+          notes: item.notes,
+          combo_components: item.combo_components || item.comboComponents || []
+        })),
+        subtotal: getSubtotal(),
+        serviceCharge: getServiceCharge(),
+        deliveryCharge: latest.orderType === 'Delivery' ? (latest.deliveryCharges || 0) : 0,
+        total: getNetTotal(),
+        notes: orderNotes || null
+      }
+
+      try {
+        const { usePrinterStore } = await import("../store/printerStore")
+        const ps = usePrinterStore.getState()
+        const hasThermal = ps.printers.some(
+          (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
+        )
+        if (hasThermal && currentOrderId) {
+          const result = await ps.printReceipt(currentOrderId, user?.id || user?.name || 'cashier', isPaidPrint)
+          if (result?.job_id) {
+            useOrderStore.getState().syncOrdersFromBackend()
+            if (!wasEditing) await resetAfterPlace()
+            return
+          }
+        }
+      } catch { /* fallback to on-screen receipt */ }
+
+      try {
+        const { fetchOrderDetail } = await import('../api/historyApi')
+        const { mapHistoryDetailToOrder } = await import('../store/orderStore')
+        const res = await fetchOrderDetail(currentOrderId)
+        if (res.success && res.data) {
+          const fullOrder = mapHistoryDetailToOrder(res.data, res.data)
+          setPrintOrder({
+            ...fullOrder,
+            ...receiptFromCart,
+            paymentStatus: isPaidPrint ? 'Paid' : (fullOrder.paymentStatus || 'Unpaid')
+          })
+        } else {
+          setPrintOrder({
+            ...receiptFromCart,
+            id: currentOrderId,
+            orderNumber: formatReceiptOrderNumber((latest.activeOrder as any)?.order_number || latest.previewOrderNumber),
+            orderType: latest.orderType,
+            tableNumber: latest.tableNumber,
+            customerName: latest.customer?.name || 'Guest',
+            cashierName: user?.name || 'Cashier',
+            timestamp: new Date().toISOString(),
+            paymentStatus: isPaidPrint ? 'Paid' : 'Unpaid'
+          } as any)
+        }
+      } catch {
+        setPrintOrder({
+          ...receiptFromCart,
+          id: currentOrderId,
+          orderNumber: formatReceiptOrderNumber((latest.activeOrder as any)?.order_number || latest.previewOrderNumber),
+          orderType: latest.orderType,
+          tableNumber: latest.tableNumber,
+          customerName: latest.customer?.name || 'Guest',
+          cashierName: user?.name || 'Cashier',
+          timestamp: new Date().toISOString(),
+          paymentStatus: isPaidPrint ? 'Paid' : 'Unpaid'
+        } as any)
+      }
+
+      useOrderStore.getState().syncOrdersFromBackend()
+      if (!wasEditing) await resetAfterPlace()
+    } catch {
+      alert("Order could not be placed. Check the cart and try again.")
     }
   }
 
@@ -1708,7 +1812,7 @@ export default function POS() {
               <div className="p-3 border-b border-border bg-secondary/30">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <h2 className="font-black tracking-wider uppercase text-muted-foreground text-[10px] mb-1 mt-1">Order #{activeOrder?.order_number || previewOrderNumber || orderCounter}</h2>
+                    <h2 className="font-black tracking-wider text-foreground text-sm mb-1 mt-1">{formatReceiptOrderNumber(activeOrder?.order_number || previewOrderNumber)}</h2>
                   </div>
 
                   <div className="flex flex-col items-center justify-center">
@@ -2058,98 +2162,7 @@ export default function POS() {
                         <span className="text-[9px] uppercase">KOT</span>
                       </button>
                       <button
-                        onClick={async () => {
-                          try {
-                            const { usePrinterStore } = await import("../store/printerStore")
-                            const ps = usePrinterStore.getState()
-                            const hasThermal = ps.printers.some(
-                              (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
-                            )
-                            const currentOrderId = usePosStore.getState().editingOrderId || usePosStore.getState().activeOrder?.id
-                            if (hasThermal && currentOrderId) {
-                              const result = await ps.printReceipt(currentOrderId, user?.id || user?.name || 'cashier', isPaidPrint)
-                              if (result?.job_id) {
-                                alert("Receipt queued to Thermal Printer")
-                                return // thermal print queued
-                              }
-                            }
-                          } catch { /* fallback */ }
-                          
-                          const pos = usePosStore.getState()
-                          const currentOrderId = pos.editingOrderId || pos.activeOrder?.id
-                          const liveCart = pos.cart || cart
-                          const receiptFromCart = {
-                            items: liveCart.map((item: any) => ({
-                              id: item.id,
-                              name: item.name,
-                              price: item.price,
-                              quantity: item.quantity,
-                              category: item.category,
-                              selectedModifiers: item.selectedModifiers,
-                              notes: item.notes,
-                              combo_components: item.combo_components || item.comboComponents || []
-                            })),
-                            subtotal: getSubtotal(),
-                            serviceCharge: getServiceCharge(),
-                            deliveryCharge: orderType === 'Delivery' ? (deliveryCharges || 0) : 0,
-                            total: getNetTotal(),
-                            notes: orderNotes || null
-                          }
-                          if (currentOrderId) {
-                             try {
-                               const { fetchOrderDetail } = await import('../api/historyApi')
-                               const { mapHistoryDetailToOrder } = await import('../store/orderStore')
-                               const res = await fetchOrderDetail(currentOrderId)
-                               if (res.success && res.data) {
-                                 const fullOrder = mapHistoryDetailToOrder(res.data, res.data)
-                                 setPrintOrder({
-                                   ...fullOrder,
-                                   ...receiptFromCart,
-                                   paymentStatus: isPaidPrint ? 'Paid' : (fullOrder.paymentStatus || 'Unpaid')
-                                 })
-                               } else {
-                                 setPrintOrder({ ...receiptFromCart, id: currentOrderId, orderNumber: activeOrder?.order_number || orderCounter.toString(), orderType, tableNumber, customerName: customer?.name || 'Guest', cashierName: user?.name || 'Cashier', timestamp: new Date().toISOString() } as any)
-                               }
-                             } catch(e) {
-                               setPrintOrder({ ...receiptFromCart, id: currentOrderId, orderNumber: activeOrder?.order_number || orderCounter.toString(), orderType, tableNumber, customerName: customer?.name || 'Guest', cashierName: user?.name || 'Cashier', timestamp: new Date().toISOString() } as any)
-                             }
-                          } else {
-                             const fullOrderData = {
-                               id: `draft-${Date.now()}`,
-                               orderNumber: activeOrder?.order_number || orderCounter.toString(),
-                               orderType,
-                               tableNumber: tableNumber || null,
-                               customerName: customer?.name || 'Guest',
-                               customerPhone: customer?.phone || null,
-                               customerAddress: customer?.address || null,
-                               notes: orderNotes || null,
-                               waiterName,
-                               riderName,
-                               status: 'Draft',
-                               kitchenStatus: 'Pending',
-                               paymentStatus: isPaidPrint ? 'Paid' : 'Unpaid',
-                               total: getNetTotal(),
-                               subtotal: getSubtotal(),
-                               serviceCharge: getServiceCharge(),
-                               deliveryCharge: orderType === 'Delivery' ? (deliveryCharges || 0) : 0,
-                               discount: 0,
-                               timestamp: new Date().toISOString(),
-                               items: cart.map(item => ({
-                                 id: item.id,
-                                 name: item.name,
-                                 price: item.price,
-                                 quantity: item.quantity,
-                                 category: item.category,
-                                 selectedModifiers: item.selectedModifiers,
-                                 notes: item.notes,
-                                 combo_components: item.combo_components || (item as any).comboComponents || []
-                               })),
-                               cashierName: user?.name || 'Cashier',
-                               isVip: isVipOrder || customer?.is_vip || customer?.isVip
-                             }
-                             setPrintOrder(fullOrderData)
-                          }
-                        }}
+                        onClick={handlePrintReceiptFromCart}
                         disabled={cart.length === 0}
                         className="p-1 bg-white hover:bg-orange-50 text-[#ff7b00] border border-[#ff7b00]/30 hover:border-[#ff7b00]/60 font-black rounded-lg disabled:opacity-50 flex flex-col items-center justify-center gap-0.5 transition-colors shadow-sm"
                       >
@@ -2549,7 +2562,7 @@ export default function POS() {
 
                       const fullOrderData = {
                         id: activeOrderId,
-                        orderNumber: activeOrder?.order_number || orderCounter.toString(),
+                        orderNumber: formatReceiptOrderNumber(activeOrder?.order_number || previewOrderNumber),
                         orderType,
                         tableNumber: tableNumber || null,
                         customerName: customer?.name || 'Guest',

@@ -32,17 +32,21 @@ if (app.isPackaged) {
   const defaultStorageRoot = path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', 'storage');
   const packedDb = path.join(defaultStorageRoot, 'database', 'pos.db');
   const liveDb = path.join(prodStorageRoot, 'database', 'pos.db');
-  // Copy only when this PC has no live database yet. Never crash if AppData/storage already exists
-  // (Node fs.cpSync throws EEXIST on an existing dest folder).
-  if (!fs.existsSync(liveDb) && fs.existsSync(packedDb)) {
+  const claimMarker = path.join(prodStorageRoot, '.needs-device-claim');
+  const liveExisted = fs.existsSync(liveDb);
+  // Copy only when this PC has no live database yet. Never overwrite AppData.
+  if (!liveExisted && fs.existsSync(packedDb)) {
     try {
       console.log('First run: Copying pre-populated database and storage to user data path...');
       copyDirContents(defaultStorageRoot, prodStorageRoot);
-      fs.writeFileSync(path.join(prodStorageRoot, '.needs-device-claim'), '1');
+      fs.writeFileSync(claimMarker, '1');
       console.log('First run: device ID will be chosen on login.');
     } catch (e) {
       console.error('First-run storage copy failed:', e.message);
     }
+  } else if (liveExisted && fs.existsSync(claimMarker)) {
+    // Upgrade of a working till — never treat as a fresh clone.
+    try { fs.unlinkSync(claimMarker); } catch { /* ignore */ }
   }
   // Always fill in missing product photos (sync may have pointed DB at dead cloud URLs).
   try {

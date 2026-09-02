@@ -5,6 +5,7 @@ import type { PrintJob } from '../store/printerStore'
 import { useKdsStore } from '../store/kdsStore'
 import { useOrderStore } from '../store/orderStore'
 import { QRCodeSVG } from 'qrcode.react'
+import { formatReceiptOrderNumber } from '../utils/receiptOrderNumber'
 
 export const PrintTemplates: React.FC = () => {
   const { printQueue } = usePrinterStore()
@@ -60,7 +61,7 @@ const ReceiptTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
       </div>
 
       <div className="text-sm font-bold mb-4 space-y-0.5">
-        <div><span className="mr-1">Order ID:</span>#{order.orderNumber}</div>
+        <div className="text-[15px] font-black leading-tight">{formatReceiptOrderNumber(order.orderNumber)}</div>
         
         {isDelivery && order.customerName && (
           <div className="flex gap-1">
@@ -86,7 +87,7 @@ const ReceiptTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
         
         <div><span className="mr-1">Status:</span>{order.paymentStatus}</div>
         
-        <div><span className="mr-1">Time:</span>{new Date(order.timestamp).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }).replace(',', '')}</div>
+        <div className="text-[13px] font-black">{new Date(order.timestamp).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }).replace(',', '')}</div>
         
         {order.isVip && (
           <div className="font-black uppercase text-lg py-1 mt-3 mb-2 text-center">** VIP ORDER **</div>
@@ -202,10 +203,10 @@ const KitchenTicketTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
       </div>
 
       <div className="text-sm font-bold mb-4 space-y-1">
-        <div className="text-xl">Order #: {ticket.orderNumber}</div>
+        <div className="text-xl font-black">{formatReceiptOrderNumber(ticket.orderNumber)}</div>
         <div>Type: {ticket.orderType}</div>
         {ticket.orderType === 'Dine In' && <div>Table: {ticket.table}</div>}
-        <div>Time: {new Date(ticket.orderTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+        <div className="font-black">Time: {new Date(ticket.orderTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
       </div>
 
       {/* Items */}

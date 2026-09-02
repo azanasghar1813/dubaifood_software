@@ -8,6 +8,7 @@ import { configApi } from "../api/configApi"
 import { apiClient } from "../api/client"
 import { wipeOutHistory } from "../api/historyApi"
 import type { BusinessProfile, FinanceConfig, Printer, OrderConfig } from "../api/configApi"
+import { tillLetterFromPrefix } from "../utils/receiptOrderNumber"
 
 
 export default function Settings() {
@@ -278,7 +279,7 @@ export default function Settings() {
           {waiterUrls.length > 0 && (
             <div className="mt-3 p-3 rounded-xl bg-secondary/60 border border-border">
               <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">
-                Waiter tablet link {devicePrefix ? `(${devicePrefix})` : ""}
+                Waiter tablet link {devicePrefix ? `(${tillLetterFromPrefix(devicePrefix) || devicePrefix})` : ""}
               </p>
               {waiterUrls.map((url) => (
                 <p key={url} className="text-sm font-black text-orange-500 break-all">{url}</p>

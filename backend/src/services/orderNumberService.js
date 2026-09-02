@@ -1,6 +1,8 @@
 import { dbEngine } from '../database/sqlite.js';
 import { configService } from './configService.js';
 import crypto from 'crypto';
+import { buildReceiptOrderNumber } from '../utils/receiptOrderNumber.js';
+import { dateUtils } from '../utils/dateUtils.js';
 
 class OrderNumberService {
   /**
@@ -12,24 +14,21 @@ class OrderNumberService {
    */
   generateNextNumber(branchId = 'DEFAULT_BRANCH', businessDate = null) {
     if (!businessDate) {
-      businessDate = new Date().toISOString().split('T')[0];
+      businessDate = dateUtils.getBusinessDate();
     }
 
     const orderConfig = configService.getOrderConfig() || {};
     const syncConfig = configService.getSyncConfig() || {};
     
-    // Prioritize the device-specific order_prefix, fallback to global prefix or 'POS'
+    // Keep the stored prefix as-is (PC-A, PCA, …) so existing tills are not remapped.
     let prefix = syncConfig.order_prefix || orderConfig.order_number_prefix || 'POS';
     if (/^T[0-9A-F]{2}$/i.test(String(prefix))) prefix = 'POS';
-    const padLength = orderConfig.order_number_pad_length || 1;
-    
+
     let resetDaily = true;
     if (orderConfig.order_number_reset_daily !== undefined) {
       const val = String(orderConfig.order_number_reset_daily).toLowerCase();
       resetDaily = val === 'true' || val === '1';
     }
-    
-    const template = orderConfig.order_number_template || '{PREFIX}-{SEQ}';
 
     const dateKey = resetDaily ? businessDate : 'GLOBAL';
 
@@ -55,14 +54,7 @@ class OrderNumberService {
         `).run(crypto.randomUUID(), branchId, dateKey, prefix, nextSeq);
       }
 
-      const seqPadded = String(nextSeq).padStart(padLength, '0');
-      const dateFormatted = businessDate.replace(/-/g, '');
-
-      let orderNumber = template
-        .replace('{PREFIX}', prefix)
-        .replace('{YYYYMMDD}', dateFormatted)
-        .replace('{BRANCH}', branchId)
-        .replace('{SEQ}', seqPadded);
+      let orderNumber = buildReceiptOrderNumber(prefix, nextSeq, resetDaily ? businessDate : null);
 
       while (dbEngine.prepare('SELECT id FROM orders WHERE order_number = ?').get(orderNumber)) {
         nextSeq += 1;
@@ -71,12 +63,7 @@ class OrderNumberService {
           SET last_sequence = ?, updated_at = CURRENT_TIMESTAMP
           WHERE branch_id = ? AND business_date = ? AND prefix = ?
         `).run(nextSeq, branchId, dateKey, prefix);
-        const padded = String(nextSeq).padStart(padLength, '0');
-        orderNumber = template
-          .replace('{PREFIX}', prefix)
-          .replace('{YYYYMMDD}', dateFormatted)
-          .replace('{BRANCH}', branchId)
-          .replace('{SEQ}', padded);
+        orderNumber = buildReceiptOrderNumber(prefix, nextSeq, resetDaily ? businessDate : null);
       }
 
       return orderNumber;
@@ -85,32 +72,24 @@ class OrderNumberService {
 
   peekNextNumber(branchId = 'DEFAULT_BRANCH', businessDate = null) {
     if (!businessDate) {
-      businessDate = new Date().toISOString().split('T')[0];
+      businessDate = dateUtils.getBusinessDate();
     }
     const orderConfig = configService.getOrderConfig() || {};
     const syncConfig = configService.getSyncConfig() || {};
     let prefix = syncConfig.order_prefix || orderConfig.order_number_prefix || 'POS';
     if (/^T[0-9A-F]{2}$/i.test(String(prefix))) prefix = 'POS';
-    const padLength = orderConfig.order_number_pad_length || 1;
     let resetDaily = true;
     if (orderConfig.order_number_reset_daily !== undefined) {
       const val = String(orderConfig.order_number_reset_daily).toLowerCase();
       resetDaily = val === 'true' || val === '1';
     }
-    const template = orderConfig.order_number_template || '{PREFIX}-{SEQ}';
     const dateKey = resetDaily ? businessDate : 'GLOBAL';
     const seqRow = dbEngine.prepare(`
       SELECT last_sequence FROM order_number_sequences
       WHERE branch_id = ? AND business_date = ? AND prefix = ?
     `).get(branchId, dateKey, prefix);
     const nextSeq = seqRow ? seqRow.last_sequence + 1 : 1;
-    const seqPadded = String(nextSeq).padStart(padLength, '0');
-    const dateFormatted = businessDate.replace(/-/g, '');
-    return template
-      .replace('{PREFIX}', prefix)
-      .replace('{YYYYMMDD}', dateFormatted)
-      .replace('{BRANCH}', branchId)
-      .replace('{SEQ}', seqPadded);
+    return buildReceiptOrderNumber(prefix, nextSeq, resetDaily ? businessDate : null);
   }
 }
 

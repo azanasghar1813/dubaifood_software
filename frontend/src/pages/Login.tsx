@@ -5,6 +5,7 @@ import { authService } from "../services/authService"
 import { apiClient } from "../api/client"
 import { useLoadingStore } from "../store/loadingStore"
 import { toast } from "../store/toastStore"
+import { TILL_LETTERS, isAssignedTillPrefix } from "../utils/receiptOrderNumber"
 import { Lock, User, ChevronDown, Loader2 } from "lucide-react"
 import { motion } from "framer-motion"
 
@@ -37,8 +38,7 @@ export default function Login() {
     fetchUsers()
     apiClient.get('/health').then((res: any) => {
       const prefix = String(res?.order_prefix || res?.data?.order_prefix || '').trim().toUpperCase()
-      const allowed = ['PC-A', 'PC-B', 'PC-C', 'PC-D', 'PC-F']
-      if (!prefix || !allowed.includes(prefix)) setNeedsDeviceId(true)
+      if (!isAssignedTillPrefix(prefix)) setNeedsDeviceId(true)
     }).catch(() => {})
   }, [])
 
@@ -47,7 +47,7 @@ export default function Login() {
     try {
       await apiClient.post('/health/device-id', { order_prefix: deviceIdInput })
       setNeedsDeviceId(false)
-      toast.success("Device ID saved", `Orders will use ${deviceIdInput.toUpperCase()}-1, ${deviceIdInput.toUpperCase()}-2`)
+      toast.success("Till saved", `Receipts will use ${deviceIdInput.toUpperCase()} - #1, ${deviceIdInput.toUpperCase()} - #2`)
     } catch (e: any) {
       toast.error("Could not save device ID", e?.response?.data?.message || e?.message)
     } finally {
@@ -97,12 +97,12 @@ export default function Login() {
       {needsDeviceId && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/90 p-4">
           <div className="w-full max-w-md bg-card border border-border rounded-3xl p-8 shadow-2xl">
-            <h2 className="text-2xl font-black mb-2">Set this till’s device ID</h2>
+            <h2 className="text-2xl font-black mb-2">Set this till</h2>
             <p className="text-sm text-muted-foreground font-bold mb-6">
-              Choose this counter’s ID once (PC-A to PC-F). Waiter tablets do not need their own ID — they connect to this laptop. Orders will look like PC-A-1, PC-B-1.
+              Choose A, B, C, D or F once for this computer. Existing tills already set are not changed. Receipts will look like A - #1, B - #1.
             </p>
             <div className="grid grid-cols-3 gap-3 mb-4">
-              {['PC-A', 'PC-B', 'PC-C', 'PC-D', 'PC-F'].map((id) => (
+              {TILL_LETTERS.map((id) => (
                 <button
                   key={id}
                   type="button"
@@ -119,11 +119,11 @@ export default function Login() {
             </div>
             <button
               type="button"
-              disabled={!['PC-A', 'PC-B', 'PC-C', 'PC-D', 'PC-F'].includes(deviceIdInput) || deviceSaving}
+              disabled={!TILL_LETTERS.includes(deviceIdInput as typeof TILL_LETTERS[number]) || deviceSaving}
               onClick={saveDeviceId}
               className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-black uppercase disabled:opacity-50"
             >
-              {deviceSaving ? "Saving..." : "Save device ID"}
+              {deviceSaving ? "Saving..." : "Save till"}
             </button>
           </div>
         </div>

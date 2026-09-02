@@ -15,6 +15,7 @@ import { fetchOrderDetail } from "../api/historyApi"
 import { apiClient } from "../api/client"
 import ReceiptPreview from "../pages/ReceiptPreview"
 import KitchenTicketPreview from "../pages/KitchenTicketPreview"
+import { formatReceiptOrderNumber } from "../utils/receiptOrderNumber"
 
 interface ActiveOrdersSidebarProps {
   isOpen: boolean
@@ -230,7 +231,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
 
   const handleMarkComplete = async (e: React.MouseEvent | null, order: Order) => {
     if (e) e.stopPropagation()
-    const confirmMsg = `Mark order #${order.orderNumber} as COMPLETED?\nTotal: PKR ${order.total.toLocaleString()}`
+    const confirmMsg = `Mark order ${formatReceiptOrderNumber(order.orderNumber)} as COMPLETED?\nTotal: PKR ${order.total.toLocaleString()}`
     if (!window.confirm(confirmMsg)) return
 
     try {
@@ -387,7 +388,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                     <div className="flex justify-between items-start">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-lg text-primary">#{order.orderNumber}</span>
+                          <span className="font-mono font-bold text-lg text-primary">{formatReceiptOrderNumber(order.orderNumber)}</span>
                           <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-secondary text-foreground">
                             {order.orderType}
                           </span>

@@ -1,5 +1,6 @@
 import { useEffect } from "react"
 import { Printer, X } from "lucide-react"
+import { formatReceiptOrderNumber } from "../utils/receiptOrderNumber"
 
 export interface KitchenTicketPreviewOrder {
   orderNumber?: string
@@ -28,7 +29,7 @@ interface KitchenTicketPreviewProps {
 }
 
 export default function KitchenTicketPreview({ order, autoPrint, onClose }: KitchenTicketPreviewProps) {
-  const orderNumber = order?.orderNumber || "N/A"
+  const orderNumber = formatReceiptOrderNumber(order?.orderNumber)
   const orderType = order?.orderType ?? "Dine In"
   const tableNumber = order?.tableNumber ?? null
   const cashier = order?.cashierName ?? "Cashier"
@@ -80,14 +81,14 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
 
     return `
       <div style="text-align:center;font-weight:900;font-size:18px;letter-spacing:1px;margin-bottom:6px;">KITCHEN TICKET</div>
-      <div style="text-align:center;font-weight:900;font-size:22px;margin-bottom:8px;">#${orderNumber}</div>
+      <div style="text-align:center;font-weight:900;font-size:22px;margin-bottom:8px;">${orderNumber}</div>
       ${isVip ? `<div style="text-align:center;font-weight:900;font-size:16px;margin:6px 0;">** VIP ORDER **</div>` : ""}
       <div style="font-size:12px;display:flex;flex-direction:column;gap:3px;margin-bottom:10px;">
         ${!isDelivery && tableNumber && tableNumber !== "N/A" ? `<div><b>Table:</b> ${tableNumber}</div>` : ""}
         <div><b>Type:</b> ${orderType}</div>
         <div><b>Cashier:</b> ${cashier}</div>
         ${isDelivery ? `<div><b>Rider:</b> ${riderName || "Unassigned"}</div>` : `<div><b>Waiter:</b> ${waiterName || "Unassigned"}</div>`}
-        <div><b>Time:</b> ${dateStr}, ${timeStr}</div>
+        <div style="font-weight:900;"><b>Time:</b> ${dateStr}, ${timeStr}</div>
       </div>
       ${stationBlocks}
       ${notes ? `<div style="margin-top:8px;font-weight:900;border-top:2px dashed #000;padding-top:6px;">NOTE: ${notes}</div>` : ""}
@@ -98,7 +99,7 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
     const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>KOT #${orderNumber}</title>
+  <title>KOT ${orderNumber}</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:sans-serif; background:#fff; color:#000; display:flex; justify-content:center; align-items:flex-start; min-height:100vh; }
@@ -135,7 +136,7 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
   const preview = (
     <div className="bg-white text-black font-sans p-4 rounded-lg w-full max-w-sm mx-auto shadow-sm" style={{ width: "320px" }}>
       <div className="text-center font-black text-lg tracking-widest mb-1">KITCHEN TICKET</div>
-      <div className="text-center font-black text-2xl mb-2">#{orderNumber}</div>
+      <div className="text-center font-black text-2xl mb-2">{orderNumber}</div>
       {isVip && (
         <div className="text-center font-black text-base my-2">** VIP ORDER **</div>
       )}
@@ -148,7 +149,7 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
         {isDelivery
           ? <div><span className="font-black mr-1">Rider:</span>{riderName || "Unassigned"}</div>
           : <div><span className="font-black mr-1">Waiter:</span>{waiterName || "Unassigned"}</div>}
-        <div><span className="font-black mr-1">Time:</span>{dateStr}, {timeStr}</div>
+        <div className="font-black"><span className="mr-1">Time:</span>{dateStr}, {timeStr}</div>
       </div>
       <div className="border-2 border-black mb-2">
         <table className="w-full text-[13px] border-collapse">
@@ -190,7 +191,7 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
       <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
         <div className="relative w-full max-w-sm max-h-[90vh] flex flex-col bg-card rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
-            <h3 className="font-bold text-foreground text-sm">Kitchen Ticket — #{orderNumber}</h3>
+            <h3 className="font-bold text-foreground text-sm">Kitchen Ticket — {orderNumber}</h3>
             <div className="flex items-center gap-2">
               <button onClick={doPrint} className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors">
                 <Printer className="w-4 h-4" /> Print

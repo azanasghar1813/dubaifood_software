@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { deleteOrder } from "../api/historyApi"
 import { DateUtils } from "../utils/dateUtils"
+import { formatReceiptOrderNumber } from "../utils/receiptOrderNumber"
 
 // Theme Colors
 
@@ -408,7 +409,7 @@ export default function Orders() {
   }
 
   const handleDuplicate = (order: Order) => {
-    alert(`Duplicating Order #${order.orderNumber} is scheduled for a future update.`)
+    alert(`Duplicating Order ${formatReceiptOrderNumber(order.orderNumber)} is scheduled for a future update.`)
   }
 
   const handleCancelOrder = async (order: Order) => {
@@ -577,16 +578,16 @@ export default function Orders() {
   const paginatedOrders = filteredAndSortedOrders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto text-foreground">
+    <div className="space-y-3 max-w-[1600px] mx-auto text-foreground text-[13px] leading-tight">
 
       {/* HEADER SECTION */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between p-6 bg-card border border-border rounded-3xl shadow-sm gap-4">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between p-3 bg-card border border-border rounded-2xl shadow-sm gap-3">
         <div>
-          <h1 className="text-2xl md:text-3xl font-black tracking-tight flex items-center gap-3">
+          <h1 className="text-xl font-black tracking-tight flex items-center gap-2">
             Order History
             <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full uppercase tracking-wider">Enterprise Ops</span>
           </h1>
-          <p className="text-sm text-muted-foreground font-bold mt-1">
+          <p className="text-xs text-muted-foreground font-bold mt-0.5">
             {filteredAndSortedOrders.length} order(s) found based on current filters.
           </p>
         </div>
@@ -611,7 +612,7 @@ export default function Orders() {
       </div>
 
       {/* SEARCH & FILTERS PANEL */}
-      <div className="bg-card border border-border rounded-3xl p-4 shadow-sm flex flex-col gap-3">
+      <div className="bg-card border border-border rounded-2xl p-3 shadow-sm flex flex-col gap-2">
         <div className="flex flex-col lg:flex-row gap-4 justify-between">
           
           <div className="relative w-full lg:w-80 shrink-0">
@@ -691,7 +692,7 @@ export default function Orders() {
       </div>
 
       {/* ORDERS TABLE */}
-      <div className="bg-card border border-border rounded-3xl shadow-sm overflow-hidden flex flex-col">
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden flex flex-col">
         {selectedOrderIds.size > 0 && (
           <div className="bg-primary/10 border-b border-border p-3 flex justify-between items-center px-6">
             <span className="text-sm font-bold text-primary">{selectedOrderIds.size} orders selected</span>
@@ -702,47 +703,47 @@ export default function Orders() {
             </div>
           </div>
         )}
-        <div className="overflow-x-auto max-h-[60vh] overflow-y-auto custom-scrollbar relative">
-          <table className="w-full text-left border-collapse min-w-[1000px]">
+        <div className="overflow-x-auto max-h-[calc(100vh-250px)] overflow-y-auto custom-scrollbar relative">
+          <table className="w-full text-left border-collapse min-w-[900px] text-[13px]">
             <thead className="sticky top-0 bg-secondary z-10 shadow-sm">
               <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted-foreground font-black">
-                <th className="p-4 w-12 text-center">
+                <th className="px-3 py-2 w-12 text-center">
                   <input type="checkbox" onChange={handleSelectAll} checked={paginatedOrders.length > 0 && selectedOrderIds.size === paginatedOrders.length} className="w-4 h-4 rounded border-border text-primary focus:ring-primary" />
                 </th>
-                <th className="p-4">Order #</th>
-                <th className="p-4">Date & Time</th>
-                <th className="p-4">Customer</th>
-                <th className="p-4">Type</th>
-                <th className="p-4">Table/Waiter</th>
-                <th className="p-4">Items</th>
-                <th className="p-4">Total</th>
-                <th className="p-4">Badges (Pay/Status)</th>
-                <th className="p-4 text-right">Actions</th>
+                <th className="px-3 py-2">Order #</th>
+                <th className="px-3 py-2">Date & Time</th>
+                <th className="px-3 py-2">Customer</th>
+                <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2">Table/Waiter</th>
+                <th className="px-3 py-2">Items</th>
+                <th className="px-3 py-2">Total</th>
+                <th className="px-3 py-2">Badges (Pay/Status)</th>
+                <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border text-sm">
+            <tbody className="divide-y divide-border">
               {paginatedOrders.map((order) => (
                 <tr key={order.id} className={`hover:bg-secondary/40 transition-colors group cursor-pointer ${selectedOrderIds.has(order.id) ? 'bg-primary/5' : ''}`} onClick={() => setSelectedOrder(order)}>
-                  <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectOrder(order.id)} className="w-4 h-4 rounded border-border text-primary focus:ring-primary" />
                   </td>
-                  <td className="p-4 font-black">
+                  <td className="px-3 py-2 font-black">
                     <div className="flex flex-col items-start gap-1">
-                      <span>#{order.orderNumber}</span>
+                      <span className="font-black">{formatReceiptOrderNumber(order.orderNumber)}</span>
                       {order.isEdited && <span className={`text-[8px] px-1.5 py-0.5 rounded uppercase border font-bold tracking-widest leading-none ${order.isNegativeEdit ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>Edited</span>}
                     </div>
                   </td>
-                  <td className="p-4 text-xs font-medium text-muted-foreground">
+                  <td className="px-3 py-2 text-xs font-medium text-muted-foreground">
                     <div>{new Date(order.timestamp).toLocaleDateString()}</div>
                     <div className="font-bold text-foreground">{new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                   </td>
-                  <td className="p-4 font-bold">
+                  <td className="px-3 py-2 font-bold">
                     {order.customerName || "Guest"}
                   </td>
-                  <td className="p-4">
+                  <td className="px-3 py-2">
                     <span className="font-bold text-xs bg-secondary px-2 py-1 rounded-md border border-border inline-block mb-1">{order.orderType}</span>
                   </td>
-                  <td className="p-4">
+                  <td className="px-3 py-2">
                     {order.orderType === 'Dine In' ? (
                       <div className="flex flex-col gap-0.5">
                         <div className="text-[10px] font-bold text-muted-foreground">Table: {order.tableNumber || "—"}</div>
@@ -757,10 +758,10 @@ export default function Orders() {
                       <div className="text-[10px] font-bold text-muted-foreground">—</div>
                     )}
                   </td>
-                  <td className="p-4 font-bold text-xs">
+                  <td className="px-3 py-2 font-bold text-xs">
                     {order.items.reduce((s, i) => s + i.quantity, 0)} Items
                   </td>
-                  <td className="p-4 font-black text-primary">
+                  <td className="px-3 py-2 font-black text-primary">
                     Rs {order.total.toLocaleString()}
                     {order.paymentStatus === 'Paid' && (
                       <div className="text-[10px] font-semibold text-muted-foreground mt-0.5">
@@ -768,7 +769,7 @@ export default function Orders() {
                       </div>
                     )}
                   </td>
-                  <td className="p-4">
+                  <td className="px-3 py-2">
                     <div className="flex flex-col gap-1 w-max">
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] font-bold w-6">PAY:</span>
@@ -811,7 +812,7 @@ export default function Orders() {
                       </div>
                     </div>
                   </td>
-                  <td className="p-4 text-right">
+                  <td className="px-3 py-2 text-right">
                     <div className="grid grid-cols-5 gap-1 w-[175px] ml-auto" onClick={e => e.stopPropagation()}>
                       <button onClick={() => setSelectedOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" title="View Details"><FileText className="w-4 h-4" /></button>
                       <button onClick={() => handlePrintReceipt(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-primary transition-colors flex items-center justify-center" title="Print/Reprint Receipt"><Printer className="w-4 h-4" /></button>
@@ -864,11 +865,11 @@ export default function Orders() {
             <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="relative w-full max-w-4xl bg-card h-full shadow-2xl flex flex-col border-l border-border">
 
               {/* Drawer Header */}
-              <div className="p-6 border-b border-border bg-secondary/30 flex items-start justify-between shrink-0">
+              <div className="p-4 border-b border-border bg-secondary/30 flex items-start justify-between shrink-0">
                 <div>
                   <div className="flex items-center gap-3 mb-1">
-                    <h2 className="text-2xl font-black flex items-center gap-2">
-                      Order #{selectedOrder.orderNumber}
+                    <h2 className="text-xl font-black flex items-center gap-2">
+                      {formatReceiptOrderNumber(selectedOrder.orderNumber)}
                       {selectedOrder.isEdited && <span className={`text-[10px] px-2 py-0.5 rounded uppercase border font-bold tracking-widest leading-none ${selectedOrder.isNegativeEdit ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>Edited</span>}
                     </h2>
                     <span className={`text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest border ${orderStatusColors[selectedOrder.status]}`}>{selectedOrder.status}</span>
@@ -1094,7 +1095,7 @@ export default function Orders() {
             <h3 className="text-lg font-black mb-1">Delete order</h3>
             <p className="text-sm font-bold text-muted-foreground mb-4">
               {deleteDialog.mode === 'one'
-                ? `Enter owner PIN to delete #${deleteDialog.order?.orderNumber}.`
+                ? `Enter owner PIN to delete ${formatReceiptOrderNumber(deleteDialog.order?.orderNumber)}.`
                 : `Enter owner PIN to delete ${selectedOrderIds.size} selected order(s).`}
             </p>
             <input

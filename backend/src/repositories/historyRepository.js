@@ -93,7 +93,13 @@ class HistoryRepository {
         ) AS receipt_paid_stamp,
         o.service_charge AS service_charge,
         o.delivery_fee AS delivery_charges,
-        (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM activity_logs al WHERE al.entity_id = o.id AND al.action IN ('ITEM_REMOVED', 'ITEM_ADDED', 'QUANTITY_CHANGED', 'ORDER_UPDATED')) AS is_edited
+        (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM activity_logs al
+          WHERE al.entity_id = o.id
+            AND (
+              al.action IN ('ITEM_REMOVED', 'QUANTITY_CHANGED')
+              OR (al.action = 'ITEM_ADDED' AND al.created_at > datetime(o.created_at, '+5 seconds'))
+            )
+        ) AS is_edited
       FROM orders o
       LEFT JOIN dining_tables dt ON dt.id = o.table_id
       LEFT JOIN users u ON u.id = o.cashier_user_id

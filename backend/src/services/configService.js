@@ -11,14 +11,15 @@ import os from 'os';
 import fs from 'fs';
 import path from 'path';
 import config from '../config/index.js';
+import { canonicalTillPrefix, isAssignedTillPrefix } from '../utils/receiptOrderNumber.js';
 
 export const ALLOWED_DEVICE_PREFIXES = ['PC-A', 'PC-B', 'PC-C', 'PC-D', 'PC-F'];
 
 const isLegacyTillPrefix = (prefix) => {
   const value = String(prefix || '').trim().toUpperCase();
   if (!value) return false;
-  if (ALLOWED_DEVICE_PREFIXES.includes(value)) return false;
-  return /^(T[0-9A-F]{2}|PC[1-5]|PC-[1-5]|PCA|PCB|PCC|PCD|PCE|PCF)$/i.test(value);
+  if (isAssignedTillPrefix(value)) return false;
+  return /^(T[0-9A-F]{2}|PC[1-5]|PC-[1-5])$/i.test(value);
 };
 
 const execAsync = promisify(exec);
@@ -47,8 +48,21 @@ class ConfigService {
       this.updateApplicationCategory('SYSTEM', 'SYNC', { device_id: deviceId });
       console.log(`[ConfigService] Generated persistent device_id: ${deviceId}`);
     }
+
+    try {
+      const resetRow = dbEngine.prepare(
+        "SELECT value FROM business_settings WHERE key = 'order_number_reset_daily'"
+      ).get();
+      if (!resetRow) {
+        dbEngine.prepare(`
+          INSERT INTO business_settings (key, value, category, description)
+          VALUES ('order_number_reset_daily', 'true', 'ORDER', 'Restart ticket numbers each business day at 6 AM')
+        `).run();
+        this.refreshCache();
+      }
+    } catch { /* settings table may not exist yet */ }
     
-    // Legacy prefixes (T93, PC1, …) are wiped so the till can pick PC-A / PC-B.
+    // Only clear junk prefixes (T93, PC1). Never touch A / PC-A / PCA already assigned.
     try {
       const legacy = dbEngine.prepare(
         "SELECT value FROM application_settings WHERE key = 'order_prefix'"
@@ -56,7 +70,7 @@ class ConfigService {
       if (legacy && isLegacyTillPrefix(legacy.value)) {
         dbEngine.prepare("DELETE FROM application_settings WHERE key = 'order_prefix'").run();
         this.refreshCache();
-        console.log(`[ConfigService] Removed legacy till prefix ${legacy.value}. Choose PC-A–PC-F on login.`);
+        console.log(`[ConfigService] Removed legacy till prefix ${legacy.value}. Choose A–F on login.`);
       }
     } catch { /* settings table may not exist yet */ }
 
@@ -82,72 +96,30 @@ class ConfigService {
     console.log('[ConfigService] In-memory configuration cache loaded.');
   }
 
-  // Packed pos.db is copied from the build laptop and already has PC-A.
-  // Cloud pull never overwrites order_prefix — new tills must pick locally.
+  // First-run marker must NEVER delete live orders. Existing A/PC-A/PCA stays.
   _resetClonedIdentityIfNeeded() {
     const markerPath = path.join(config.paths.root, '.needs-device-claim');
     if (!fs.existsSync(markerPath)) return;
     try {
-      dbEngine.prepare("DELETE FROM application_settings WHERE key = 'device_id'").run();
-      dbEngine.prepare("DELETE FROM application_settings WHERE key = 'order_prefix'").run();
-      dbEngine.prepare('DELETE FROM sync_queue').run();
-      try { dbEngine.prepare('DELETE FROM sync_conflicts').run(); } catch { /* optional */ }
+      let orderCount = 0;
+      try {
+        orderCount = dbEngine.prepare('SELECT COUNT(*) AS c FROM orders').get()?.c || 0;
+      } catch { /* table may not exist */ }
+      const prefixRow = dbEngine.prepare(
+        "SELECT value FROM application_settings WHERE key = 'order_prefix'"
+      ).get();
+      const assigned = isAssignedTillPrefix(prefixRow?.value);
 
-      const wipe = (sql) => { try { dbEngine.prepare(sql).run(); } catch { /* optional */ } };
-      wipe('DELETE FROM order_combo_components');
-      wipe('DELETE FROM order_item_modifiers');
-      wipe('DELETE FROM order_item_addons');
-      wipe('DELETE FROM order_item_variants');
-      wipe('DELETE FROM order_items');
-      wipe('DELETE FROM order_payments');
-      wipe('DELETE FROM payment_receipts');
-      wipe('DELETE FROM order_timeline');
-      wipe('DELETE FROM order_metadata');
-      wipe('DELETE FROM order_audit_trail');
-      wipe('DELETE FROM order_search_index');
-      wipe('DELETE FROM order_tags');
-      wipe('DELETE FROM order_attachments');
-      wipe('DELETE FROM reprint_log');
-      wipe('DELETE FROM print_jobs');
-      wipe('DELETE FROM print_queue');
-      wipe('DELETE FROM cart_cache');
-      wipe('DELETE FROM orders');
-      wipe('DELETE FROM order_number_sequences');
-      wipe("DELETE FROM activity_logs WHERE entity_type IN ('ORDER', 'ORDER_ITEM', 'ORDER_PAYMENT', 'PAYMENT', 'PRINT')");
-      try { dbEngine.prepare("UPDATE dining_tables SET status = 'AVAILABLE'").run(); } catch { /* optional */ }
-      try { dbEngine.prepare("UPDATE tables SET status = 'Available'").run(); } catch { /* optional */ }
-      dbEngine.prepare(`
-        INSERT INTO application_settings (key, value, description)
-        VALUES ('last_sync_timestamp', '0', 'Last successful cloud pull timestamp')
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-      `).run();
-
-      const backfillTables = [
-        { table: 'categories', type: 'CATEGORY' },
-        { table: 'products', type: 'PRODUCT' },
-        { table: 'deals', type: 'DEAL' },
-        { table: 'customers', type: 'CUSTOMER' },
-        { table: 'users', type: 'USER' },
-        { table: 'tables', type: 'DINING_TABLE' },
-      ];
-      for (const { table, type } of backfillTables) {
-        try {
-          const rows = dbEngine.prepare(`SELECT id FROM ${table}`).all();
-          const insertStmt = dbEngine.prepare(`
-            INSERT INTO sync_queue (id, entity_type, entity_id, action, metadata, payload_version)
-            VALUES (?, ?, ?, 'CREATED', '{}', 1)
-          `);
-          for (const row of rows) {
-            insertStmt.run(crypto.randomUUID(), type, row.id);
-          }
-        } catch { /* table may not exist yet */ }
+      if (orderCount > 0 || assigned) {
+        console.log('[ConfigService] Live till detected — keeping orders and device prefix. Wipe skipped.');
+      } else {
+        dbEngine.prepare("DELETE FROM application_settings WHERE key = 'order_prefix'").run();
+        dbEngine.prepare("DELETE FROM application_settings WHERE key = 'device_id'").run();
+        this.refreshCache();
+        console.log('[ConfigService] Empty till: login will ask for A–F once. Orders were not wiped.');
       }
-
-      this.refreshCache();
-      console.log('[ConfigService] Fresh install: cleared cloned till identity and test orders. Login will ask for PC-A–PC-F.');
     } catch (e) {
-      console.error('[ConfigService] Failed to reset cloned identity:', e.message);
-      return;
+      console.error('[ConfigService] Failed to process device-claim marker:', e.message);
     }
     try { fs.unlinkSync(markerPath); } catch { /* ignore */ }
   }
@@ -229,15 +201,15 @@ class ConfigService {
 
   claimOrderPrefix(prefix) {
     const current = this.getSyncConfig().order_prefix;
-    if (current && !isLegacyTillPrefix(current)) {
+    if (isAssignedTillPrefix(current)) {
       throw new Error('Device ID is already set and cannot be changed.');
     }
-    const clean = String(prefix || '').trim().toUpperCase();
-    if (!ALLOWED_DEVICE_PREFIXES.includes(clean)) {
-      throw new Error('Device ID must be PC-A, PC-B, PC-C, PC-D or PC-F.');
+    const canonical = canonicalTillPrefix(prefix);
+    if (!canonical) {
+      throw new Error('Choose A, B, C, D or F for this till.');
     }
-    this.updateApplicationCategory('SYSTEM', 'SYNC', { order_prefix: clean });
-    return clean;
+    this.updateApplicationCategory('SYSTEM', 'SYNC', { order_prefix: canonical });
+    return canonical;
   }
 
   getLanLoginUrls() {

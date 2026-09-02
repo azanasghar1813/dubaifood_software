@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { type Order, useOrderStore } from './orderStore'
 import { type CartItem } from './posStore'
 import { kitchenService } from '../services/kitchenService'
+import { formatReceiptOrderNumber } from '../utils/receiptOrderNumber'
 
 // Fallback ID generator for non-secure contexts (e.g. local IP testing without HTTPS)
 const generateId = () => {
@@ -95,7 +96,7 @@ export const useKdsStore = create<KdsState>((set, get) => ({
           return {
             id: row.id,
             orderId: row.id,
-            orderNumber: row.order_number ? row.order_number.replace('POS-', '').replace(new RegExp(`^\\d{8}-`), '') : '',
+            orderNumber: formatReceiptOrderNumber(row.order_number),
             table: row.table_id || 'N/A',
             customer: row.customer_id || 'Guest',
             orderType: row.order_type,
