@@ -42,6 +42,7 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
   const timeStr = timestamp.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
   const items = order?.items ?? []
   const isDelivery = String(orderType).toLowerCase().includes("delivery")
+  const isDineIn = String(orderType).toLowerCase().includes("dine")
 
   const itemRowsHtml = (list: typeof items) => list.map((item) => {
     const mods = item.selectedModifiers?.length
@@ -84,7 +85,7 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
       <div style="text-align:center;font-weight:900;font-size:22px;margin-bottom:8px;">${orderNumber}</div>
       ${isVip ? `<div style="text-align:center;font-weight:900;font-size:16px;margin:6px 0;">** VIP ORDER **</div>` : ""}
       <div style="font-size:12px;display:flex;flex-direction:column;gap:3px;margin-bottom:10px;">
-        ${!isDelivery && tableNumber && tableNumber !== "N/A" ? `<div><b>Table:</b> ${tableNumber}</div>` : ""}
+        ${isDineIn && tableNumber && tableNumber !== "N/A" ? `<div><b>Table:</b> ${tableNumber}</div>` : ""}
         <div><b>Type:</b> ${orderType}</div>
         <div><b>Cashier:</b> ${cashier}</div>
         ${isDelivery ? `<div><b>Rider:</b> ${riderName || "Unassigned"}</div>` : `<div><b>Waiter:</b> ${waiterName || "Unassigned"}</div>`}
@@ -141,7 +142,7 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
         <div className="text-center font-black text-base my-2">** VIP ORDER **</div>
       )}
       <div className="text-[12px] flex flex-col gap-0.5 mb-3">
-        {!isDelivery && tableNumber && tableNumber !== "N/A" && (
+        {isDineIn && tableNumber && tableNumber !== "N/A" && (
           <div><span className="font-black mr-1">Table:</span>{tableNumber}</div>
         )}
         <div><span className="font-black mr-1">Type:</span>{orderType}</div>

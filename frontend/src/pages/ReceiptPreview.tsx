@@ -40,12 +40,13 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
   const timeStr      = timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   const items        = order?.items ?? [] as any[]
   const subtotal     = order?.subtotal  ?? 0
-  const serviceCharge = order?.serviceCharge ?? 0
+  const serviceCharge = Number(order?.serviceCharge ?? (order as any)?.service_charge ?? 0) || 0
   const deliveryCharge = order?.deliveryCharge ?? 0
   const discount     = order?.discount  ?? 0
   const total        = order?.total     ?? 0
 
-  const isDelivery = orderType === 'Delivery'
+  const isDelivery = String(orderType).toLowerCase().includes('delivery')
+  const isDineIn = String(orderType).toLowerCase().includes('dine')
 
   // â”€â”€ print via isolated window (exactly matching POS layout) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const doPrint = () => {
@@ -92,7 +93,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
         </tbody>
       </table>`
 
-    const scRow = orderType === 'Dine In' && serviceCharge > 0
+    const scRow = isDineIn && serviceCharge > 0
       ? `<div style="display:flex;justify-content:flex-end;width:100%;margin-bottom:3px"><span style="font-weight:900;margin-right:16px;">Service Charges:</span><span>Rs ${serviceCharge.toFixed(2)}</span></div>` : ''
     const dcRow = orderType === 'Delivery' && deliveryCharge > 0
       ? `<div style="display:flex;justify-content:flex-end;width:100%;margin-bottom:3px"><span style="font-weight:900;margin-right:16px;">Delivery:</span><span>Rs ${deliveryCharge.toFixed(2)}</span></div>` : ''
@@ -131,7 +132,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     <div style="font-size:11px;display:flex;flex-direction:column;gap:3px;margin-bottom:12px">
       <div style="font-size:15px;font-weight:900;line-height:1.2;">${orderNumber}</div>
       <div style="display:flex"><span style="margin-right:4px;font-weight:900;">Customer:</span><span>${customerName}${customerPhone ? ' - '+customerPhone : ''}${customerAddress ? ' - '+customerAddress : ''}</span></div>
-      ${tableNumber && tableNumber !== 'N/A' ? `<div><span style="margin-right:4px;font-weight:900;">Table No:</span>${tableNumber}</div>` : ''}
+      ${isDineIn && tableNumber && tableNumber !== 'N/A' ? `<div><span style="margin-right:4px;font-weight:900;">Table No:</span>${tableNumber}</div>` : ''}
       <div><span style="margin-right:4px;font-weight:900;">Order Type:</span>${orderType}</div>
       <div><span style="margin-right:4px;font-weight:900;">Cashier:</span>${cashier}</div>
       ${isDelivery && (order as any)?.riderName ? `<div><span style="margin-right:4px;font-weight:900;">Rider:</span>${(order as any).riderName}</div>` : ''}
@@ -203,7 +204,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
              <span className="shrink-0 font-black">Customer:</span>
              <span className="break-words">{customerName}{customerPhone ? ' - '+customerPhone : ''}{customerAddress ? ' - '+customerAddress : ''}</span>
         </div>
-        {tableNumber && tableNumber !== 'N/A' && (
+        {isDineIn && tableNumber && tableNumber !== 'N/A' && (
           <div><span className="mr-1 font-black">Table No:</span>{tableNumber}</div>
         )}
         <div><span className="mr-1 font-black">Order Type:</span>{orderType}</div>
@@ -277,7 +278,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
             <span>- Rs {discount.toFixed(2)}</span>
           </div>
         )}
-        {orderType === 'Dine In' && serviceCharge > 0 && (
+        {isDineIn && serviceCharge > 0 && (
           <div className="flex justify-end w-full">
             <span className="font-black mr-4">Service Charges:</span>
             <span>Rs {serviceCharge.toFixed(2)}</span>

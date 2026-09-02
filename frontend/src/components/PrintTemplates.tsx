@@ -41,6 +41,7 @@ const ReceiptTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
   if (!order) return null
 
   const isDelivery = order.orderType === 'Delivery'
+  const isDineIn = order.orderType === 'Dine In' || String(order.orderType || '').toLowerCase().includes('dine')
 
   return (
     <div className={`p-4 mx-auto text-black font-sans bg-white`} style={{ width: printSettings.receiptWidth }}>
@@ -70,7 +71,7 @@ const ReceiptTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
           </div>
         )}
         
-        {!isDelivery && order.tableNumber && order.tableNumber !== 'N/A' && (
+        {isDineIn && order.tableNumber && order.tableNumber !== 'N/A' && (
           <div><span className="mr-1">Table No:</span>{order.tableNumber}</div>
         )}
         

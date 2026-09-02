@@ -192,7 +192,7 @@ export default function POS() {
         customer_phone: state.customer?.phone || null,
         customer_address: state.customer?.address || null,
         is_vip: state.isVipOrder || !!state.customer?.is_vip || !!state.customer?.isVip || false,
-        table_id: state.tableNumber || null,
+        table_id: state.orderType === 'Dine In' ? (state.tableNumber || null) : null,
         waiter_id: state.waiterId || null,
         waiter_name_snapshot: state.waiterName || null,
         rider_id: state.riderId || null,
@@ -324,7 +324,8 @@ export default function POS() {
           setPrintOrder({
             ...fullOrder,
             ...receiptFromCart,
-            paymentStatus: isPaidPrint ? 'Paid' : (fullOrder.paymentStatus || 'Unpaid')
+            paymentStatus: isPaidPrint ? 'Paid' : (fullOrder.paymentStatus || 'Unpaid'),
+            tableNumber: latest.orderType === 'Dine In' ? (fullOrder.tableNumber || latest.tableNumber || null) : null
           })
         } else {
           setPrintOrder({
@@ -332,7 +333,7 @@ export default function POS() {
             id: currentOrderId,
             orderNumber: formatReceiptOrderNumber((latest.activeOrder as any)?.order_number || latest.previewOrderNumber),
             orderType: latest.orderType,
-            tableNumber: latest.tableNumber,
+            tableNumber: latest.orderType === 'Dine In' ? latest.tableNumber : null,
             customerName: latest.customer?.name || 'Guest',
             cashierName: user?.name || 'Cashier',
             timestamp: new Date().toISOString(),
@@ -345,7 +346,7 @@ export default function POS() {
           id: currentOrderId,
           orderNumber: formatReceiptOrderNumber((latest.activeOrder as any)?.order_number || latest.previewOrderNumber),
           orderType: latest.orderType,
-          tableNumber: latest.tableNumber,
+          tableNumber: latest.orderType === 'Dine In' ? latest.tableNumber : null,
           customerName: latest.customer?.name || 'Guest',
           cashierName: user?.name || 'Cashier',
           timestamp: new Date().toISOString(),
@@ -848,7 +849,9 @@ export default function POS() {
         switch (e.key.toLowerCase()) {
           case 't':
             e.preventDefault()
-            setTableModalOpen(prev => !prev)
+            if (usePosStore.getState().orderType === 'Dine In') {
+              setTableModalOpen(prev => !prev)
+            }
             break
           case 'n':
             if (!e.shiftKey) { // we already handled shift+n
@@ -1932,7 +1935,7 @@ export default function POS() {
               )}
 
               {/* Customer & Table & Waiter Management */}
-              <div className={`p-2 border-b border-border bg-card grid gap-2 ${orderType === 'Delivery' ? 'grid-cols-2' : 'grid-cols-3'}`}>
+              <div className={`p-2 border-b border-border bg-card grid gap-2 ${orderType === 'Dine In' ? 'grid-cols-3' : 'grid-cols-2'}`}>
                 <div className="relative">
                   <button onClick={() => setCustomerModalOpen(true)} className="flex items-center gap-2 p-2 rounded-xl border-2 border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 hover:border-orange-500/80 shadow-md transition-all text-left w-full h-full">
                     <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
@@ -1953,7 +1956,7 @@ export default function POS() {
                     </button>
                   )}
                 </div>
-                {orderType !== 'Delivery' && (
+                {orderType === 'Dine In' && (
                   <div className="relative">
                     <button onClick={() => setTableModalOpen(true)} className="flex flex-col items-start justify-center p-2 rounded-xl border-2 border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 hover:border-orange-500/80 shadow-md transition-all w-full h-full">
                       <p className="text-sm font-black text-foreground uppercase tracking-wider flex items-center gap-1.5"><Hash className="w-3.5 h-3.5" /> Table</p>
@@ -2627,7 +2630,7 @@ export default function POS() {
                         id: activeOrderId,
                         orderNumber: formatReceiptOrderNumber(activeOrder?.order_number || previewOrderNumber),
                         orderType,
-                        tableNumber: tableNumber || null,
+                        tableNumber: orderType === 'Dine In' ? (tableNumber || null) : null,
                         customerName: customer?.name || 'Guest',
                         customerPhone: customer?.phone || null,
                         customerAddress: customer?.address || null,
@@ -2718,7 +2721,9 @@ export default function POS() {
                               ...fullOrder,
                               paymentStatus: isPaidPrint ? 'Paid' : 'Unpaid',
                               discount: discountVal || fullOrder.discount || 0,
-                              total: totalToPay || fullOrder.total
+                              total: totalToPay || fullOrder.total,
+                              serviceCharge: Number(fullOrder.serviceCharge) || Number(fullOrderData.serviceCharge) || 0,
+                              tableNumber: orderType === 'Dine In' ? (fullOrder.tableNumber || fullOrderData.tableNumber || null) : null
                             })
                           } else {
                             setPrintOrder({ ...fullOrderData, id: finalOrderId })

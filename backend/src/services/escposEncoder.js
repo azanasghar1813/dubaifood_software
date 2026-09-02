@@ -115,7 +115,8 @@ class EscPosEncoder {
       parts.push(this._bold(false));
       parts.push(this._encodeText(`Type : ${o.order_type || ''}`, iconvEncoding));
       parts.push(this._lf());
-      const tableLabel = o.table_number || o.table_id;
+      const isDineIn = String(o.order_type || '').toUpperCase().includes('DINE');
+      const tableLabel = isDineIn ? (o.table_number || o.table_id) : null;
       if (tableLabel) {
         parts.push(this._encodeText(`Table: ${tableLabel}`, iconvEncoding));
         parts.push(this._lf());
@@ -293,9 +294,10 @@ class EscPosEncoder {
         parts.push(this._lf());
       }
 
-      if (f.service_charge > 0) {
+      const serviceCharge = Number(f.service_charge) || 0;
+      if (serviceCharge > 0) {
         parts.push(this._encodeText(
-          this._padBoth('Service:', `${sym} ${f.service_charge.toFixed(2)}`, charWidth),
+          this._padBoth('Service Charges:', `${sym} ${serviceCharge.toFixed(2)}`, charWidth),
           iconvEncoding
         ));
         parts.push(this._lf());
@@ -424,7 +426,8 @@ class EscPosEncoder {
     parts.push(this._lf());
     parts.push(this._tall(false));
     parts.push(this._bold(false));
-    const kotTable = oh.table_number || oh.table_id;
+    const kotIsDineIn = String(oh.order_type || '').toUpperCase().includes('DINE');
+    const kotTable = kotIsDineIn ? (oh.table_number || oh.table_id) : null;
     if (kotTable) {
       parts.push(this._encodeText(`Table: ${kotTable}`, iconvEncoding));
       parts.push(this._lf());

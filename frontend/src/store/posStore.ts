@@ -542,7 +542,7 @@ export const usePosStore = create<POSState>()(
           customer_phone: state.customer?.phone || null,
           customer_address: state.customer?.address || null,
           is_vip: state.isVipOrder || !!state.customer?.is_vip || !!state.customer?.isVip || false,
-          table_id: state.tableNumber || order.table_id || null,
+          table_id: state.orderType === 'Dine In' ? (state.tableNumber || order.table_id || null) : null,
           waiter_id: state.waiterId || order.waiter_id || null,
           waiter_name_snapshot: state.waiterName || null,
           rider_id: state.riderId || order.rider_id || null,
@@ -583,6 +583,8 @@ export const usePosStore = create<POSState>()(
             waiter_name_snapshot: state.waiterName || null,
             rider_id: state.riderId || order.rider_id || null,
             rider_name_snapshot: state.riderName || null,
+            table_id: state.orderType === 'Dine In' ? (state.tableNumber || order.table_id || null) : null,
+            service_charge: state.getServiceCharge(),
             receipt_paid_stamp: printPaid,
           })
         } catch (e) {
@@ -714,18 +716,21 @@ export const usePosStore = create<POSState>()(
   },
   
   setOrderType: async (orderType) => {
-    set({ orderType })
+    const clearingTable = orderType !== 'Dine In'
+    set({ orderType, ...(clearingTable ? { tableNumber: null } : {}) })
     try {
       const typeStr = orderType === 'Dine In' ? 'DINE_IN' : orderType === 'Takeaway' ? 'TAKEAWAY' : orderType === 'Drive Through' ? 'DRIVE_THROUGH' : 'DELIVERY';
       const state = get();
+      const meta: any = { order_type: typeStr }
+      if (clearingTable) meta.table_id = null
       if (state.editingOrderId && state.activeOrder && state.activeOrder.order_number) {
         // If editing a placed order, we must call the meta update endpoint (which we will create)
-        const res = await apiClient.put(`/orders/${state.editingOrderId}/meta`, { order_type: typeStr });
+        const res = await apiClient.put(`/orders/${state.editingOrderId}/meta`, meta);
         if ((res as any).success) {
           set({ activeOrder: (res as any).data });
         }
       } else {
-        const res = await cartService.setMeta({ order_type: typeStr });
+        const res = await cartService.setMeta(meta);
         if ((res as any).success) {
           set({ activeOrder: (res as any).data });
         }

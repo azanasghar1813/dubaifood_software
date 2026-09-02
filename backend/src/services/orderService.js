@@ -597,6 +597,12 @@ class OrderService {
       if (meta.delivery_charges !== undefined) {
         updates.delivery_fee = meta.delivery_charges;
       }
+      if (meta.service_charge !== undefined) {
+        updates.service_charge = Number(meta.service_charge) || 0;
+        try {
+          orderMetadataRepository.setMeta(orderId, 'service_charge', updates.service_charge);
+        } catch { /* optional */ }
+      }
       if (meta.customer_name !== undefined) {
         orderMetadataRepository.setMeta(orderId, 'customer_name', meta.customer_name || '');
       }
