@@ -21,30 +21,33 @@ const resolveSessionContext = (req, res, { requireShift = true } = {}) => {
 };
 
 export const orderController = {
-  peekNextNumber: (_req, res) => {
+  peekNextNumber: async (_req, res) => {
     try {
-      sendSuccess(res, { order_number: orderNumberService.peekNextNumber() }, 'Next order number');
+      sendSuccess(res, { order_number: await orderNumberService.peekNextNumber() }, 'Next order number');
     } catch (error) {
       sendError(res, 400, error.message);
     }
   },
 
-  getDraft: (req, res) => {
+  getDraft: async (req, res) => {
     const ctx = resolveSessionContext(req, res);
     if (!ctx) return;
     try {
-      const draft = orderService.getOrCreateDraft(ctx.shiftId, ctx.userId);
+      const draft = await orderService.getOrCreateDraft(ctx.shiftId, ctx.userId);
       sendSuccess(res, draft, 'Draft retrieved successfully');
     } catch (error) {
       sendError(res, 400, error.message);
     }
   },
 
-  createOrder: (req, res) => {
+  createOrder: async (req, res) => {
     const ctx = resolveSessionContext(req, res);
     if (!ctx) return;
     try {
-      const order = orderService.createDraftOrder(ctx.shiftId, ctx.userId, req.body);
+      const businessDate = req.body?.business_date || new Date().toISOString().split('T')[0];
+      const branchId = req.body?.branch_id || 'DEFAULT_BRANCH';
+      const orderNumber = await orderNumberService.allocateNextNumber(branchId, businessDate);
+      const order = orderService.createDraftOrder(ctx.shiftId, ctx.userId, { ...req.body, business_date: businessDate, branch_id: branchId, order_number: orderNumber });
       sendSuccess(res, order, 'Order created successfully', 201);
     } catch (error) {
       sendError(res, 400, error.message);
@@ -74,11 +77,11 @@ export const orderController = {
     }
   },
 
-  addItemToDraft: (req, res) => {
+  addItemToDraft: async (req, res) => {
     const ctx = resolveSessionContext(req, res);
     if (!ctx) return;
     try {
-      const updatedDraft = orderService.addItemToDraft(ctx.shiftId, ctx.userId, req.body);
+      const updatedDraft = await orderService.addItemToDraft(ctx.shiftId, ctx.userId, req.body);
       sendSuccess(res, updatedDraft, 'Item added to draft');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -118,11 +121,11 @@ export const orderController = {
     }
   },
 
-  holdOrder: (req, res) => {
+  holdOrder: async (req, res) => {
     const ctx = resolveSessionContext(req, res);
     if (!ctx) return;
     try {
-      const heldOrder = orderService.holdOrder(ctx.shiftId, ctx.userId, req.body.holdName);
+      const heldOrder = await orderService.holdOrder(ctx.shiftId, ctx.userId, req.body.holdName);
       sendSuccess(res, heldOrder, 'Order held successfully');
     } catch (error) {
       sendError(res, 400, error.message);

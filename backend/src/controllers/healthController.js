@@ -25,7 +25,7 @@ export const checkHealth = (req, res) => {
     backendStatus: 'healthy',
     databaseStatus: dbConnected ? 'connected' : 'not connected',
     order_prefix: orderPrefix,
-    needs_till_confirm: configService.needsTillConfirm(),
+    needs_till_confirm: false,
     waiter_urls: waiterUrls
   };
 

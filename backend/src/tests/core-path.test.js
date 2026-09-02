@@ -61,7 +61,7 @@ test('login succeeds with the default admin PIN', () => {
   userId = result.user.id;
 });
 
-test('checkout then cash payment is idempotent', () => {
+test('checkout then cash payment is idempotent', async () => {
   const category = dbEngine.prepare('SELECT id FROM categories LIMIT 1').get();
   assert.ok(category);
   const productId = crypto.randomUUID();
@@ -76,7 +76,7 @@ test('checkout then cash payment is idempotent', () => {
   });
 
   const checkoutKey = crypto.randomUUID();
-  const order = orderCreationService.checkoutCart(sessionId, userId, {}, checkoutKey);
+  const order = await orderCreationService.checkoutCart(sessionId, userId, {}, checkoutKey);
   assert.ok(order.id);
   assert.ok(order.order_number);
 

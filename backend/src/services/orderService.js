@@ -20,6 +20,7 @@ import { cartService } from './cartService.js';
 import { orderCreationService } from './orderCreationService.js';
 import { historyCacheService } from './historyCacheService.js';
 import crypto from 'crypto';
+import { dateUtils } from '../utils/dateUtils.js';
 
 class OrderService {
   /**
@@ -224,8 +225,7 @@ class OrderService {
       const businessDate = options.business_date || new Date().toISOString().split('T')[0];
       const branchId = options.branch_id || 'DEFAULT_BRANCH';
 
-      // Allocate atomic Business Order Number
-      const orderNumber = orderNumberService.generateNextNumber(branchId, businessDate);
+      const orderNumber = options.order_number || orderNumberService.generateNextNumber(branchId, businessDate);
       const orderId = crypto.randomUUID();
 
       const newOrder = orderRepository.create({
@@ -270,26 +270,21 @@ class OrderService {
   /**
    * Gets existing active draft for cashier shift session or creates a new one.
    */
-  getOrCreateDraft(shiftId, userId, options = {}) {
-    return dbEngine.transaction(() => {
-      let draft = orderRepository.findDraftBySession(shiftId);
-      if (!draft) {
-        draft = this.createDraftOrder(shiftId, userId, options);
-      } else {
-        draft = this._hydrateOrder(draft);
-      }
-      return draft;
-    });
+  async getOrCreateDraft(shiftId, userId, options = {}) {
+    const existing = orderRepository.findDraftBySession(shiftId);
+    if (existing) return this._hydrateOrder(existing);
+    const businessDate = options.business_date || dateUtils.getBusinessDate();
+    const branchId = options.branch_id || 'DEFAULT_BRANCH';
+    const orderNumber = await orderNumberService.allocateNextNumber(branchId, businessDate);
+    return this.createDraftOrder(shiftId, userId, { ...options, business_date: businessDate, branch_id: branchId, order_number: orderNumber });
   }
 
   /**
    * Adds an item with complete menu snapshot to an order inside an atomic transaction.
    */
-  addItemToDraft(shiftId, userId, itemInput) {
-    return dbEngine.transaction(() => {
-      const order = this.getOrCreateDraft(shiftId, userId);
-      return this.addItemToOrder(order.id, itemInput, userId);
-    });
+  async addItemToDraft(shiftId, userId, itemInput) {
+    const order = await this.getOrCreateDraft(shiftId, userId);
+    return this.addItemToOrder(order.id, itemInput, userId);
   }
 
   /**
@@ -500,7 +495,7 @@ class OrderService {
   /**
    * Places an active draft order on hold.
    */
-  holdOrder(shiftId, userId, holdName) {
+  async holdOrder(shiftId, userId, holdName) {
     const draft = orderRepository.findDraftBySession(shiftId);
     if (draft) {
       return dbEngine.transaction(() => {
@@ -516,7 +511,7 @@ class OrderService {
       throw new Error('No active cart or draft order to hold.');
     }
 
-    const order = orderCreationService.checkoutCart(shiftId, userId, {}, crypto.randomUUID());
+    const order = await orderCreationService.checkoutCart(shiftId, userId, {}, crypto.randomUUID());
     return orderLifecycleService.transition(order.id, OrderLifecycleState.HELD, {
       userId,
       holdName

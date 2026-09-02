@@ -170,7 +170,7 @@ class OrderCreationService {
    * @param {Object} options - Overrides: { order_type, customer_id, table_id, waiter_id, waiter_name_snapshot, rider_id, rider_name_snapshot, notes, branch_id, business_date }
    * @returns {Object} Hydrated Order Draft with all sub-entities
    */
-  checkoutCart(sessionId, cashierUserId, options = {}, idempotencyKey = null) {
+  async checkoutCart(sessionId, cashierUserId, options = {}, idempotencyKey = null) {
     // 1. Retrieve working cart from memory / crash-recovery cache
     this._assertActiveSession(sessionId);
     this._assertCheckoutPermission(cashierUserId);
@@ -197,6 +197,15 @@ class OrderCreationService {
 
     this._assertCartAvailability(cart);
     this._assertComboRules(cart);
+
+    let preallocatedNumber = null;
+    if (idempotencyKey) {
+      const existingOrder = dbEngine.prepare('SELECT id, order_number FROM orders WHERE idempotency_key = ?').get(idempotencyKey);
+      if (existingOrder) {
+        return this._hydrateOrder(existingOrder.id);
+      }
+    }
+    preallocatedNumber = await orderNumberService.allocateNextNumber(branchId, requestedBusinessDate);
 
     // 3. Atomic SQLite transaction: create all order records
     const { orderId, orderNumber } = dbEngine.transaction(() => {
@@ -232,10 +241,7 @@ class OrderCreationService {
       const orderNotes = options.notes !== undefined ? options.notes : (cart.notes || null);
       const kitchenNotes = cart.kitchen_notes || null;
 
-      // ── 3a. Allocate atomic business order number ──────────────────────────
-      // This is the ONLY moment a sequence number is consumed.
-      // Abandoned carts never reach here, so no numbers are ever wasted.
-      const newOrderNumber = orderNumberService.generateNextNumber(branchId, businessDate);
+      const newOrderNumber = preallocatedNumber || orderNumberService.generateNextNumber(branchId, businessDate);
       const newOrderId = crypto.randomUUID();
 
       // ── 3b. Calculate cart-level financial totals ──────────────────────────

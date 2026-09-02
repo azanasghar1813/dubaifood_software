@@ -464,3 +464,81 @@ export const pullSyncEvents = async (req, res) => {
     return res.status(500).json({ error: error.message || 'Internal server error during sync pull' });
   }
 };
+
+export const allocateOrderNumber = async (req, res) => {
+  try {
+    const branchId = String(req.body?.branch_id || 'DEFAULT_BRANCH');
+    const businessDate = String(req.body?.business_date || '');
+    const minSequence = Number(req.body?.min_sequence) || 0;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) {
+      return res.status(400).json({ error: 'business_date YYYY-MM-DD is required' });
+    }
+
+    let seq = null;
+    const { data, error } = await supabase.rpc('allocate_order_number', {
+      p_branch: branchId,
+      p_date: businessDate,
+      p_min: minSequence
+    });
+    if (!error) seq = Number(data);
+    if (!Number.isFinite(seq) || seq < 1) {
+      const { data: row } = await supabase
+        .from('order_counters')
+        .select('last_sequence')
+        .eq('branch_id', branchId)
+        .eq('business_date', businessDate)
+        .maybeSingle();
+      const last = Number(row?.last_sequence) || 0;
+      seq = Math.max(last, minSequence) + 1;
+      if (!row) {
+        const { error: insErr } = await supabase.from('order_counters').insert({
+          branch_id: branchId,
+          business_date: businessDate,
+          last_sequence: seq
+        });
+        if (insErr) {
+          console.error('[SyncController] allocate insert:', insErr.message);
+          return res.status(503).json({ error: insErr.message });
+        }
+      } else {
+        const { error: updErr } = await supabase.from('order_counters').update({
+          last_sequence: seq,
+          updated_at: new Date().toISOString()
+        }).eq('branch_id', branchId).eq('business_date', businessDate).eq('last_sequence', last);
+        if (updErr) {
+          console.error('[SyncController] allocate update:', updErr.message);
+          return res.status(503).json({ error: updErr.message });
+        }
+      }
+    }
+    return res.status(200).json({ success: true, data: { sequence: seq, business_date: businessDate } });
+  } catch (error) {
+    console.error('[SyncController] allocateOrderNumber:', error);
+    return res.status(500).json({ error: error.message || 'Failed to allocate order number' });
+  }
+};
+
+export const peekOrderNumber = async (req, res) => {
+  try {
+    const branchId = String(req.query?.branch_id || req.body?.branch_id || 'DEFAULT_BRANCH');
+    const businessDate = String(req.query?.business_date || req.body?.business_date || '');
+    const minSequence = Number(req.query?.min_sequence || req.body?.min_sequence) || 0;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) {
+      return res.status(400).json({ error: 'business_date YYYY-MM-DD is required' });
+    }
+    const { data, error } = await supabase
+      .from('order_counters')
+      .select('last_sequence')
+      .eq('branch_id', branchId)
+      .eq('business_date', businessDate)
+      .maybeSingle();
+    if (error) {
+      return res.status(503).json({ error: error.message });
+    }
+    const last = Number(data?.last_sequence) || 0;
+    const next = Math.max(last, minSequence) + 1;
+    return res.status(200).json({ success: true, data: { last_sequence: last, next_sequence: next, business_date: businessDate } });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to peek order number' });
+  }
+};

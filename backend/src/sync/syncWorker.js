@@ -9,6 +9,8 @@ import { SYSTEM_USER_ID, SYSTEM_SHIFT_ID } from './syncIdentities.js';
 import { installGuardedSyncTriggers, unmuteSyncTriggers, withSyncMuted } from './syncTriggers.js';
 import { menuCacheService } from '../services/menuCacheService.js';
 import { preferLocalProductImage } from '../utils/localProductImage.js';
+import { orderNumberService } from '../services/orderNumberService.js';
+import { dateUtils } from '../utils/dateUtils.js';
 
 const LOCAL_SETTING_KEYS = new Set([
   'order_prefix',
@@ -920,6 +922,7 @@ class SyncWorker {
           }
 
           upsertData('orders', gathered.orders);
+          try { orderNumberService.absorbPulledNumbers(dateUtils.getBusinessDate()); } catch { /* sequence refresh is best-effort */ }
           upsertData('order_items', gathered.order_items);
           upsertData('order_payments', gathered.order_payments);
         }));
