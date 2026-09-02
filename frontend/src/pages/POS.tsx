@@ -9,7 +9,7 @@ import {
   Search, Plus, Minus, User,
   Loader2, Star,
   Utensils, Pizza, CupSoda, CakeSlice,
-  Printer, Monitor,
+  Printer, Monitor, LayoutGrid,
   Tag, XOctagon, Receipt, FileText, XCircle,
   Hash, Phone, Edit, Edit2,
   Store, UtensilsCrossed, Truck, CircleDot,
@@ -38,6 +38,7 @@ type Modifier = any
 // Helper to map category names to generic icons
 const getCategoryIcon = (name: string) => {
   const n = (name || '').toLowerCase()
+  if (n === 'all') return <LayoutGrid className="w-5 h-5" />
   if (n.includes('burger')) return <Utensils className="w-5 h-5" />
   if (n.includes('pizza')) return <Pizza className="w-5 h-5" />
   if (n.includes('drink')) return <CupSoda className="w-5 h-5" />
@@ -742,7 +743,17 @@ export default function POS() {
       if (e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault()
         const currentContext = usePosStore.getState().menuContext
-        const visibleCats = categories.filter(c => c.menuContext === 'all' || !c.menuContext || c.menuContext === currentContext)
+        const visibleCats = categories.filter(c => {
+          if (!(c.menuContext === 'all' || !c.menuContext || c.menuContext === currentContext)) return false
+          if (c.name === 'All') return true
+          return products.some((p: any) => {
+            if (p.lifecycle_state === 'HIDDEN' && !p.isDeal) return false
+            if (currentContext === 'Deals' && !p.isDeal) return false
+            if (currentContext !== 'Deals' && p.isDeal) return false
+            if (c.name === 'Favorites') return !!(p.isFavorite || p.isPopular)
+            return (p.category || categories.find((cat: any) => cat.id === p.category_id)?.name) === c.name
+          })
+        })
         const currentIdx = visibleCats.findIndex(c => c.name === activeCategory)
         
         let nextIdx = 0
@@ -755,6 +766,7 @@ export default function POS() {
         const nextCat = visibleCats[nextIdx]
         if (nextCat) {
           setActiveCategory(nextCat.name)
+          setGridSelectedIndex(0)
         }
         return
       }
@@ -775,6 +787,8 @@ export default function POS() {
         const currentContext = usePosStore.getState().menuContext
         const nextIndex = (contexts.indexOf(currentContext as any) + 1) % contexts.length
         usePosStore.getState().setMenuContext(contexts[nextIndex])
+        setActiveCategory("All")
+        setGridSelectedIndex(0)
         return
       }
 
@@ -1246,39 +1260,46 @@ export default function POS() {
     return () => window.removeEventListener("click", handleGlobalClick)
   }, [checkoutModalOpen, customizeModalOpen, sizeModalOpen, customerModalOpen, tableModalOpen, recentOrdersModalOpen])
 
-  // Scroll to category when activeCategory changes via keyboard shortcut
+  // Keep the selected category visible in the left list
   useEffect(() => {
-    if (activeCategory && activeCategory !== "All") {
-      const el = document.getElementById(`category-${activeCategory.replace(/\s+/g, '-')}`)
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
-    }
+    const el = document.getElementById(`pos-cat-${activeCategory.replace(/\s+/g, '-')}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
   }, [activeCategory])
 
   const visibleCategories = useMemo(() => {
     return categories.filter(c => c.menuContext === 'all' || !c.menuContext || c.menuContext === menuContext);
   }, [categories, menuContext]);
 
+  const productCategoryName = (p: Product) => p.category || categories.find(c => c.id === p.category_id)?.name
+
+  const productInMenuContext = (p: Product) => {
+    if (p.lifecycle_state === 'HIDDEN' && !p.isDeal) return false
+    if (menuContext === 'Deals' && !p.isDeal) return false
+    if (menuContext !== 'Deals' && p.isDeal) return false
+    const catObj = categories.find(c => c.name === p.category)
+    if (catObj && catObj.menuContext && catObj.menuContext !== 'all' && catObj.menuContext !== menuContext) return false
+    return true
+  }
+
+  const sidebarCategories = visibleCategories.filter((c: any) => {
+    if (c.name === 'All') return true
+    return products.some((p: any) => {
+      if (!productInMenuContext(p)) return false
+      if (c.name === 'Favorites') return !!(p.isFavorite || p.isPopular)
+      return productCategoryName(p) === c.name
+    })
+  })
+
   // Grid Category Filtering
   const gridFilteredProducts = products.filter(p => {
-    if (p.lifecycle_state === 'HIDDEN' && !p.isDeal) return false;
-    let matchCategory = true
-    
-    // Always show all categories for the current context (no longer filtering by activeCategory)
-    if (menuContext === 'Deals' && !p.isDeal) return false;
-    if (menuContext !== 'Deals' && p.isDeal) return false;
-    const catObj = categories.find(c => c.name === p.category)
-    if (catObj && catObj.menuContext && catObj.menuContext !== 'all' && catObj.menuContext !== menuContext) {
-      matchCategory = false
-    }
-    
-    return matchCategory
+    if (!productInMenuContext(p)) return false
+    if (activeCategory === "All") return true
+    if (activeCategory === "Favorites") return !!(p.isFavorite || p.isPopular)
+    return productCategoryName(p) === activeCategory
   }).sort((a, b) => {
     // 1. Sort by Category Render Order
-    const getCatName = (p: Product) => p.category || categories.find(c => c.id === p.category_id)?.name;
-    const catA = getCatName(a);
-    const catB = getCatName(b);
+    const catA = productCategoryName(a);
+    const catB = productCategoryName(b);
     
     const idxA = visibleCategories.findIndex(c => c.name === catA);
     const idxB = visibleCategories.findIndex(c => c.name === catB);
@@ -1662,30 +1683,82 @@ export default function POS() {
             </div>
           </div>
 
-          {/* Product Grid */}
-          <div className="flex-1 p-4 pt-0 overflow-y-auto custom-scrollbar space-y-8" ref={gridContainerRef}>
+          {/* Category list + Product Grid */}
+          <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
+            <nav
+              aria-label="Menu categories"
+              className="shrink-0 flex md:flex-col gap-1 p-2 overflow-x-auto md:overflow-x-hidden md:overflow-y-auto custom-scrollbar hide-scrollbar-mobile border-b md:border-b-0 md:border-r border-border bg-card md:w-[176px]"
+            >
+              <p className="hidden md:block px-2 pt-1 pb-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Categories</p>
+              {sidebarCategories.map((cat: any) => {
+                const isActive = activeCategory === cat.name
+                const count = products.filter((p: any) => {
+                  if (!productInMenuContext(p)) return false
+                  if (cat.name === 'All') return true
+                  if (cat.name === 'Favorites') return !!(p.isFavorite || p.isPopular)
+                  return productCategoryName(p) === cat.name
+                }).length
+                return (
+                  <button
+                    type="button"
+                    key={cat.id}
+                    id={`pos-cat-${cat.name.replace(/\s+/g, '-')}`}
+                    onClick={() => {
+                      setActiveCategory(cat.name)
+                      setGridSelectedIndex(0)
+                      setIsCartMode(false)
+                    }}
+                    title={cat.name}
+                    className={`shrink-0 md:w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all ${
+                      isActive
+                        ? 'bg-orange-500 text-white shadow-md'
+                        : 'text-foreground hover:bg-secondary bg-secondary/50 md:bg-transparent'
+                    }`}
+                  >
+                    <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-secondary text-muted-foreground'
+                    }`}>
+                      {getCategoryIcon(cat.name)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[12px] font-black leading-tight line-clamp-2 whitespace-nowrap md:whitespace-normal">{cat.name}</span>
+                      <span className={`hidden md:block text-[10px] font-bold ${isActive ? 'text-white/80' : 'text-muted-foreground'}`}>
+                        {count} {count === 1 ? 'item' : 'items'}
+                      </span>
+                    </span>
+                  </button>
+                )
+              })}
+            </nav>
+            <div className="flex-1 p-4 pt-3 overflow-y-auto custom-scrollbar" ref={gridContainerRef}>
+            {activeCategory !== "All" && activeCategory !== "Favorites" && (
+              <div className="flex items-center gap-2 mb-4">
+                <h3 className="text-lg font-black text-foreground">{activeCategory}</h3>
+                <span className="text-xs font-bold text-muted-foreground">{gridFilteredProducts.length} {gridFilteredProducts.length === 1 ? 'item' : 'items'}</span>
+              </div>
+            )}
+            <div className="space-y-8">
             {(menuContext === 'Deals'
               ? [{ id: 'deals-root', name: 'Deals', menuContext: 'Deals' } as any]
-              : categories.filter(c => c.menuContext === 'all' || !c.menuContext || c.menuContext === menuContext)
+              : visibleCategories
             ).map(cat => {
               const catProducts = menuContext === 'Deals'
                 ? gridFilteredProducts.filter(p => p.isDeal)
-                : gridFilteredProducts.filter(p => (p.category || categories.find(c => c.id === p.category_id)?.name) === cat.name);
+                : gridFilteredProducts.filter(p => productCategoryName(p) === cat.name);
               
               if (catProducts.length === 0) return null;
 
+              const showSectionHeader = activeCategory === "All" || activeCategory === "Favorites";
+
               return (
                 <div key={cat.id} className="mb-2">
+                  {showSectionHeader && (
                   <h3 
                     id={`category-${cat.name.replace(/\s+/g, '-')}`}
-                    className={`w-full text-base sm:text-xl font-black mb-4 flex items-center gap-3 p-2 sm:p-3 pl-4 rounded-xl transition-all duration-300 relative overflow-hidden shadow-sm ${activeCategory === cat.name ? 'ring-2 ring-orange-500' : ''}`}
+                    className="w-full text-base sm:text-xl font-black mb-4 flex items-center gap-3 p-2 sm:p-3 pl-4 rounded-xl relative overflow-hidden shadow-sm"
                   >
-                    {/* Background Layer */}
                     <div className="absolute inset-0 bg-orange-600 border border-orange-700 rounded-xl pointer-events-none"></div>
-                    {/* Left accent bar */}
                     <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-orange-800 rounded-l-xl pointer-events-none"></div>
-                    
-                    {/* Content */}
                     <span className="relative z-10 flex items-center gap-3 text-white">
                       <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
                         {getCategoryIcon(cat.name)}
@@ -1693,6 +1766,7 @@ export default function POS() {
                       {cat.name}
                     </span>
                   </h3>
+                  )}
                   <div className={`grid gap-4 ${gridDensity === 'small' ? 'grid-cols-4 md:grid-cols-5 xl:grid-cols-6' :
                     gridDensity === 'medium' ? 'grid-cols-3 md:grid-cols-4 xl:grid-cols-5' :
                       'grid-cols-2 md:grid-cols-3 xl:grid-cols-4'
@@ -1784,6 +1858,8 @@ export default function POS() {
                 <h2 className="text-2xl font-bold">No products found</h2>
               </div>
             )}
+            </div>
+            </div>
           </div>
     </>
   );
