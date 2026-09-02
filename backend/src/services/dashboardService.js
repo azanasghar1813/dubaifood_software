@@ -67,6 +67,26 @@ export const dashboardService = {
     `);
     const unpaid = unpaidStmt.get(start, end)?.unpaid || 0;
 
+    const completedStmt = dbEngine.db.prepare(`
+      SELECT
+        COUNT(id) as completed,
+        COALESCE(SUM(grand_total), 0) as completedSales
+      FROM orders
+      WHERE lifecycle_state = 'COMPLETED'
+      AND created_at >= ? AND created_at < ?
+    `);
+    const completedRow = completedStmt.get(start, end);
+    const completed = completedRow?.completed || 0;
+    const completedSales = completedRow?.completedSales || 0;
+
+    const notCompletedStmt = dbEngine.db.prepare(`
+      SELECT COUNT(id) as notCompleted
+      FROM orders
+      WHERE lifecycle_state NOT IN ('COMPLETED', 'CANCELLED', 'REFUNDED', 'ARCHIVED')
+      AND created_at >= ? AND created_at < ?
+    `);
+    const notCompleted = notCompletedStmt.get(start, end)?.notCompleted || 0;
+
     const cashStmt = dbEngine.db.prepare(`
       SELECT SUM(amount) as cashInDrawer
       FROM order_payments
@@ -104,6 +124,9 @@ export const dashboardService = {
       served: 0,
       paid,
       unpaid,
+      completed,
+      notCompleted,
+      completedSales,
       aov,
       customers,
       fastFood,

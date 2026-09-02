@@ -8,6 +8,9 @@ export interface DashboardSummary {
   served: number
   paid: number
   unpaid: number
+  completed: number
+  notCompleted: number
+  completedSales: number
   aov: number
   customers: number
   fastFood: number

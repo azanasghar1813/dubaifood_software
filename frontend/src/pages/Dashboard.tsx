@@ -105,11 +105,20 @@ export default function Dashboard() {
     let todayOrders = 0
     let paidOrders = 0
     let unpaidOrders = 0
+    let completedOrders = 0
+    let notCompletedOrders = 0
+    let completedSales = 0
 
     orders.forEach(o => {
       const isToday = o.businessDate === currentBusinessDate
       if (isToday) {
         todayOrders++
+        if (o.status === 'Completed') {
+          completedOrders++
+          completedSales += o.total || 0
+        } else if (o.status !== 'Cancelled' && o.status !== 'Refunded') {
+          notCompletedOrders++
+        }
         if (o.status !== 'Cancelled') {
           if (o.paymentStatus === 'Paid') {
             todaySales += o.total
@@ -120,7 +129,7 @@ export default function Dashboard() {
         }
       }
     })
-    return { todaySales, todayOrders, paidOrders, unpaidOrders }
+    return { todaySales, todayOrders, paidOrders, unpaidOrders, completedOrders, notCompletedOrders, completedSales }
   }, [orders])
 
   const handleManualSync = () => {
@@ -197,6 +206,7 @@ export default function Dashboard() {
     const result = orders.filter(o => {
       const isToday = o.businessDate === currentBusinessDate
       if (!isToday) return false
+      if (o.status === 'Completed') return false
       
       const q = searchQuery.toLowerCase()
       return o.orderNumber.includes(q) ||
@@ -221,28 +231,31 @@ export default function Dashboard() {
           { title: "Today's Sales", value: `Rs. ${(summary?.todaySales || liveStats.todaySales || 0).toLocaleString()}`, desc: "Paid + Confirmed orders", trend: "Live data", color: "text-emerald-500", icon: DollarSign },
           { title: "Today's Orders", value: summary?.ordersCount || liveStats.todayOrders || 0, desc: "Total transactions today", trend: "Live data", color: "text-blue-500", icon: ShoppingBag },
           { title: "Paid Orders", value: summary?.paid || liveStats.paidOrders || 0, desc: "Completed transactions", trend: "Live data", color: "text-zinc-400", icon: CheckCircle },
-          { title: "Unpaid Orders", value: summary?.unpaid || liveStats.unpaidOrders || 0, desc: "Open credit bills", trend: "Live data", color: "text-red-500", icon: AlertCircle }
+          { title: "Unpaid Orders", value: summary?.unpaid || liveStats.unpaidOrders || 0, desc: "Open credit bills", trend: "Live data", color: "text-red-500", icon: AlertCircle },
+          { title: "Completed Sale", value: `Rs. ${(summary?.completedSales ?? liveStats.completedSales ?? 0).toLocaleString()}`, desc: "Sales of completed orders only", trend: "Live data", color: "text-emerald-500", icon: DollarSign },
+          { title: "Completed Orders", value: summary?.completed ?? liveStats.completedOrders ?? 0, desc: "Orders marked completed today", trend: "Live data", color: "text-emerald-500", icon: Check },
+          { title: "Not Completed", value: summary?.notCompleted ?? liveStats.notCompletedOrders ?? 0, desc: "Still open or in progress", trend: "Live data", color: "text-amber-500", icon: AlertTriangle }
         ].map((card, i) => (
           <motion.div
             key={card.title}
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.07 }}
-            className={`p-5 bg-card/60 backdrop-blur-md rounded-[2rem] border ${card.title === "Unpaid Orders" ? 'border-red-500/40 shadow-sm shadow-red-500/10' : 'border-border/50'} flex flex-col justify-between hover:shadow-md transition-all group`}
+            className={`p-5 bg-card/60 backdrop-blur-md rounded-[2rem] border ${card.title === "Unpaid Orders" ? 'border-red-500/40 shadow-sm shadow-red-500/10' : card.title === "Not Completed" ? 'border-amber-500/40 shadow-sm shadow-amber-500/10' : card.title === "Completed Sale" || card.title === "Completed Orders" ? 'border-emerald-500/30' : 'border-border/50'} flex flex-col justify-between hover:shadow-md transition-all group`}
           >
             <div>
               <div className="flex justify-between items-start pb-3">
-                <span className={`text-[10px] uppercase font-black tracking-widest ${card.title === "Unpaid Orders" ? 'text-red-500' : 'text-muted-foreground'}`}>{card.title}</span>
+                <span className={`text-[10px] uppercase font-black tracking-widest ${card.title === "Unpaid Orders" ? 'text-red-500' : card.title === "Not Completed" ? 'text-amber-500' : 'text-muted-foreground'}`}>{card.title}</span>
                 <div className={`p-2 bg-secondary rounded-xl border border-border group-hover:border-primary/50 group-hover:text-primary transition-colors ${card.color}`}>
                   <card.icon className="w-4 h-4" />
                 </div>
               </div>
-              <h3 className={`text-2xl font-black tracking-tight ${card.title === "Unpaid Orders" ? 'text-red-500' : 'text-foreground'}`}>{card.value}</h3>
+              <h3 className={`text-2xl font-black tracking-tight ${card.title === "Unpaid Orders" ? 'text-red-500' : card.title === "Not Completed" ? 'text-amber-500' : 'text-foreground'}`}>{card.value}</h3>
             </div>
             <div className="mt-4 pt-3 border-t border-border/30">
               <p className="text-[10px] text-muted-foreground font-semibold leading-tight">{card.desc}</p>
-              <p className={`text-[9px] font-bold mt-1 flex items-center gap-1 ${card.title === "Unpaid Orders" ? 'text-red-400' : 'text-emerald-500'}`}>
-                {card.title !== "Unpaid Orders" && <TrendingUp className="w-3 h-3" />}
+              <p className={`text-[9px] font-bold mt-1 flex items-center gap-1 ${card.title === "Unpaid Orders" ? 'text-red-400' : card.title === "Not Completed" ? 'text-amber-500' : 'text-emerald-500'}`}>
+                {card.title !== "Unpaid Orders" && card.title !== "Not Completed" && <TrendingUp className="w-3 h-3" />}
                 {card.trend}
               </p>
             </div>
