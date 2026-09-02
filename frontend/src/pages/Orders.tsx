@@ -225,7 +225,7 @@ export default function Orders() {
     return filters;
   }, [filterDate, customDateFrom, customDateTo])
 
-  const refetchHistory = () => syncOrdersFromBackend(historyFilters)
+  const refetchHistory = () => syncOrdersFromBackend(historyFilters, { fetchAll: true })
 
   // Refetch orders when backend-driven filters (Date) change
   useEffect(() => {

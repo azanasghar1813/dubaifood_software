@@ -99,8 +99,15 @@ export default function Products() {
         const primaryImage = p.images?.find((img: any) => img.is_primary === 1)?.image_path || p.images?.[0]?.image_path || null;
         
         let displayPrice = p.price || 0;
-        if (p.variants && p.variants.length > 0) {
-          const minVariantPrice = Math.min(...p.variants.map((v: any) => v.price || 0));
+        const seenVar = new Set<string>()
+        const variants = (p.variants || []).filter((v: any) => {
+          const name = String(v.name || '').trim().toLowerCase()
+          if (!name || seenVar.has(name)) return false
+          seenVar.add(name)
+          return true
+        })
+        if (variants.length > 0) {
+          const minVariantPrice = Math.min(...variants.map((v: any) => v.price || 0));
           if (minVariantPrice > 0) {
             displayPrice = minVariantPrice;
           }
@@ -108,6 +115,7 @@ export default function Products() {
         
         return {
           ...p,
+          variants,
           code: p.code || p.product_code,
           category: cat?.name || 'Unknown',
           menuContext: cat?.menuContext || 'all',

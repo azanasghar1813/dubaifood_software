@@ -420,21 +420,26 @@ export default function Reports() {
 
     detailedSales.forEach(row => {
       const cat = ((row.main_category || '') + " " + (row.sub_category || '')).toLowerCase()
-      
-      // Only count actual items or parent deals for the Sales Split revenue cards.
-      // Components (is_component === 1) have their revenue already included in the parent deal.
-      if (row.is_component !== 1) {
-        const simpleSale = row.gross - row.discount;
+      const pname = String(row.product_name || '').toLowerCase()
+      const blob = `${cat} ${pname}`
+      const simpleSale = row.gross - row.discount
+      const isChips = blob.includes("chip") || blob.includes("potato") || blob.includes("fries") || blob.includes("shani")
+      const isSodaBar = blob.includes("special drink") || blob.includes("soda") || blob.includes("sodabar") || blob.includes("limca") || blob.includes("drink corner")
 
-        if (cat.includes("deal") || cat.includes("combo")) {
-          dealsSales += simpleSale
-        }
-        else if (cat.includes("chip") || cat.includes("potato") || cat.includes("fries")) chipsSales += simpleSale
-        else if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) fastFoodSales += simpleSale
-        else if (cat.includes("special drink") || cat.includes("special drinks") || cat.includes("drink corner")) specialDrinksSales += simpleSale
-        else if (cat.includes("hot") || cat.includes("cold")) drinksSales += simpleSale
-        else restaurantSales += simpleSale
+      // Potato chips / fries sold inside deals still belong on the Shani Fries card.
+      if (row.is_component === 1) {
+        if (isChips) chipsSales += simpleSale
+        return
       }
+
+      if (cat.includes("deal") || cat.includes("combo")) {
+        dealsSales += simpleSale
+      }
+      else if (isChips) chipsSales += simpleSale
+      else if (isSodaBar) specialDrinksSales += simpleSale
+      else if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) fastFoodSales += simpleSale
+      else if (cat.includes("hot") || cat.includes("cold")) drinksSales += simpleSale
+      else restaurantSales += simpleSale
     })
 
     const totalService = reportSummary.serviceCharges || 0
@@ -1082,7 +1087,7 @@ export default function Reports() {
                       </div>
                       <div className="p-3 bg-cyan-500/10 border border-cyan-500/25 rounded-2xl flex justify-between items-center">
                         <div>
-                          <span className="text-[10px] text-cyan-500 font-bold uppercase">Limca Corner</span>
+                          <span className="text-[10px] text-cyan-500 font-bold uppercase">Soda Bar</span>
                           <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.specialDrinksSales || 0)}</p>
                         </div>
                         <span className="text-sm font-bold text-cyan-500 bg-cyan-500/20 px-3 py-1.5 rounded-lg">

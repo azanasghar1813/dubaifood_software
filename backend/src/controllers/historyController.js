@@ -14,7 +14,7 @@ import { securityUtils } from '../utils/security.js';
 export const getOrderList = (req, res) => {
   try {
     const page   = parseInt(req.query.page)  || 1;
-    const limit  = Math.min(parseInt(req.query.limit) || 50, 200);
+    const limit  = Math.min(parseInt(req.query.limit) || 50, 10000);
     const sortBy = req.query.sort_by || 'NEWEST';
 
     // Build filters from query params

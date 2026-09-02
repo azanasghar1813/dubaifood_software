@@ -396,7 +396,11 @@ export function DealConfigurationModal({ isOpen, onClose, deal, onConfirm, avail
                 </button>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {selectingVariantProduct.product.variants.map((v: any) => (
+                {selectingVariantProduct.product.variants.filter((v: any, i: number, arr: any[]) => {
+                  const name = String(v.name || '').trim().toLowerCase()
+                  if (!name) return false
+                  return arr.findIndex((x: any) => String(x.name || '').trim().toLowerCase() === name) === i
+                }).map((v: any) => (
                   <button 
                     key={v.id}
                     onClick={() => {

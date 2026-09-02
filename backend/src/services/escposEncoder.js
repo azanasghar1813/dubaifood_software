@@ -93,8 +93,10 @@ class EscPosEncoder {
         }
       }
       if (biz.phone) {
+        parts.push(this._bold(true));
         parts.push(this._encodeText('Contact: ' + biz.phone, iconvEncoding));
         parts.push(this._lf());
+        parts.push(this._bold(false));
       }
       if (biz.tax_id) {
         parts.push(this._encodeText('TRN: ' + biz.tax_id, iconvEncoding));

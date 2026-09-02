@@ -99,7 +99,7 @@ interface OrderState {
   getOrders: () => Order[]
   lockOrder: (id: string, cashier: string) => void
   unlockOrder: (id: string, override?: boolean) => void
-  syncOrdersFromBackend: (filters?: any) => Promise<void>
+  syncOrdersFromBackend: (filters?: any, options?: { fetchAll?: boolean }) => Promise<void>
 }
 
 const mapLifecycleState = (state: string): OrderStatus => {
@@ -312,11 +312,23 @@ export const useOrderStore = create<OrderState>((set, get) => ({
     )
   })),
 
-  syncOrdersFromBackend: async (filters = {}) => {
+  syncOrdersFromBackend: async (filters = {}, options: { fetchAll?: boolean } = {}) => {
     set({ isSyncingFromBackend: true })
     try {
-      const listResult = await fetchOrders(filters, { page: 1, limit: 100, sort_by: 'NEWEST' })
-      const rows = listResult.data || []
+      const pageLimit = options.fetchAll ? 200 : 100
+      let page = 1
+      const rows: HistoryOrderRow[] = []
+      let total = Infinity
+      while (rows.length < total) {
+        const listResult = await fetchOrders(filters, { page, limit: pageLimit, sort_by: 'NEWEST' })
+        const batch = listResult.data || []
+        total = Number(listResult.meta?.total ?? (rows.length + batch.length))
+        rows.push(...batch)
+        if (!options.fetchAll) break
+        if (!batch.length) break
+        page += 1
+        if (page > 100) break
+      }
       const detailedOrders = []
       const chunkSize = 10
       

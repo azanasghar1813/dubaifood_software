@@ -168,9 +168,9 @@ export const reportService = {
         COALESCE(
           CASE WHEN d.id IS NOT NULL THEN 'Deals' END,
           CASE WHEN a.is_component = 1 AND (a.component_name LIKE '%Drink%' OR a.component_name LIKE '%Limka%' OR a.component_name LIKE '%Beverage%' OR a.component_name LIKE '%Coke%' OR a.component_name LIKE '%Sprite%' OR a.component_name LIKE '%Water%' OR a.component_name LIKE '%Tea%' OR a.component_name LIKE '%Coffee%') THEN 'Drinks' END,
-          CASE WHEN c1.name LIKE '%Drink%' OR c2.name LIKE '%Drink%' OR c1.name LIKE '%Beverage%' OR c1.name LIKE '%Juice%' OR c1.name LIKE '%Shake%' OR c1.name LIKE '%Cold%' OR c1.name LIKE '%Limka%' THEN 'Drinks' END,
+          CASE WHEN c1.name LIKE '%Drink%' OR c2.name LIKE '%Drink%' OR c1.name LIKE '%Beverage%' OR c1.name LIKE '%Juice%' OR c1.name LIKE '%Shake%' OR c1.name LIKE '%Cold%' OR c1.name LIKE '%Limka%' OR c1.name LIKE '%Soda%' OR c1.name LIKE '%Sodabar%' THEN 'Drinks' END,
           CASE WHEN a.is_component = 1 AND (a.component_name LIKE '%Chip%' OR a.component_name LIKE '%Fries%') THEN 'Potato Chips' END,
-          CASE WHEN c1.name LIKE '%Chips%' OR p.name LIKE '%Chips%' THEN 'Potato Chips' END,
+          CASE WHEN c1.name LIKE '%Chip%' OR c1.name LIKE '%Fries%' OR p.name LIKE '%Chip%' OR p.name LIKE '%Fries%' THEN 'Potato Chips' END,
           CASE WHEN a.is_component = 1 THEN 'Deals' END,
           CASE WHEN a.is_component = 0 AND (a.component_name LIKE '%Deal%' OR a.component_name LIKE '%Combo%') THEN 'Deals' END,
           CASE WHEN a.is_component = 0 AND (a.component_name LIKE '%Drink%' OR a.component_name LIKE '%Limka%' OR a.component_name LIKE '%Beverage%') THEN 'Drinks' END,

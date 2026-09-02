@@ -58,7 +58,11 @@ class MenuCacheService {
     rawProducts.forEach(prod => {
       // Fetch modifiers, variants, addons & images eagerly for the cache
       prod.modifier_groups = modifierRepository.getGroupsForProduct(prod.id).filter(g => allowedStates.includes(g.lifecycle_state));
-      prod.variants = variantRepository.findByProduct(prod.id).filter(v => allowedStates.includes(v.lifecycle_state));
+      prod.variants = variantRepository.findByProduct(prod.id).filter(v => allowedStates.includes(v.lifecycle_state)).filter((v, _i, arr) => {
+        const key = String(v.name || '').trim().toLowerCase();
+        if (!key) return false;
+        return arr.findIndex(x => String(x.name || '').trim().toLowerCase() === key) === arr.indexOf(v);
+      });
       prod.addons = productRepository.getAddons(prod.id);
       prod.images = productRepository.getImages(prod.id).map((img) => ({
         ...img,
@@ -144,7 +148,11 @@ class MenuCacheService {
 
     // Refresh relationships
     prod.modifier_groups = modifierRepository.getGroupsForProduct(prod.id).filter(g => ['ACTIVE', 'UNAVAILABLE', 'HIDDEN'].includes(g.lifecycle_state));
-    prod.variants = variantRepository.findByProduct(prod.id).filter(v => ['ACTIVE', 'UNAVAILABLE', 'HIDDEN'].includes(v.lifecycle_state));
+    prod.variants = variantRepository.findByProduct(prod.id).filter(v => ['ACTIVE', 'UNAVAILABLE', 'HIDDEN'].includes(v.lifecycle_state)).filter((v, _i, arr) => {
+      const key = String(v.name || '').trim().toLowerCase();
+      if (!key) return false;
+      return arr.findIndex(x => String(x.name || '').trim().toLowerCase() === key) === arr.indexOf(v);
+    });
     prod.addons = productRepository.getAddons(prod.id);
     prod.images = productRepository.getImages(prod.id).map((img) => ({
       ...img,

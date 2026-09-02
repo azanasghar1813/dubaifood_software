@@ -53,7 +53,11 @@ class ProductService {
 
       // 4. Handle Variants if provided
       if (data.variants && Array.isArray(data.variants)) {
+        const seen = new Set();
         data.variants.forEach((v, idx) => {
+          const key = String(v.name || '').trim().toLowerCase();
+          if (!key || seen.has(key)) return;
+          seen.add(key);
           variantRepository.create({
             product_id: product.id,
             name: v.name,
@@ -97,7 +101,11 @@ class ProductService {
 
       if (data.variants && Array.isArray(data.variants)) {
         dbEngine.prepare(`DELETE FROM product_variants WHERE product_id = ?`).run(product.id);
+        const seen = new Set();
         data.variants.forEach((v, idx) => {
+          const key = String(v.name || '').trim().toLowerCase();
+          if (!key || seen.has(key)) return;
+          seen.add(key);
           variantRepository.create({
             product_id: product.id,
             name: v.name,
