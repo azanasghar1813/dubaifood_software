@@ -267,9 +267,12 @@ class SyncWorker {
   constructor() {
     this.intervalId = null;
     this.isRunning = false;
-    this.baseDelayMs = 5000; // 5 seconds
-    this.currentDelayMs = this.baseDelayMs;
-    this.maxDelayMs = 60000; // 1 minute max backoff
+    this.drainDelayMs = 5000;
+    this.idleDelayMs = 30000;
+    this.baseDelayMs = this.drainDelayMs;
+    this.currentDelayMs = this.idleDelayMs;
+    this.maxDelayMs = 60000;
+    this.lastSuccessfulPullAt = 0;
     
     this.currentPhase = 'IDLE';
     this.logs = [];
@@ -494,7 +497,7 @@ class SyncWorker {
       this.logActivity(`Failed to reset sync queue: ${e.message}`, 'error');
     }
 
-    this.scheduleNextRun(this.baseDelayMs);
+    this.scheduleNextRun(this.drainDelayMs);
   }
 
   stop() {
@@ -508,6 +511,70 @@ class SyncWorker {
   scheduleNextRun(delay) {
     if (this.intervalId) clearTimeout(this.intervalId);
     this.intervalId = setTimeout(() => this.run(), delay);
+  }
+
+  _pendingCount() {
+    try {
+      return Number(dbEngine.prepare(
+        `SELECT COUNT(*) AS c FROM sync_queue WHERE status = 'PENDING'`
+      ).get()?.c) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  _setNextDelay() {
+    const pending = this._pendingCount();
+    if (pending >= 50) this.currentDelayMs = 0;
+    else if (pending > 0) this.currentDelayMs = this.drainDelayMs;
+    else this.currentDelayMs = this.idleDelayMs;
+  }
+
+  async _cloudHeartbeat(sinceMs, terminalId) {
+    if (process.env.NODE_ENV === 'test' || !config.sync?.apiUrl) return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const qs = new URLSearchParams({ last_sync_timestamp: String(sinceMs || 0) });
+      const response = await fetch(`${config.sync.apiUrl}/sync/heartbeat?${qs}`, {
+        headers: {
+          'x-device-secret': config.sync.deviceSecret,
+          'x-terminal-id': terminalId
+        },
+        signal: controller.signal
+      });
+      if (!response.ok) return null;
+      const body = await response.json();
+      const data = body?.data || body;
+      if (typeof data?.changed !== 'boolean') return null;
+      return {
+        changed: data.changed === true,
+        watermark: Number(data.watermark) || 0
+      };
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async _shouldFullPull(lastSyncTimestamp, terminalId) {
+    const beat = await this._cloudHeartbeat(lastSyncTimestamp, terminalId);
+    if (beat) {
+      if (beat.changed) {
+        this.logActivity('Heartbeat: cloud has new rows, pulling.');
+        return true;
+      }
+      this.logActivity('Heartbeat: no cloud changes, skip pull.');
+      return false;
+    }
+    const staleMs = Date.now() - (this.lastSuccessfulPullAt || 0);
+    if (staleMs >= this.idleDelayMs || !this.lastSuccessfulPullAt) {
+      this.logActivity('Heartbeat unavailable, falling back to pull.');
+      return true;
+    }
+    this.logActivity('Heartbeat unavailable, last pull is fresh, skip pull.');
+    return false;
   }
 
   async run() {
@@ -693,12 +760,6 @@ class SyncWorker {
         this.logActivity(`Push complete. Success: ${data.successful.length}, Failed: ${data.failed.length}, Conflicts: ${data.conflicts.length}`);
         try { syncService.pruneSynced(50); } catch { /* ignore */ }
         
-        // Reset delay on success if queue is full
-        if (pendingEvents.length === 50) {
-           this.currentDelayMs = 0;
-        } else {
-           this.currentDelayMs = this.baseDelayMs;
-        }
       }
 
       // --- PULL LOGIC BEGIN ---
@@ -710,10 +771,14 @@ class SyncWorker {
         dbEngine.prepare("INSERT INTO application_settings (key, value, description) VALUES ('last_sync_fixed_v2', '1', 'One-time full cloud pull after order sync fix') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
         this.logActivity('Re-pulling full order history from cloud (one-time repair).');
       }
+      const shouldPull = await this._shouldFullPull(lastSyncTimestamp, terminalId);
       const limit = 50;
       let maxUpdatedMs = lastSyncTimestamp || 0;
       let totalPulled = 0;
 
+      if (!shouldPull) {
+        pulled = 0;
+      } else {
       this.currentPhase = 'PULLING';
       this.logActivity(`Pulling new data from cloud... (Since: ${lastSyncTimestamp})`);
 
@@ -938,14 +1003,12 @@ class SyncWorker {
       if (maxUpdatedMs > 0) {
         dbEngine.prepare("INSERT INTO application_settings (key, value, description) VALUES ('last_sync_timestamp', ?, 'Last successful cloud pull timestamp') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(maxUpdatedMs));
       }
+      this.lastSuccessfulPullAt = Date.now();
+      } // end shouldPull
       // --- PULL LOGIC END ---
 
       pulled = totalPulled;
-      // After an outage, backoff can sit at 60s forever if there was nothing to push.
-      // Keep 0 (drain a full 50-event queue immediately); otherwise resume the 5s cadence.
-      if (this.currentDelayMs !== 0) {
-        this.currentDelayMs = this.baseDelayMs;
-      }
+      this._setNextDelay();
       this.currentPhase = 'IDLE';
       return { success: true, pushed, pulled };
     } catch (error) {

@@ -23,7 +23,7 @@ const resolveSessionContext = (req, res, { requireShift = true } = {}) => {
 export const orderController = {
   peekNextNumber: async (_req, res) => {
     try {
-      sendSuccess(res, { order_number: await orderNumberService.peekNextNumber() }, 'Next order number');
+      sendSuccess(res, { order_number: orderNumberService.peekNextNumberSync() }, 'Next order number');
     } catch (error) {
       sendError(res, 400, error.message);
     }

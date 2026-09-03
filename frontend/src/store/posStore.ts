@@ -99,6 +99,7 @@ interface POSState {
 
   // Async Backend Actions
   fetchDraftOrder: () => Promise<void>
+  refreshPreviewOrderNumber: () => Promise<void>
   loadOrderForEdit: (order: any) => Promise<void>
   setCart: (cart: CartItem[]) => void
   toggleVipOrder: () => void
@@ -231,6 +232,20 @@ export const usePosStore = create<POSState>()(
     } finally {
       set({ isLoadingOrder: false })
     }
+  },
+
+  refreshPreviewOrderNumber: async () => {
+    if (get().editingOrderId) return
+    const active = get().activeOrder as any
+    if (active?.order_number) return
+    try {
+      const next = await apiClient.get('/orders/next-number') as any
+      const n = next?.data?.order_number || next?.order_number
+      if (!n) return
+      if (n !== get().previewOrderNumber) {
+        set({ previewOrderNumber: n })
+      }
+    } catch { /* local peek is best-effort; never block the till */ }
   },
 
   loadOrderForEdit: async (order) => {

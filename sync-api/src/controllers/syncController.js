@@ -542,3 +542,61 @@ export const peekOrderNumber = async (req, res) => {
     return res.status(500).json({ error: error.message || 'Failed to peek order number' });
   }
 };
+
+const HEARTBEAT_TABLES = [
+  'products',
+  'categories',
+  'orders',
+  'order_items',
+  'customers',
+  'users',
+  'deals',
+  'order_payments',
+  'dining_tables',
+  'application_settings',
+  'product_variants'
+];
+
+/**
+ * Cheap change check: at most one updated_at row per table, no payloads.
+ * Used so tills can skip a full 11-table pull when the cloud has nothing new.
+ */
+export const heartbeatSync = async (req, res) => {
+  try {
+    const raw = req.query.last_sync_timestamp || req.query.since || '0';
+    const sinceMs = parseInt(String(raw), 10);
+    const since = Number.isFinite(sinceMs) && sinceMs > 0
+      ? new Date(sinceMs).toISOString()
+      : new Date(0).toISOString();
+
+    let watermark = Number.isFinite(sinceMs) && sinceMs > 0 ? sinceMs : 0;
+    let changed = false;
+
+    for (const tableName of HEARTBEAT_TABLES) {
+      try {
+        const { data, error } = await supabase
+          .from(tableName)
+          .select('updated_at')
+          .gt('updated_at', since)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        if (error) continue;
+        const ts = data?.[0]?.updated_at;
+        if (!ts) continue;
+        changed = true;
+        const ms = Date.parse(ts);
+        if (Number.isFinite(ms) && ms > watermark) watermark = ms;
+      } catch {
+        /* table may be missing */
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { changed, watermark }
+    });
+  } catch (error) {
+    console.error('[SyncController] heartbeat:', error);
+    return res.status(500).json({ error: error.message || 'Heartbeat failed' });
+  }
+};

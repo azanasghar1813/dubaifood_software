@@ -542,6 +542,13 @@ export default function POS() {
   }, [])
 
   useEffect(() => {
+    const timer = setInterval(() => {
+      void usePosStore.getState().refreshPreviewOrderNumber()
+    }, 15000)
+    return () => clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery)
       setSearchSelectedIndex(0)

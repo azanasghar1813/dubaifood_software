@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { requireDeviceAuth } from '../middleware/auth.js';
-import { pushSyncEvents, pullSyncEvents, allocateOrderNumber, peekOrderNumber } from '../controllers/syncController.js';
+import { pushSyncEvents, pullSyncEvents, allocateOrderNumber, peekOrderNumber, heartbeatSync } from '../controllers/syncController.js';
 import { uploadImage } from '../controllers/imageController.js';
 import publicRoutes from './publicRoutes.js';
 
@@ -36,6 +36,7 @@ router.use('/sync', requireDeviceAuth);
 // Sync endpoints
 router.post('/sync/push', pushSyncEvents);
 router.get('/sync/pull', pullSyncEvents);
+router.get('/sync/heartbeat', heartbeatSync);
 router.post('/sync/allocate-number', allocateOrderNumber);
 router.get('/sync/peek-number', peekOrderNumber);
 router.post('/sync/upload-image', upload.single('image'), uploadImage);

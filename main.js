@@ -22,7 +22,12 @@ const copyDirContents = (src, dest) => {
     const to = path.join(dest, name);
     if (fs.statSync(from).isDirectory()) {
       copyDirContents(from, to);
-    } else if (!fs.existsSync(to)) {
+      continue;
+    }
+    // Never overwrite a live database on upgrade (orders, tickets, settings).
+    const isDb = /\.(db|db-shm|db-wal|sqlite|sqlite3)$/i.test(name);
+    if (isDb && fs.existsSync(to)) continue;
+    if (!fs.existsSync(to)) {
       fs.copyFileSync(from, to);
     }
   }
@@ -44,9 +49,11 @@ if (app.isPackaged) {
     } catch (e) {
       console.error('First-run storage copy failed:', e.message);
     }
-  } else if (liveExisted && fs.existsSync(claimMarker)) {
-    // Upgrade of a working till — never treat as a fresh clone.
-    try { fs.unlinkSync(claimMarker); } catch { /* ignore */ }
+  } else if (liveExisted) {
+    console.log('Upgrade: keeping live database at', liveDb);
+    if (fs.existsSync(claimMarker)) {
+      try { fs.unlinkSync(claimMarker); } catch { /* ignore */ }
+    }
   }
   // Always fill in missing product photos (sync may have pointed DB at dead cloud URLs).
   try {
