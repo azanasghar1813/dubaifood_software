@@ -126,8 +126,12 @@ class EscPosEncoder {
       parts.push(this._encodeText(`Customer: ${o.customer_name || 'Guest'}`, iconvEncoding));
       parts.push(this._lf());
       if (o.customer_phone) {
+        parts.push(this._bold(true));
+        parts.push(this._tall(true));
         parts.push(this._encodeText(`Phone: ${o.customer_phone}`, iconvEncoding));
         parts.push(this._lf());
+        parts.push(this._tall(false));
+        parts.push(this._bold(false));
       }
       if (o.customer_address) {
         for (const line of String(o.customer_address).split(/\r?\n/)) {

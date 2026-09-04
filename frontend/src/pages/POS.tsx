@@ -561,8 +561,15 @@ export default function POS() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeElement = document.activeElement as HTMLElement
-      const isInput = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA' || !!activeElement?.isContentEditable
+      const isInput = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA' || activeElement?.tagName === 'SELECT' || !!activeElement?.isContentEditable
       const isTyping = isInput
+      const isEditKey = (e.ctrlKey || e.metaKey) && ['c', 'v', 'x', 'a'].includes(e.key.toLowerCase())
+
+      // Customer panel owns the keyboard — never steal type/paste/copy
+      if (customerModalOpen) return
+
+      // Never block copy/paste/cut/select-all while a field is focused
+      if (isTyping && isEditKey) return
 
       // 1. Modal specific shortcuts that override everything
       if (dealModalOpen) return;

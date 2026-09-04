@@ -131,7 +131,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     <!-- Order Details -->
     <div style="font-size:11px;display:flex;flex-direction:column;gap:3px;margin-bottom:12px">
       <div style="font-size:15px;font-weight:900;line-height:1.2;">${orderNumber}</div>
-      <div style="display:flex"><span style="margin-right:4px;font-weight:900;">Customer:</span><span>${customerName}${customerPhone ? ' - <b>'+customerPhone+'</b>' : ''}${customerAddress ? ' - '+customerAddress : ''}</span></div>
+      <div style="display:flex"><span style="margin-right:4px;font-weight:900;">Customer:</span><span>${customerName}${customerPhone ? ' - <b style="font-size:14px">'+customerPhone+'</b>' : ''}${customerAddress ? ' - '+customerAddress : ''}</span></div>
       ${isDineIn && tableNumber && tableNumber !== 'N/A' ? `<div><span style="margin-right:4px;font-weight:900;">Table No:</span>${tableNumber}</div>` : ''}
       <div><span style="margin-right:4px;font-weight:900;">Order Type:</span>${orderType}</div>
       <div><span style="margin-right:4px;font-weight:900;">Cashier:</span>${cashier}</div>
@@ -202,7 +202,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
         <div className="text-[15px] font-black leading-tight">{orderNumber}</div>
         <div className="flex gap-1">
              <span className="shrink-0 font-black">Customer:</span>
-             <span className="break-words">{customerName}{customerPhone ? <> - <span className="font-black">{customerPhone}</span></> : ''}{customerAddress ? ' - '+customerAddress : ''}</span>
+             <span className="break-words">{customerName}{customerPhone ? <> - <span className="font-black text-[14px]">{customerPhone}</span></> : ''}{customerAddress ? ' - '+customerAddress : ''}</span>
         </div>
         {isDineIn && tableNumber && tableNumber !== 'N/A' && (
           <div><span className="mr-1 font-black">Table No:</span>{tableNumber}</div>

@@ -48,6 +48,8 @@ export default function Products() {
   const [isSaving, setIsSaving] = useState(false)
   const [dealPickerQuery, setDealPickerQuery] = useState("")
   const [dealVariantPick, setDealVariantPick] = useState<any | null>(null)
+  const [dealPizzaSize, setDealPizzaSize] = useState("Large")
+  const [dealPizzaQty, setDealPizzaQty] = useState(1)
 
   // Refs for shortcuts
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -227,13 +229,19 @@ export default function Products() {
       setIsSaving(true)
 
       if (selectedProduct.isDeal || (mainTab === "Deals" && selectedProduct.category === "Deals")) {
-        const comps = (selectedProduct.components || []).filter((c: any) => c.product_id)
+        const comps = (selectedProduct.components || []).filter((c: any) => {
+          if (c.component_type === "CATEGORY_CHOICE") {
+            return !!(c.target_category_id || c.allowed_product_ids)
+          }
+          return !!c.product_id
+        })
         if (!comps.length) {
           toast.error("Add at least one existing product to this deal")
           setIsSaving(false)
           return
         }
         const missingVariant = comps.find((c: any) => {
+          if (c.component_type === "CATEGORY_CHOICE") return false
           const src = products.find(p => p.id === c.product_id)
           return src?.variants?.length > 0 && !c.target_variant_name
         })
@@ -258,10 +266,12 @@ export default function Products() {
           is_customizable: 1,
           components: comps.map((c: any) => ({
             name: c.name,
-            component_type: "FIXED_PRODUCT",
-            product_id: c.product_id,
+            component_type: c.component_type || "FIXED_PRODUCT",
+            product_id: c.product_id || null,
             quantity: Number(c.quantity) || 1,
-            target_variant_name: c.target_variant_name || null
+            target_variant_name: c.target_variant_name || null,
+            target_category_id: c.target_category_id || null,
+            allowed_product_ids: c.allowed_product_ids || null
           }))
         }
         if (drawerMode === "add" || !selectedProduct.id) {
@@ -1111,13 +1121,18 @@ export default function Products() {
                           <h4 className="text-xs uppercase font-black tracking-wider text-muted-foreground">Included items</h4>
                           <p className="text-[11px] text-muted-foreground font-semibold">Pick existing menu items. POS shows these names on the deal card instead of a photo.</p>
                           {(selectedProduct.components || []).map((comp: any, idx: number) => {
+                            const isChoice = comp.component_type === "CATEGORY_CHOICE"
                             const src = products.find(p => p.id === comp.product_id)
                             const variants = src?.variants || []
                             return (
-                            <div key={`${comp.product_id}-${comp.target_variant_name || ''}-${idx}`} className="flex items-center gap-2 p-3 bg-secondary/50 border border-border rounded-xl">
+                            <div key={`${comp.product_id || comp.component_type}-${comp.target_variant_name || ''}-${idx}`} className="flex items-center gap-2 p-3 bg-secondary/50 border border-border rounded-xl">
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-black text-foreground truncate">{comp.name}</p>
-                                {variants.length > 0 && drawerMode !== "view" ? (
+                                {isChoice ? (
+                                  <p className="text-[10px] text-orange-500 font-bold">
+                                    {comp.target_variant_name || "Pizza"} · POS asks for {comp.quantity || 1} flavour{(comp.quantity || 1) > 1 ? "s" : ""}
+                                  </p>
+                                ) : variants.length > 0 && drawerMode !== "view" ? (
                                   <select
                                     value={comp.target_variant_name || ""}
                                     onChange={(e) => {
@@ -1259,6 +1274,63 @@ export default function Products() {
                                   )}
                                 </div>
                               )}
+                              <div className="mt-3 flex items-center gap-2 p-2 bg-orange-500/5 border border-orange-500/20 rounded-xl">
+                                <select
+                                  value={dealPizzaSize}
+                                  onChange={(e) => setDealPizzaSize(e.target.value)}
+                                  className="h-9 px-2 rounded-lg bg-background border border-border text-[11px] font-bold outline-none"
+                                >
+                                  {(() => {
+                                    const sizes = new Set<string>()
+                                    products.filter(p => !p.isDeal && String(p.category || "").toLowerCase().includes("pizza")).forEach(p => {
+                                      (p.variants || []).forEach((v: any) => { if (v.name) sizes.add(v.name) })
+                                    })
+                                    const preferred = ["Small", "Medium", "Large", "XL"]
+                                    const list = preferred.filter(s => sizes.size === 0 || sizes.has(s))
+                                    sizes.forEach(s => { if (!list.includes(s)) list.push(s) })
+                                    return (list.length ? list : preferred).map(s => (
+                                      <option key={s} value={s}>{s}</option>
+                                    ))
+                                  })()}
+                                </select>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={dealPizzaQty}
+                                  onChange={(e) => setDealPizzaQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                  className="w-14 h-9 px-2 rounded-lg bg-background border border-border text-xs font-bold outline-none"
+                                  title="How many flavours POS will ask for"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const pizzaCat = categoriesList.find((c: any) => String(c.name || "").toLowerCase().includes("pizza"))
+                                    const pizzaProduct = products.find(p => !p.isDeal && String(p.category || "").toLowerCase().includes("pizza"))
+                                    const pizzaCategoryId = pizzaCat?.id || pizzaProduct?.category_id
+                                    if (!pizzaCategoryId) {
+                                      toast.error("Pizza category not found")
+                                      return
+                                    }
+                                    const size = dealPizzaSize || "Large"
+                                    const qty = Math.max(1, Number(dealPizzaQty) || 1)
+                                    setSelectedProduct({
+                                      ...selectedProduct,
+                                      components: [...(selectedProduct.components || []), {
+                                        name: `${size} Pizza Flavour`,
+                                        component_type: "CATEGORY_CHOICE",
+                                        product_id: null,
+                                        quantity: qty,
+                                        target_category_id: pizzaCategoryId,
+                                        target_variant_name: size,
+                                        allowed_product_ids: null
+                                      }]
+                                    })
+                                  }}
+                                  className="h-9 px-3 rounded-lg bg-orange-500 text-white text-[11px] font-black hover:bg-orange-600 transition-colors shrink-0"
+                                >
+                                  Add pizza flavour
+                                </button>
+                              </div>
                             </div>
                           )}
                           {!(selectedProduct.components || []).length && (

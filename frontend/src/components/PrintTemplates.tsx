@@ -67,7 +67,7 @@ const ReceiptTemplate: React.FC<{ job: PrintJob }> = ({ job }) => {
         {isDelivery && order.customerName && (
           <div className="flex gap-1">
              <span className="shrink-0">Customer:</span>
-             <span className="break-words font-semibold">{order.customerName} {order.customerPhone ? `- ${order.customerPhone}` : ''} {order.customerAddress ? `- ${order.customerAddress}` : ''}</span>
+             <span className="break-words font-semibold">{order.customerName} {order.customerPhone ? <> - <span className="font-black text-[14px]">{order.customerPhone}</span></> : ''} {order.customerAddress ? `- ${order.customerAddress}` : ''}</span>
           </div>
         )}
         

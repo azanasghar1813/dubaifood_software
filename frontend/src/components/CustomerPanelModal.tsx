@@ -105,18 +105,33 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Prevent POS screen from stealing shortcuts when this modal is open
-      e.stopImmediatePropagation()
+      const el = e.target as HTMLElement
+      const typing = el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || !!el?.isContentEditable
 
-      // Toggle VIP shortcut
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+        return
+      }
+
+      // Phone / address / name / notes must always accept typing, paste, copy, cut
+      if (typing && el !== searchInputRef.current) {
+        if (e.ctrlKey && e.key.toLowerCase() === 'n') {
+          e.preventDefault()
+          notesRef.current?.focus()
+        }
+        return
+      }
+
+      // Toggle VIP shortcut (only when not typing in a field)
       if (e.ctrlKey && e.key.toLowerCase() === 'v') {
         e.preventDefault()
         setIsVip(v => !v)
         return
       }
       
-      // Exit on Escape or Ctrl+C
-      if (e.key === 'Escape' || (e.ctrlKey && e.key.toLowerCase() === 'c')) {
+      // Exit on Ctrl+C when not copying from a field
+      if (e.ctrlKey && e.key.toLowerCase() === 'c') {
         e.preventDefault()
         onClose()
         return
@@ -209,9 +224,8 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
         onClose()
       }
     }
-    // Use capture phase to intercept before POS.tsx
-    window.addEventListener('keydown', handleKeyDown, true)
-    return () => window.removeEventListener('keydown', handleKeyDown, true)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, filteredCustomers, selectedIndex, searchQuery, onClose])
 
   const focusInput = (index: number) => {
