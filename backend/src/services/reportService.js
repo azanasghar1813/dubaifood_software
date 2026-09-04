@@ -1,56 +1,19 @@
 import { dbEngine } from '../database/sqlite.js';
 import { dateUtils } from '../utils/dateUtils.js';
+import {
+  SALE_PREDICATE,
+  OPEN_BILL_PREDICATE,
+  REFUND_PREDICATE,
+  CATEGORY_BUCKET_SQL,
+  ITEM_FOOD_NET_SQL
+} from '../utils/saleScope.js';
 
-const buildDateFilter = (filters) => {
-  let { startDate, endDate, dateFilter } = filters;
-  
-  if (dateFilter) {
-    const todayStr = dateUtils.getBusinessDate();
-    
-    if (dateFilter === 'Today') {
-      startDate = todayStr;
-      endDate = todayStr;
-    } else if (dateFilter === 'Yesterday') {
-      const yesterdayStr = dateUtils.getYesterdayBusinessDate();
-      startDate = yesterdayStr;
-      endDate = yesterdayStr;
-    } else if (dateFilter === 'This Week') {
-      const d = new Date();
-      d.setDate(d.getDate() - d.getDay());
-      startDate = dateUtils.getBusinessDate(d);
-      endDate = todayStr;
-    } else if (dateFilter === 'This Month' || dateFilter === 'Monthly') {
-      startDate = dateUtils.getBusinessMonthStart();
-      
-      const d = new Date();
-      if (d.getHours() < 6) d.setDate(d.getDate() - 1);
-      const year = d.getFullYear();
-      const month = d.getMonth();
-      const lastDayOfMonth = new Date(year, month + 1, 0);
-      endDate = dateUtils.getBusinessDate(lastDayOfMonth);
-    } else if (dateFilter === 'Custom Date' && filters.startDate && filters.endDate) {
-      startDate = filters.startDate;
-      endDate = filters.endDate;
-    } else if (dateFilter === 'All Time') {
-      startDate = '1970-01-01';
-      endDate = '2099-12-31';
-    }
-  }
-
-  // If no dates provided, default to today
-  if (!startDate) startDate = dateUtils.getBusinessDate();
-  if (!endDate) endDate = startDate;
-
-  return { startDate, endDate };
-};
+const buildDateFilter = (filters) => dateUtils.resolveReportRange(filters);
 
 const buildWhereClause = (filters, prefix = 'o') => {
   const { startDate, endDate } = buildDateFilter(filters);
   const params = [startDate, endDate];
-  let where = `${prefix}.business_date BETWEEN ? AND ?`;
-  
-  // Exclude Draft and Held orders from sales calculations
-  where += ` AND ${prefix}.lifecycle_state NOT IN ('DRAFT', 'HELD')`;
+  let where = `${prefix}.business_date BETWEEN ? AND ? AND ${prefix}.deleted_at IS NULL`;
 
   if (filters.cashier && filters.cashier !== 'All') {
     where += ` AND ${prefix}.cashier_user_id = ?`;
@@ -58,237 +21,260 @@ const buildWhereClause = (filters, prefix = 'o') => {
   }
   if (filters.orderType && filters.orderType !== 'All') {
     where += ` AND ${prefix}.order_type = ?`;
-    params.push(filters.orderType);
+    params.push(String(filters.orderType).toUpperCase().replace(/\s+/g, '_'));
   }
   if (filters.paymentMethod && filters.paymentMethod !== 'All') {
-    // Requires join with payments or we assume single payment method stored in order if possible
-    // We will assume it's filtered at the payment level if needed, or we use a subquery
-    where += ` AND EXISTS (SELECT 1 FROM order_payments op WHERE op.order_id = ${prefix}.id AND op.payment_method = ?)`;
-    params.push(filters.paymentMethod);
+    where += ` AND EXISTS (
+      SELECT 1 FROM order_payments op
+      WHERE op.order_id = ${prefix}.id
+        AND UPPER(op.payment_method) = ?
+        AND UPPER(COALESCE(op.status, 'COMPLETED')) = 'COMPLETED'
+    )`;
+    params.push(String(filters.paymentMethod).toUpperCase());
   }
 
-  return { where, params };
+  return { where, params, startDate, endDate };
+};
+
+const emptyBuckets = () => ({
+  restaurantSales: 0,
+  fastFoodSales: 0,
+  dealsSales: 0,
+  drinksSales: 0,
+  chipsSales: 0,
+  specialDrinksSales: 0,
+  otherSales: 0
+});
+
+const bucketToField = (bucket) => {
+  switch (bucket) {
+    case 'Restaurant': return 'restaurantSales';
+    case 'Fast Food': return 'fastFoodSales';
+    case 'Deals': return 'dealsSales';
+    case 'Drinks': return 'drinksSales';
+    case 'Fries': return 'chipsSales';
+    case 'Soda Bar': return 'specialDrinksSales';
+    default: return 'otherSales';
+  }
 };
 
 export const reportService = {
   getSummary: async (filters) => {
     const { where, params } = buildWhereClause(filters, 'o');
-    
-    // Summary Query for Sales
-    const summaryQuery = `
-      SELECT 
+
+    const summary = dbEngine.get(`
+      SELECT
         COUNT(DISTINCT o.id) as ordersCount,
-        SUM(o.subtotal - o.discount_total) as netSales,
-        SUM(o.grand_total) as grossSales,
-        SUM(o.discount_total) as discounts,
-        SUM(o.tax_total) as tax,
-        SUM(o.delivery_fee) as deliveryCharges,
-        SUM(COALESCE(o.service_charge, 0)) as serviceCharges,
-        SUM(CASE WHEN o.lifecycle_state IN ('CANCELLED', 'REFUNDED') THEN o.grand_total ELSE 0 END) as refunds
+        COALESCE(SUM(o.subtotal), 0) as subtotal,
+        COALESCE(SUM(o.subtotal - o.discount_total), 0) as netSales,
+        COALESCE(SUM(o.grand_total), 0) as grossSales,
+        COALESCE(SUM(o.discount_total), 0) as discounts,
+        COALESCE(SUM(o.tax_total), 0) as tax,
+        COALESCE(SUM(COALESCE(o.delivery_fee, 0)), 0) as deliveryCharges,
+        COALESCE(SUM(COALESCE(o.service_charge, 0)), 0) as serviceCharges
       FROM orders o
-      WHERE ${where}
-    `;
-    
-    const itemQuery = `
-      SELECT SUM(oi.quantity) as itemsSold
+      WHERE ${where} AND ${SALE_PREDICATE}
+    `, ...params) || {};
+
+    const items = dbEngine.get(`
+      SELECT COALESCE(SUM(oi.quantity), 0) as itemsSold
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
-      WHERE ${where} AND o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED')
-    `;
+      WHERE ${where} AND ${SALE_PREDICATE}
+    `, ...params);
 
-    const summary = dbEngine.get(summaryQuery, ...params);
-    const items = dbEngine.get(itemQuery, ...params);
+    const refundsRow = dbEngine.get(`
+      SELECT
+        COALESCE(SUM(o.grand_total), 0) as refunds,
+        COUNT(o.id) as refundCount
+      FROM orders o
+      WHERE ${where} AND ${REFUND_PREDICATE}
+    `, ...params);
+
+    const openRow = dbEngine.get(`
+      SELECT
+        COUNT(o.id) as openCount,
+        COALESCE(SUM(o.grand_total), 0) as openTotal
+      FROM orders o
+      WHERE ${where} AND ${OPEN_BILL_PREDICATE}
+    `, ...params);
 
     const paymentSplit = dbEngine.get(`
       SELECT
-        SUM(CASE WHEN UPPER(op.payment_method) = 'CASH' THEN op.amount ELSE 0 END) as cashSales,
-        SUM(CASE WHEN UPPER(op.payment_method) != 'CASH' THEN op.amount ELSE 0 END) as digitalSales,
-        SUM(CASE WHEN o.payment_state = 'PAID' THEN 1 ELSE 0 END) as paidCount,
-        SUM(CASE WHEN o.payment_state != 'PAID' THEN 1 ELSE 0 END) as unpaidCount
-      FROM orders o
-      LEFT JOIN order_payments op ON op.order_id = o.id AND op.status = 'COMPLETED'
+        COALESCE(SUM(CASE WHEN UPPER(op.payment_method) = 'CASH' THEN op.amount ELSE 0 END), 0) as cashSales,
+        COALESCE(SUM(CASE WHEN UPPER(op.payment_method) != 'CASH' THEN op.amount ELSE 0 END), 0) as digitalSales
+      FROM order_payments op
+      JOIN orders o ON o.id = op.order_id
       WHERE ${where}
+        AND ${SALE_PREDICATE}
+        AND UPPER(COALESCE(op.status, 'COMPLETED')) = 'COMPLETED'
     `, ...params);
-    
-    const netSales = summary.netSales || 0;
-    const refunds = summary.refunds || 0;
-    // Calculate actual net (completed sales)
-    const actualNet = netSales - refunds;
-    const ordersCount = summary.ordersCount || 0;
+
+    const paidCounts = dbEngine.get(`
+      SELECT
+        SUM(CASE WHEN UPPER(COALESCE(o.payment_state, '')) = 'PAID' THEN 1 ELSE 0 END) as paidCount,
+        SUM(CASE WHEN UPPER(COALESCE(o.payment_state, '')) != 'PAID' THEN 1 ELSE 0 END) as unpaidCount
+      FROM orders o
+      WHERE ${where} AND ${SALE_PREDICATE}
+    `, ...params);
+
+    const bucketRows = dbEngine.all(`
+      SELECT
+        ${CATEGORY_BUCKET_SQL} as bucket,
+        COALESCE(SUM(${ITEM_FOOD_NET_SQL}), 0) as net
+      FROM order_items oi
+      JOIN orders o ON oi.order_id = o.id
+      LEFT JOIN products p ON p.id = oi.product_id
+      LEFT JOIN deals d ON d.id = oi.product_id
+      LEFT JOIN categories c1 ON p.category_id = c1.id
+      LEFT JOIN categories c2 ON c1.parent_id = c2.id
+      WHERE ${where} AND ${SALE_PREDICATE}
+      GROUP BY bucket
+    `, ...params);
+
+    const buckets = emptyBuckets();
+    for (const row of bucketRows) {
+      const field = bucketToField(row.bucket);
+      buckets[field] += Number(row.net) || 0;
+    }
+
+    const netSales = Number(summary.netSales) || 0;
+    const grossSales = Number(summary.grossSales) || 0;
+    const ordersCount = Number(summary.ordersCount) || 0;
+    const cashSales = Number(paymentSplit?.cashSales) || 0;
+    const digitalSales = Number(paymentSplit?.digitalSales) || 0;
+    const unpaidSales = Math.max(0, grossSales - cashSales - digitalSales);
+    const totalCatSales =
+      buckets.restaurantSales + buckets.fastFoodSales + buckets.dealsSales
+      + buckets.drinksSales + buckets.chipsSales + buckets.specialDrinksSales + buckets.otherSales;
 
     return {
-      grossSales: (summary.grossSales || 0) - refunds,
-      netSales: actualNet,
-      ordersCount: ordersCount,
-      itemsSold: items.itemsSold || 0,
-      discounts: summary.discounts || 0,
+      grossSales,
+      netSales,
+      ordersCount,
+      itemsSold: Number(items?.itemsSold) || 0,
+      discounts: Number(summary.discounts) || 0,
       tax: 0,
-      serviceCharges: summary.serviceCharges || 0,
-      deliveryCharges: summary.deliveryCharges || 0,
-      refunds: refunds,
-      cashSales: paymentSplit?.cashSales || 0,
-      digitalSales: paymentSplit?.digitalSales || 0,
-      paidCount: paymentSplit?.paidCount || 0,
-      unpaidCount: paymentSplit?.unpaidCount || 0,
-      averageOrderValue: ordersCount > 0 ? (actualNet / ordersCount) : 0
+      serviceCharges: Number(summary.serviceCharges) || 0,
+      deliveryCharges: Number(summary.deliveryCharges) || 0,
+      refunds: Number(refundsRow?.refunds) || 0,
+      refundCount: Number(refundsRow?.refundCount) || 0,
+      cashSales,
+      digitalSales,
+      unpaidSales,
+      paidCount: Number(paidCounts?.paidCount) || 0,
+      unpaidCount: Number(paidCounts?.unpaidCount) || 0,
+      averageOrderValue: ordersCount > 0 ? netSales / ordersCount : 0,
+      openBillsCount: Number(openRow?.openCount) || 0,
+      openBillsTotal: Number(openRow?.openTotal) || 0,
+      totalCatSales,
+      ...buckets
     };
   },
 
   getDetailedSales: async (filters) => {
     const { where, params } = buildWhereClause(filters, 'o');
-    
-    // Fetch hierarchical sales
-    // We group by main category, sub category, product
+
     const query = `
-      WITH OrderItemDiscounts AS (
-        SELECT order_id, SUM(discount_amount) as sum_item_disc
-        FROM order_items GROUP BY order_id
-      ),
-      AllSales AS (
-        SELECT 
-          oi.order_id, 
-          oi.product_id, 
-          oi.quantity as qty, 
-          oi.base_unit_price, 
-          oi.discount_amount + COALESCE((o.discount_total - COALESCE(oid.sum_item_disc, 0)) * ((oi.quantity * oi.base_unit_price) / NULLIF(o.subtotal, 0)), 0) as discount_amount, 
-          oi.tax_amount, 
-          oi.total_amount, 
-          oi.product_name_snapshot as component_name, 
-          0 as is_component, 
-          NULL as parent_deal_name 
-        FROM order_items oi
-        JOIN orders o ON oi.order_id = o.id
-        LEFT JOIN OrderItemDiscounts oid ON o.id = oid.order_id
-        UNION ALL
-        SELECT oi.order_id, occ.product_id, occ.quantity as qty, occ.price_adjustment as base_unit_price, 0 as discount_amount, 0 as tax_amount, (occ.quantity * occ.price_adjustment) as total_amount, occ.product_name_snapshot as component_name, 1 as is_component, oi.product_name_snapshot as parent_deal_name
-        FROM order_combo_components occ
-        JOIN order_items oi ON occ.order_item_id = oi.id
-      )
-      SELECT 
-        COALESCE(
-          CASE WHEN d.id IS NOT NULL THEN 'Deals' END,
-          CASE WHEN a.is_component = 1 AND (a.component_name LIKE '%Drink%' OR a.component_name LIKE '%Limka%' OR a.component_name LIKE '%Beverage%' OR a.component_name LIKE '%Coke%' OR a.component_name LIKE '%Sprite%' OR a.component_name LIKE '%Water%' OR a.component_name LIKE '%Tea%' OR a.component_name LIKE '%Coffee%') THEN 'Drinks' END,
-          CASE WHEN c1.name LIKE '%Drink%' OR c2.name LIKE '%Drink%' OR c1.name LIKE '%Beverage%' OR c1.name LIKE '%Juice%' OR c1.name LIKE '%Shake%' OR c1.name LIKE '%Cold%' OR c1.name LIKE '%Limka%' OR c1.name LIKE '%Soda%' OR c1.name LIKE '%Sodabar%' THEN 'Drinks' END,
-          CASE WHEN a.is_component = 1 AND (a.component_name LIKE '%Chip%' OR a.component_name LIKE '%Fries%') THEN 'Potato Chips' END,
-          CASE WHEN c1.name LIKE '%Chip%' OR c1.name LIKE '%Fries%' OR p.name LIKE '%Chip%' OR p.name LIKE '%Fries%' THEN 'Potato Chips' END,
-          CASE WHEN a.is_component = 1 THEN 'Deals' END,
-          CASE WHEN a.is_component = 0 AND (a.component_name LIKE '%Deal%' OR a.component_name LIKE '%Combo%') THEN 'Deals' END,
-          CASE WHEN a.is_component = 0 AND (a.component_name LIKE '%Drink%' OR a.component_name LIKE '%Limka%' OR a.component_name LIKE '%Beverage%') THEN 'Drinks' END,
-          c2.name, c1.name, 'Uncategorized'
-        ) as main_category,
+      SELECT
+        ${CATEGORY_BUCKET_SQL} as main_category,
         COALESCE(
           CASE WHEN d.id IS NOT NULL THEN d.name END,
-          CASE WHEN a.is_component = 1 AND (a.component_name LIKE '%Drink%' OR a.component_name LIKE '%Limka%' OR a.component_name LIKE '%Beverage%' OR a.component_name LIKE '%Water%') THEN 'Deal Drinks' END,
-          CASE WHEN a.is_component = 1 AND (a.component_name LIKE '%Chip%' OR a.component_name LIKE '%Fries%') THEN 'Deal Chips' END,
-          CASE WHEN a.is_component = 1 THEN 'Deal Components' END,
-          c1.name, 'Uncategorized'
+          c1.name,
+          'Uncategorized'
         ) as sub_category,
-        COALESCE(a.component_name, p.name, d.name) as product_name,
-        a.product_id,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.qty ELSE 0 END) as qty,
-        COUNT(DISTINCT CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN o.id END) as orders,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.qty * a.base_unit_price ELSE 0 END) as gross,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.discount_amount ELSE 0 END) as discount,
-        SUM(CASE 
-          WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN 
-            COALESCE(CASE 
-              WHEN o.order_type = 'Delivery' THEN COALESCE(o.delivery_fee, 0) * ((a.qty * a.base_unit_price) / NULLIF(o.subtotal, 0))
-              ELSE COALESCE(o.service_charge, 0) * ((a.qty * a.base_unit_price) / NULLIF(o.subtotal, 0))
-            END, 0)
-          ELSE 0 
-        END) as tax,
-        SUM(CASE 
-          WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN 
-            (a.qty * a.base_unit_price) - a.discount_amount + COALESCE(CASE WHEN o.order_type = 'Delivery' THEN COALESCE(o.delivery_fee, 0) * ((a.qty * a.base_unit_price) / NULLIF(o.subtotal, 0)) ELSE COALESCE(o.service_charge, 0) * ((a.qty * a.base_unit_price) / NULLIF(o.subtotal, 0)) END, 0)
-          ELSE 0 
-        END) as net,
-        SUM(CASE 
-          WHEN o.lifecycle_state IN ('CANCELLED', 'REFUNDED') THEN 
-            (a.qty * a.base_unit_price) - a.discount_amount + COALESCE(CASE WHEN o.order_type = 'Delivery' THEN COALESCE(o.delivery_fee, 0) * ((a.qty * a.base_unit_price) / NULLIF(o.subtotal, 0)) ELSE COALESCE(o.service_charge, 0) * ((a.qty * a.base_unit_price) / NULLIF(o.subtotal, 0)) END, 0)
-          ELSE 0 
-        END) as refunds,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN COALESCE(p.price, 0) * a.qty ELSE 0 END) as original_value,
-        MAX(a.is_component) as is_component,
-        MAX(a.parent_deal_name) as parent_deal_name
-      FROM AllSales a
-      JOIN orders o ON a.order_id = o.id
-      LEFT JOIN products p ON a.product_id = p.id
-      LEFT JOIN deals d ON a.product_id = d.id
+        COALESCE(oi.product_name_snapshot, p.name, d.name, 'Unknown') as product_name,
+        oi.product_id,
+        SUM(oi.quantity) as qty,
+        COUNT(DISTINCT o.id) as orders,
+        SUM(COALESCE(oi.subtotal, 0)) as gross,
+        SUM(
+          COALESCE(oi.discount_amount, 0)
+          + COALESCE(
+              (COALESCE(o.discount_total, 0) - COALESCE((
+                SELECT SUM(COALESCE(x.discount_amount, 0)) FROM order_items x WHERE x.order_id = o.id
+              ), 0))
+              * ((COALESCE(oi.subtotal, 0) - COALESCE(oi.discount_amount, 0)) / NULLIF(o.subtotal, 0))
+            , 0)
+        ) as discount,
+        0 as tax,
+        SUM(${ITEM_FOOD_NET_SQL}) as net,
+        0 as refunds,
+        0 as is_component,
+        NULL as parent_deal_name,
+        SUM(COALESCE(oi.subtotal, 0)) as original_value
+      FROM order_items oi
+      JOIN orders o ON oi.order_id = o.id
+      LEFT JOIN products p ON oi.product_id = p.id
+      LEFT JOIN deals d ON oi.product_id = d.id
       LEFT JOIN categories c1 ON p.category_id = c1.id
       LEFT JOIN categories c2 ON c1.parent_id = c2.id
-      WHERE ${where}
-      GROUP BY main_category, sub_category, product_name, a.product_id
-      HAVING qty > 0 OR refunds > 0
+      WHERE ${where} AND ${SALE_PREDICATE}
+      GROUP BY main_category, sub_category, product_name, oi.product_id
+      HAVING qty > 0
       ORDER BY main_category, sub_category, net DESC
     `;
-    
-    const rows = dbEngine.all(query, ...params);
-    return rows;
+
+    return dbEngine.all(query, ...params);
   },
-  
+
   getRecentItems: async (filters) => {
     const { where, params } = buildWhereClause(filters, 'o');
-    
+
     const query = `
-      SELECT 
+      SELECT
         COALESCE(oi.product_name_snapshot, p.name, d.name, 'Unknown') as name,
-        COALESCE(c.name, 'Other') as cat,
+        COALESCE(
+          CASE WHEN d.id IS NOT NULL THEN 'Deals' END,
+          c.name,
+          'Other'
+        ) as cat,
         oi.quantity as qty,
-        oi.total_amount as price,
+        oi.subtotal as price,
         o.created_at as time
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
       LEFT JOIN products p ON oi.product_id = p.id
       LEFT JOIN deals d ON oi.product_id = d.id
       LEFT JOIN categories c ON p.category_id = c.id
-      WHERE ${where} AND o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED')
+      WHERE ${where} AND ${SALE_PREDICATE}
       ORDER BY o.created_at DESC
       LIMIT 10
     `;
-    
+
     return dbEngine.all(query, ...params);
   },
-  
+
   getTrends: async (filters) => {
     const { where, params } = buildWhereClause(filters, 'o');
-    // removed getDb
-    
+
     const query = `
-      SELECT 
+      SELECT
         o.business_date as date,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN o.grand_total ELSE 0 END) as sales
+        SUM(o.grand_total) as sales
       FROM orders o
-      WHERE ${where}
+      WHERE ${where} AND ${SALE_PREDICATE}
       GROUP BY o.business_date
       ORDER BY o.business_date ASC
     `;
-    
+
     return dbEngine.all(query, ...params);
   },
-  
+
   getProductDetails: async (productId, filters) => {
     const { where, params } = buildWhereClause(filters, 'o');
-    // removed getDb
-    
+
     const query = `
-      WITH AllSales AS (
-        SELECT order_id, product_id, quantity as qty, (total_amount - COALESCE(tax_amount, 0)) as net FROM order_items
-        UNION ALL
-        SELECT oi.order_id, occ.product_id, occ.quantity as qty, (occ.quantity * occ.price_adjustment) as net
-        FROM order_combo_components occ
-        JOIN order_items oi ON occ.order_item_id = oi.id
-      )
-      SELECT 
+      SELECT
         o.order_type,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.qty ELSE 0 END) as qty,
-        SUM(CASE WHEN o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED') THEN a.net ELSE 0 END) as net
-      FROM AllSales a
-      JOIN orders o ON a.order_id = o.id
-      WHERE ${where} AND a.product_id = ?
+        SUM(oi.quantity) as qty,
+        SUM(${ITEM_FOOD_NET_SQL}) as net
+      FROM order_items oi
+      JOIN orders o ON oi.order_id = o.id
+      WHERE ${where} AND ${SALE_PREDICATE} AND oi.product_id = ?
       GROUP BY o.order_type
     `;
-    
-    const details = dbEngine.all(query, ...params, productId);
-    return details;
+
+    return dbEngine.all(query, ...params, productId);
   }
 };

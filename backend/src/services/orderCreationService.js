@@ -24,6 +24,7 @@ import { OrderLifecycleState } from '../constants/orderStates.js';
 import { customerRepository } from '../repositories/customerRepository.js';
 import crypto from 'crypto';
 import { dateUtils } from '../utils/dateUtils.js';
+import { orderTotalsService } from './orderTotalsService.js';
 
 /**
  * OrderCreationService
@@ -416,6 +417,12 @@ class OrderCreationService {
             quantity: Number(comp.quantity) || 1
           });
         }
+      }
+
+      try {
+        orderTotalsService.recalculate(newOrderId);
+      } catch (e) {
+        console.warn('Checkout totals recalc skipped:', e.message);
       }
 
       // ── 3e. Timeline audit entry ───────────────────────────────────────────

@@ -4,9 +4,9 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts"
 import {
-  DollarSign, ShoppingBag, TrendingUp, CheckCircle, AlertCircle,
+  DollarSign, ShoppingBag, TrendingUp, CheckCircle,
   Flame, Bell, ChevronRight, Search, ShoppingCart, Layers, FileText,
-  RefreshCw, AlertTriangle, Check
+  RefreshCw, AlertTriangle, Check, Ban
 } from "lucide-react"
 import { useOrderStore } from "../store/orderStore"
 import { usePosStore } from "../store/posStore"
@@ -20,10 +20,15 @@ import { DateUtils } from "../utils/dateUtils"
 
 // Status color definitions
 const orderStatusColors: Record<string, string> = {
-  Draft: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
-  Confirmed: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  Active: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   Completed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   Cancelled: "bg-red-500/10 text-red-400 border-red-500/20"
+}
+
+const displayOrderStatus = (status: string) => {
+  if (status === "Completed") return "Completed"
+  if (status === "Cancelled" || status === "Refunded") return "Cancelled"
+  return "Active"
 }
 
 const kitchenStatusColors: Record<string, string> = {
@@ -103,8 +108,7 @@ export default function Dashboard() {
     const currentBusinessDate = DateUtils.getBusinessDate()
     let todaySales = 0
     let todayOrders = 0
-    let paidOrders = 0
-    let unpaidOrders = 0
+    let cancelledOrders = 0
     let completedOrders = 0
     let notCompletedOrders = 0
     let completedSales = 0
@@ -112,24 +116,22 @@ export default function Dashboard() {
     orders.forEach(o => {
       const isToday = o.businessDate === currentBusinessDate
       if (isToday) {
-        todayOrders++
-        if (o.status === 'Completed') {
+        const shown = displayOrderStatus(o.status)
+        if (shown === 'Cancelled') {
+          cancelledOrders++
+        } else {
+          todayOrders++
+          todaySales += o.total || 0
+        }
+        if (shown === 'Completed') {
           completedOrders++
           completedSales += o.total || 0
-        } else if (o.status !== 'Cancelled' && o.status !== 'Refunded') {
+        } else if (shown === 'Active') {
           notCompletedOrders++
-        }
-        if (o.status !== 'Cancelled') {
-          if (o.paymentStatus === 'Paid') {
-            todaySales += o.total
-            paidOrders++
-          } else {
-            unpaidOrders++
-          }
         }
       }
     })
-    return { todaySales, todayOrders, paidOrders, unpaidOrders, completedOrders, notCompletedOrders, completedSales }
+    return { todaySales, todayOrders, cancelledOrders, completedOrders, notCompletedOrders, completedSales }
   }, [orders])
 
   const handleManualSync = () => {
@@ -228,10 +230,9 @@ export default function Dashboard() {
           ================================================== */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { title: "Today's Sales", value: `Rs. ${(summary?.todaySales || liveStats.todaySales || 0).toLocaleString()}`, desc: "Paid + Confirmed orders", trend: "Live data", color: "text-emerald-500", icon: DollarSign },
-          { title: "Today's Orders", value: summary?.ordersCount || liveStats.todayOrders || 0, desc: "Total transactions today", trend: "Live data", color: "text-blue-500", icon: ShoppingBag },
-          { title: "Paid Orders", value: summary?.paid || liveStats.paidOrders || 0, desc: "Completed transactions", trend: "Live data", color: "text-zinc-400", icon: CheckCircle },
-          { title: "Unpaid Orders", value: summary?.unpaid || liveStats.unpaidOrders || 0, desc: "Open credit bills", trend: "Live data", color: "text-red-500", icon: AlertCircle },
+          { title: "Today's Sales", value: `Rs. ${(summary?.todaySales ?? liveStats.todaySales ?? 0).toLocaleString()}`, desc: "All placed orders today minus cancelled (6AM–6AM)", trend: "Live data", color: "text-emerald-500", icon: DollarSign },
+          { title: "Today's Orders", value: summary?.ordersCount ?? liveStats.todayOrders ?? 0, desc: "Placed orders today, excluding cancelled", trend: "Live data", color: "text-blue-500", icon: ShoppingBag },
+          { title: "Cancelled Orders", value: summary?.cancelled ?? liveStats.cancelledOrders ?? 0, desc: "Cancelled bills this business day", trend: "Live data", color: "text-red-500", icon: Ban },
           { title: "Completed Sale", value: `Rs. ${(summary?.completedSales ?? liveStats.completedSales ?? 0).toLocaleString()}`, desc: "Sales of completed orders only", trend: "Live data", color: "text-emerald-500", icon: DollarSign },
           { title: "Completed Orders", value: summary?.completed ?? liveStats.completedOrders ?? 0, desc: "Orders marked completed today", trend: "Live data", color: "text-emerald-500", icon: Check },
           { title: "Not Completed", value: summary?.notCompleted ?? liveStats.notCompletedOrders ?? 0, desc: "Still open or in progress", trend: "Live data", color: "text-amber-500", icon: AlertTriangle }
@@ -241,21 +242,21 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.07 }}
-            className={`p-5 bg-card/60 backdrop-blur-md rounded-[2rem] border ${card.title === "Unpaid Orders" ? 'border-red-500/40 shadow-sm shadow-red-500/10' : card.title === "Not Completed" ? 'border-amber-500/40 shadow-sm shadow-amber-500/10' : card.title === "Completed Sale" || card.title === "Completed Orders" ? 'border-emerald-500/30' : 'border-border/50'} flex flex-col justify-between hover:shadow-md transition-all group`}
+            className={`p-5 bg-card/60 backdrop-blur-md rounded-[2rem] border ${card.title === "Cancelled Orders" ? 'border-red-500/40 shadow-sm shadow-red-500/10' : card.title === "Not Completed" ? 'border-amber-500/40 shadow-sm shadow-amber-500/10' : card.title === "Completed Sale" || card.title === "Completed Orders" ? 'border-emerald-500/30' : 'border-border/50'} flex flex-col justify-between hover:shadow-md transition-all group`}
           >
             <div>
               <div className="flex justify-between items-start pb-3">
-                <span className={`text-[10px] uppercase font-black tracking-widest ${card.title === "Unpaid Orders" ? 'text-red-500' : card.title === "Not Completed" ? 'text-amber-500' : 'text-muted-foreground'}`}>{card.title}</span>
+                <span className={`text-[10px] uppercase font-black tracking-widest ${card.title === "Cancelled Orders" ? 'text-red-500' : card.title === "Not Completed" ? 'text-amber-500' : 'text-muted-foreground'}`}>{card.title}</span>
                 <div className={`p-2 bg-secondary rounded-xl border border-border group-hover:border-primary/50 group-hover:text-primary transition-colors ${card.color}`}>
                   <card.icon className="w-4 h-4" />
                 </div>
               </div>
-              <h3 className={`text-2xl font-black tracking-tight ${card.title === "Unpaid Orders" ? 'text-red-500' : card.title === "Not Completed" ? 'text-amber-500' : 'text-foreground'}`}>{card.value}</h3>
+              <h3 className={`text-2xl font-black tracking-tight ${card.title === "Cancelled Orders" ? 'text-red-500' : card.title === "Not Completed" ? 'text-amber-500' : 'text-foreground'}`}>{card.value}</h3>
             </div>
             <div className="mt-4 pt-3 border-t border-border/30">
               <p className="text-[10px] text-muted-foreground font-semibold leading-tight">{card.desc}</p>
-              <p className={`text-[9px] font-bold mt-1 flex items-center gap-1 ${card.title === "Unpaid Orders" ? 'text-red-400' : card.title === "Not Completed" ? 'text-amber-500' : 'text-emerald-500'}`}>
-                {card.title !== "Unpaid Orders" && card.title !== "Not Completed" && <TrendingUp className="w-3 h-3" />}
+              <p className={`text-[9px] font-bold mt-1 flex items-center gap-1 ${card.title === "Cancelled Orders" ? 'text-red-400' : card.title === "Not Completed" ? 'text-amber-500' : 'text-emerald-500'}`}>
+                {card.title !== "Cancelled Orders" && card.title !== "Not Completed" && <TrendingUp className="w-3 h-3" />}
                 {card.trend}
               </p>
             </div>
@@ -366,8 +367,8 @@ export default function Dashboard() {
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wide border leading-none ${orderStatusColors[order.status] || orderStatusColors.Draft}`}>
-                        {order.status}
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wide border leading-none ${orderStatusColors[displayOrderStatus(order.status)]}`}>
+                        {displayOrderStatus(order.status)}
                       </span>
                       <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wide border leading-none ${kitchenStatusColors[order.kitchenStatus] || kitchenStatusColors.Waiting}`}>
                         Kit: {order.kitchenStatus}

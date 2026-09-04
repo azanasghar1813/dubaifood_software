@@ -230,8 +230,8 @@ class EscPosEncoder {
         parts.push(this._lf());
 
         // Variant
-        if (item.variant?.variant_name) {
-          parts.push(this._encodeText(`   > ${item.variant.variant_name}`, iconvEncoding));
+        if (item.variant?.variant_name || item.variant?.variant_name_snapshot) {
+          parts.push(this._encodeText(`   > ${item.variant.variant_name || item.variant.variant_name_snapshot}`, iconvEncoding));
           parts.push(this._lf());
         }
 
@@ -467,8 +467,8 @@ class EscPosEncoder {
       parts.push(this._doubleSize(false));
       parts.push(this._lf());
 
-      if (item.variant?.variant_name) {
-        parts.push(this._encodeText(`   > ${item.variant.variant_name}`, iconvEncoding));
+      if (item.variant?.variant_name || item.variant?.variant_name_snapshot) {
+        parts.push(this._encodeText(`   > ${item.variant.variant_name || item.variant.variant_name_snapshot}`, iconvEncoding));
         parts.push(this._lf());
       }
       for (const m of item.modifiers || []) {

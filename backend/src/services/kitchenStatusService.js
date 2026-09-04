@@ -62,10 +62,7 @@ class KitchenStatusService {
       case KitchenState.SERVED:
         return OrderLifecycleState.ACTIVE;
       case KitchenState.COMPLETED:
-        if (order.payment_state === 'PAID') {
-          return OrderLifecycleState.COMPLETED;
-        }
-        return OrderLifecycleState.ACTIVE;
+        return OrderLifecycleState.COMPLETED;
       default:
         return order.lifecycle_state;
     }

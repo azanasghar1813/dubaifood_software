@@ -1,6 +1,7 @@
 import { useEffect } from "react"
 import { Printer, X } from "lucide-react"
 import type { Order } from "../store/orderStore"
+import { itemVariantName } from "../store/orderStore"
 import { useSettingsStore } from "../store/settingsStore"
 import { formatReceiptOrderNumber } from "../utils/receiptOrderNumber"
 
@@ -60,8 +61,12 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       const isDeal = item.category?.toLowerCase().includes('deal') || (item.name || '').toLowerCase().includes('deal')
       const itemNameClass = isDeal ? `font-weight:900;` : `font-weight:500;`
 
+      const variantLabel = itemVariantName(item)
+      const variantHtml = variantLabel
+        ? `<div style="font-size:10px;font-weight:400;margin-top:2px">(${variantLabel})</div>`
+        : ''
       const mods = item.selectedModifiers?.length
-        ? `<div style="font-size:10px;font-weight:400;margin-top:2px">${item.selectedModifiers.map((m: any) => '+' + m.name).join(', ')}</div>`
+        ? `<div style="font-size:10px;font-weight:400;margin-top:2px">${item.selectedModifiers.map((m: any) => '+' + (m.name || m.modifier_name_snapshot || '')).join(', ')}</div>`
         : ''
       const combos = item.combo_components?.length
         ? `<div style="font-size:10px;font-weight:400;margin-top:2px">${item.combo_components.map((c: any) => `- ${c.quantity > 1 ? c.quantity + 'x ' : ''}${c.product_name_snapshot || ''}${c.variant_snapshot ? ' (' + c.variant_snapshot + ')' : ''}`).join('<br>')}</div>`
@@ -72,7 +77,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       return `
         <tr style="border-bottom:2px solid #000;">
           <td style="padding:4px;border-right:2px solid #000;text-align:center;text-transform:uppercase;">
-            <div style="${itemNameClass}">${item.name}</div>${mods}${combos}${itemNotes}
+            <div style="${itemNameClass}">${item.name}</div>${variantHtml}${mods}${combos}${itemNotes}
           </td>
           <td style="padding:4px;border-right:2px solid #000;text-align:center;font-weight:500;font-size:13px;vertical-align:middle;">${item.quantity}</td>
           <td style="padding:4px;text-align:center;font-weight:500;vertical-align:middle;white-space:nowrap;">Rs ${itemTotal.toFixed(2)}</td>
@@ -242,8 +247,11 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
             <tr key={idx} className="border-b-2 border-black last:border-b-0">
               <td className={`text-center py-1 px-1 border-r-2 border-black uppercase ${isDeal ? 'font-black' : 'font-medium'}`}>
                 {item.name}
+                {itemVariantName(item) ? (
+                  <div className="text-[10px] font-normal">({itemVariantName(item)})</div>
+                ) : null}
                 {item.selectedModifiers?.map((m: any) => (
-                  <div key={m.name} className="text-[10px] font-normal">+ {m.name}</div>
+                  <div key={m.name} className="text-[10px] font-normal">+ {m.name || m.modifier_name_snapshot}</div>
                 ))}
                 {(item as any).combo_components?.map((c: any, cidx: number) => (
                   <div key={cidx} className="text-[10px] font-normal">- {c.quantity > 1 ? `${c.quantity}x ` : ''}{c.product_name_snapshot} {c.variant_snapshot && `(${c.variant_snapshot})`}</div>

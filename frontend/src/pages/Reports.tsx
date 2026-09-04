@@ -10,17 +10,18 @@ import {
 import { useOrderStore } from "../store/orderStore"
 import { formatCurrency } from "../utils/currency"
 import { motion, AnimatePresence } from "framer-motion"
-import { fetchDetailedSales, type DetailedSaleRow } from "../api/reportApi"
+import { fetchDetailedSales, fetchReportSummary, fetchRecentItems, type DetailedSaleRow } from "../api/reportApi"
 import { apiClient } from "../api/client"
 import { DateUtils } from "../utils/dateUtils"
 
 export const mapCategory = (cat: string | null | undefined) => {
-  const lower = (cat || '').toLowerCase()
-  if (lower.includes("burger") || lower.includes("pizza") || lower.includes("sandwich") || lower.includes("broast") || lower.includes("appetizer") || lower.includes("fast food") || lower.includes("roll") || lower.includes("pasta") || lower.includes("shawarma")) return "Fast Food"
-  if (lower.includes("chicken") || lower.includes("bbq") || lower.includes("karahi") || lower.includes("restaurant")) return "Restaurant"
-  if (lower.includes("deal") || lower.includes("combo")) return "Deals"
-  if (lower.includes("drink") || lower.includes("beverage") || lower.includes("shake") || lower.includes("water") || lower.includes("juice") || lower.includes("tea") || lower.includes("coffee") || lower.includes("cold") || lower.includes("limka")) return "Drinks"
-  if (lower.includes("chip") || lower.includes("potato") || lower.includes("fries")) return "Fries Corner"
+  const lower = (cat || '').toLowerCase().trim()
+  if (lower === 'fast food' || lower.includes('fast food')) return "Fast Food"
+  if (lower === 'restaurant' || lower.includes('restaurant')) return "Restaurant"
+  if (lower === 'deals' || lower.includes('deal') || lower.includes('combo')) return "Deals"
+  if (lower === 'soda bar') return "Soda Bar"
+  if (lower === 'drinks' || lower === 'cold drinks' || lower.includes('cold drink')) return "Drinks"
+  if (lower === 'fries' || lower === 'potato chips' || lower === 'shani fries') return "Fries Corner"
   return "Other"
 }
 
@@ -116,53 +117,53 @@ export default function Reports() {
   const handleRefresh = async () => {
     setIsRefreshing(true)
     try {
-      await syncOrdersFromBackend()
+      const { startDate, endDate } = DateUtils.resolveReportRange({ timeRange, customDateFrom, customDateTo })
+      await syncOrdersFromBackend({ date_from: startDate, date_to: endDate }, { fetchAll: true })
     } finally {
       setIsRefreshing(false)
     }
   }
 
   useEffect(() => {
-    syncOrdersFromBackend()
-  }, [syncOrdersFromBackend])
+    const { startDate, endDate } = DateUtils.resolveReportRange({ timeRange, customDateFrom, customDateTo })
+    syncOrdersFromBackend({ date_from: startDate, date_to: endDate }, { fetchAll: true })
+  }, [syncOrdersFromBackend, timeRange, customDateFrom, customDateTo])
 
   // Fetch Detailed Sales & Summary when active tab or filters change
   useEffect(() => {
     // We fetch these for all tabs now because other tabs (Dashboard, Products, etc.) depend on them!
     setLoadingDetailedSales(true)
     
-    import('../api/reportApi').then(({ fetchDetailedSales, fetchReportSummary, fetchRecentItems }) => {
-      let activeDateFilter = timeRange;
-      if (timeRange === 'Custom Range') {
-        activeDateFilter = 'Custom Date';
-      }
-      
-      const filters = { 
-        dateFilter: activeDateFilter, 
-        cashier: filterCashier, 
-        paymentMethod: filterPayment,
-        startDate: customDateFrom || undefined,
-        endDate: customDateTo || undefined
-      };
+    let activeDateFilter = timeRange;
+    if (timeRange === 'Custom Range') {
+      activeDateFilter = 'Custom Date';
+    }
 
-      if ((timeRange === 'Custom Date' || timeRange === 'Custom Range') && (!customDateFrom || !customDateTo)) {
-        setLoadingDetailedSales(false)
-        return; // Don't fetch if custom dates are incomplete
-      }
+    const filters = {
+      dateFilter: activeDateFilter,
+      cashier: filterCashier,
+      paymentMethod: filterPayment,
+      startDate: customDateFrom || undefined,
+      endDate: customDateTo || undefined
+    };
 
-      Promise.all([
-        fetchDetailedSales(filters),
-        fetchReportSummary(filters),
-        fetchRecentItems(filters)
-      ]).then(([details, summary, recent]) => {
-        setDetailedSales(details)
-        setReportSummary(summary)
-        setRecentItems(recent)
-        setLoadingDetailedSales(false)
-      }).catch(err => {
-        console.error("Failed to fetch reports", err)
-        setLoadingDetailedSales(false)
-      })
+    if ((timeRange === 'Custom Date' || timeRange === 'Custom Range') && (!customDateFrom || !customDateTo)) {
+      setLoadingDetailedSales(false)
+      return;
+    }
+
+    Promise.all([
+      fetchDetailedSales(filters),
+      fetchReportSummary(filters),
+      fetchRecentItems(filters)
+    ]).then(([details, summary, recent]) => {
+      setDetailedSales(details)
+      setReportSummary(summary)
+      setRecentItems(recent)
+      setLoadingDetailedSales(false)
+    }).catch(err => {
+      console.error("Failed to fetch reports", err)
+      setLoadingDetailedSales(false)
     })
 
     // Fetch cashiers list
@@ -397,7 +398,7 @@ export default function Reports() {
   // Dynamic calculations based on live orders store
   const timeLabel = timeRange === 'Today' ? "Today's" : 
                     timeRange === 'Yesterday' ? "Yesterday's" : 
-                    timeRange === 'Monthly' ? "Monthly" : 
+                    timeRange === 'This Month' || timeRange === 'Monthly' ? "Monthly" : 
                     timeRange === 'All Time' ? "All Time" : 
                     "Period's"
 
@@ -406,80 +407,58 @@ export default function Reports() {
       return {
         totalOrdersCount: 0, grossSales: 0, netSales: 0, totalTax: 0, totalService: 0,
         totalDiscount: 0, totalDelivery: 0, paidCount: 0, unpaidCount: 0, refundsCount: 0, cashSales: 0,
-        cardSales: 0, digitalSales: 0, avgBill: 0, netEstimatedProfit: 0,
-        restaurantSales: 0, fastFoodSales: 0, dealsSales: 0, totalCatSales: 0, specialDrinksSales: 0
+        cardSales: 0, digitalSales: 0, unpaidSales: 0, avgBill: 0, netEstimatedProfit: 0,
+        restaurantSales: 0, fastFoodSales: 0, dealsSales: 0, drinksSales: 0, chipsSales: 0,
+        specialDrinksSales: 0, otherSales: 0, totalCatSales: 0, openBillsCount: 0, openBillsTotal: 0
       }
     }
 
-    let restaurantSales = 0
-    let fastFoodSales = 0
-    let dealsSales = 0
-    let drinksSales = 0
-    let chipsSales = 0
-    let specialDrinksSales = 0
-
-    detailedSales.forEach(row => {
-      const cat = ((row.main_category || '') + " " + (row.sub_category || '')).toLowerCase()
-      const pname = String(row.product_name || '').toLowerCase()
-      const blob = `${cat} ${pname}`
-      const simpleSale = row.gross - row.discount
-      const isChips = blob.includes("chip") || blob.includes("potato") || blob.includes("fries") || blob.includes("shani")
-      const isSodaBar = blob.includes("special drink") || blob.includes("soda") || blob.includes("sodabar") || blob.includes("limca") || blob.includes("drink corner")
-
-      // Potato chips / fries sold inside deals still belong on the Shani Fries card.
-      if (row.is_component === 1) {
-        if (isChips) chipsSales += simpleSale
-        return
-      }
-
-      if (cat.includes("deal") || cat.includes("combo")) {
-        dealsSales += simpleSale
-      }
-      else if (isChips) chipsSales += simpleSale
-      else if (isSodaBar) specialDrinksSales += simpleSale
-      else if (cat.includes("burger") || cat.includes("pizza") || cat.includes("sandwich") || cat.includes("broast") || cat.includes("appetizer") || cat.includes("fast food") || cat.includes("roll") || cat.includes("pasta") || cat.includes("shawarma")) fastFoodSales += simpleSale
-      else if (cat.includes("hot") || cat.includes("cold")) drinksSales += simpleSale
-      else restaurantSales += simpleSale
-    })
-
+    const restaurantSales = reportSummary.restaurantSales || 0
+    const fastFoodSales = reportSummary.fastFoodSales || 0
+    const dealsSales = reportSummary.dealsSales || 0
+    const drinksSales = reportSummary.drinksSales || 0
+    const chipsSales = reportSummary.chipsSales || 0
+    const specialDrinksSales = reportSummary.specialDrinksSales || 0
+    const otherSales = reportSummary.otherSales || 0
     const totalService = reportSummary.serviceCharges || 0
     const totalDelivery = reportSummary.deliveryCharges || 0
-    const grossSales = reportSummary.grossSales || 0;
-    
-    // User requested to remove service charges from Fast Food Sale and Net Sale
-    // fastFoodSales += totalService; // Removed this line
-
-    // Net Sales usually = Subtotal + Tax - Discount. The user requested Net sale to NOT include Service Charges.
-    const netSales = reportSummary.netSales || 0;
-    
+    const grossSales = reportSummary.grossSales || 0
+    const netSales = reportSummary.netSales || 0
     const cashSales = reportSummary.cashSales ?? 0
-    const digitalSales = reportSummary.digitalSales ?? Math.max(0, grossSales - cashSales)
+    const digitalSales = reportSummary.digitalSales ?? 0
+    const unpaidSales = reportSummary.unpaidSales ?? Math.max(0, grossSales - cashSales - digitalSales)
+    const totalCatSales = reportSummary.totalCatSales
+      ?? (restaurantSales + fastFoodSales + dealsSales + drinksSales + chipsSales + specialDrinksSales + otherSales)
 
     return {
-      totalOrdersCount: reportSummary.ordersCount || 0, 
-      grossSales, 
-      netSales, 
-      totalTax: reportSummary.tax || 0, 
+      totalOrdersCount: reportSummary.ordersCount || 0,
+      grossSales,
+      netSales,
+      totalTax: reportSummary.tax || 0,
       totalService,
-      totalDiscount: reportSummary.discounts || 0, 
-      totalDelivery, 
-      paidCount: reportSummary.paidCount || 0, 
-      unpaidCount: reportSummary.unpaidCount || 0, 
-      refundsCount: reportSummary.refunds || 0, 
+      totalDiscount: reportSummary.discounts || 0,
+      totalDelivery,
+      paidCount: reportSummary.paidCount || 0,
+      unpaidCount: reportSummary.unpaidCount || 0,
+      refundsCount: reportSummary.refunds || 0,
       cashSales,
-      cardSales: digitalSales, 
-      digitalSales, 
-      avgBill: reportSummary.averageOrderValue || 0, 
-      netEstimatedProfit: netSales, 
-      restaurantSales, 
-      fastFoodSales, 
-      dealsSales, 
+      cardSales: digitalSales,
+      digitalSales,
+      unpaidSales,
+      avgBill: reportSummary.averageOrderValue || 0,
+      netEstimatedProfit: netSales,
+      restaurantSales,
+      fastFoodSales,
+      dealsSales,
       drinksSales,
       chipsSales,
       specialDrinksSales,
-      totalCatSales: restaurantSales + fastFoodSales + dealsSales + drinksSales + chipsSales + specialDrinksSales
+      otherSales,
+      totalCatSales,
+      openBillsCount: reportSummary.openBillsCount || 0,
+      openBillsTotal: reportSummary.openBillsTotal || 0
     }
-  }, [reportSummary, detailedSales])
+  }, [reportSummary])
 
 
   // Product Sales Real Data
@@ -500,7 +479,7 @@ export default function Reports() {
     }
 
     detailedSales.forEach(row => {
-      const is_deal = row.is_component === 0 && (row.main_category?.includes('Deal') || (row.product_name || '').toLowerCase().includes('combo') || (row.product_name || '').toLowerCase().includes('deal'));
+      const is_deal = (row.main_category || '') === 'Deals'
       addItem(row.product_id, row.product_name, row.main_category, row.qty, row.net, !!is_deal)
     })
 
@@ -565,49 +544,12 @@ export default function Reports() {
 
   // Orders Report Specific Data
   const reportOrders = useMemo(() => {
-    let startDate = '';
-    let endDate = '';
-    const todayStr = DateUtils.getBusinessDate();
-
-    if (timeRange === 'Today') {
-      startDate = todayStr;
-      endDate = todayStr;
-    } else if (timeRange === 'Yesterday') {
-      const yesterdayStr = DateUtils.getYesterdayBusinessDate();
-      startDate = yesterdayStr;
-      endDate = yesterdayStr;
-    } else if (timeRange === 'This Week') {
-      const d = new Date();
-      d.setDate(d.getDate() - d.getDay());
-      startDate = DateUtils.getBusinessDate(d);
-      endDate = todayStr;
-    } else if (timeRange === 'This Month' || timeRange === 'Monthly') {
-      startDate = DateUtils.getBusinessMonthStart();
-      const d = new Date();
-      if (d.getHours() < 6) d.setDate(d.getDate() - 1);
-      const year = d.getFullYear();
-      const month = d.getMonth();
-      const lastDayOfMonth = new Date(year, month + 1, 0);
-      endDate = DateUtils.getBusinessDate(lastDayOfMonth);
-    } else if (timeRange === 'Custom Date') {
-      startDate = customDateFrom;
-      endDate = customDateFrom;
-    } else if (timeRange === 'Custom Range') {
-      startDate = customDateFrom;
-      endDate = customDateTo;
-    } else if (timeRange === 'All Time') {
-      startDate = '1970-01-01';
-      endDate = '2099-12-31';
-    }
-
-    if (!startDate) startDate = todayStr;
-    if (!endDate) endDate = startDate;
-
+    const { startDate, endDate } = DateUtils.resolveReportRange({ timeRange, customDateFrom, customDateTo })
     return orders.filter(o => {
-      const bd = o.businessDate || DateUtils.getBusinessDate(o.timestamp);
-      return bd >= startDate && bd <= endDate;
-    });
-  }, [orders, timeRange, customDateFrom, customDateTo]);
+      const bd = o.businessDate || DateUtils.getBusinessDate(o.timestamp)
+      return bd >= startDate && bd <= endDate
+    })
+  }, [orders, timeRange, customDateFrom, customDateTo])
 
   const orderReportStats = useMemo(() => {
     let completed = 0, preparing = 0, ready = 0, cancelled = 0, edited = 0
@@ -708,7 +650,7 @@ export default function Reports() {
             <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">Reports</span>
           </h1>
           <p className="text-xs text-muted-foreground font-bold mt-1">
-            Business Day: 6AM–6AM
+            Business day 6AM–6AM · {DateUtils.getBusinessDayLabel()}
           </p>
         </div>
 
@@ -937,7 +879,7 @@ export default function Reports() {
                     <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">{timeLabel} Gross Sales</span>
                     <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.grossSales)}</h3>
                   </div>
-                  <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-emerald-500 bg-emerald-500/10 border-emerald-500/25">Total Sale</span>
+                  <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-emerald-500 bg-emerald-500/10 border-emerald-500/25">Food + service + delivery</span>
                 </div>
 
                 {/* Net Sales */}
@@ -946,7 +888,7 @@ export default function Reports() {
                     <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide leading-none">{timeLabel} Net Sales</span>
                     <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.netSales)}</h3>
                   </div>
-                  <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-blue-500 bg-blue-500/10 border-blue-500/25">Excludes service & delivery charges</span>
+                  <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-blue-500 bg-blue-500/10 border-blue-500/25">Food only — category cards add to this</span>
                 </div>
 
                 {/* Service Charges */}
@@ -1103,6 +1045,29 @@ export default function Reports() {
                           {(reportStats.totalCatSales || 0) > 0 ? Math.round(((reportStats.chipsSales || 0) / (reportStats.totalCatSales || 1)) * 100) : 0}%
                         </span>
                       </div>
+                      {(reportStats.otherSales || 0) > 0 && (
+                        <div className="p-3 bg-zinc-500/10 border border-zinc-500/25 rounded-2xl flex justify-between items-center">
+                          <div>
+                            <span className="text-[10px] text-zinc-500 font-bold uppercase">Other</span>
+                            <p className="text-lg font-black text-foreground mt-0.5">Rs. {formatCurrency(reportStats.otherSales || 0)}</p>
+                          </div>
+                          <span className="text-sm font-bold text-zinc-500 bg-zinc-500/20 px-3 py-1.5 rounded-lg">
+                            {(reportStats.totalCatSales || 0) > 0 ? Math.round(((reportStats.otherSales || 0) / (reportStats.totalCatSales || 1)) * 100) : 0}%
+                          </span>
+                        </div>
+                      )}
+                      <div className="p-3 bg-secondary/60 border border-border rounded-2xl text-[10px] font-bold text-muted-foreground space-y-1">
+                        <div className="flex justify-between"><span>Cards total (food)</span><span className="text-foreground">Rs. {formatCurrency(reportStats.totalCatSales || 0)}</span></div>
+                        <div className="flex justify-between"><span>+ Service</span><span>Rs. {formatCurrency(reportStats.totalService || 0)}</span></div>
+                        <div className="flex justify-between"><span>+ Delivery</span><span>Rs. {formatCurrency(reportStats.totalDelivery || 0)}</span></div>
+                        <div className="flex justify-between text-foreground"><span>= Gross sale</span><span>Rs. {formatCurrency(reportStats.grossSales || 0)}</span></div>
+                        {(reportStats.openBillsCount || 0) > 0 && (
+                          <div className="flex justify-between text-amber-600 pt-1 border-t border-border">
+                            <span>Open bills (not in sale)</span>
+                            <span>{reportStats.openBillsCount} · Rs. {formatCurrency(reportStats.openBillsTotal || 0)}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -1224,12 +1189,12 @@ export default function Reports() {
                       <span className="text-red-500">Rs. {formatCurrency(reportStats.totalDiscount)}</span>
                     </div>
                     <div className="flex justify-between p-3 bg-secondary/40 border border-border rounded-xl font-bold text-xs">
-                      <span className="text-muted-foreground">Refund Claims Processed:</span>
-                      <span className="text-red-500">Rs. {formatCurrency(reportStats.refundsCount * 1200)}</span>
+                      <span className="text-muted-foreground">Cancelled / Refunded:</span>
+                      <span className="text-red-500">Rs. {formatCurrency(reportStats.refundsCount || 0)}</span>
                     </div>
                     <div className="flex justify-between p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl font-bold text-xs">
-                      <span className="text-emerald-500">Net Estimated Profit:</span>
-                      <span className="text-emerald-500">Rs. {formatCurrency(Math.round(reportStats.netSales * 0.45))}</span>
+                      <span className="text-emerald-500">Food net (same as Net Sales):</span>
+                      <span className="text-emerald-500">Rs. {formatCurrency(reportStats.netSales)}</span>
                     </div>
                   </div>
                 </div>

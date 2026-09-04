@@ -175,6 +175,8 @@ class OrderItemRepository {
 
     for (const item of items) {
       item.variants = variantMap.get(item.id) || [];
+      item.variant = item.variants[0] || null;
+      item.variant_name = item.variant?.variant_name_snapshot || null;
       item.modifiers = modifierMap.get(item.id) || [];
       item.addons = addonMap.get(item.id) || [];
       item.combo_components = comboMap.get(item.id) || [];

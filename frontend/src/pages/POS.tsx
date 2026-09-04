@@ -2133,7 +2133,7 @@ export default function POS() {
                       </div>
 
 
-                      {orderType === 'Dine In' && isTaxEnabled && getServiceCharge() > 0 && (
+                      {orderType === 'Dine In' && getServiceCharge() > 0 && (
                         <div className="flex justify-between text-xs font-black text-foreground border-l-2 border-orange-500 pl-2 p-1 -mx-1">
                           <span>Service Charges (7%)</span>
                           <span>Rs {getServiceCharge().toLocaleString()}</span>

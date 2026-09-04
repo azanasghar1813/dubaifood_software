@@ -1,10 +1,11 @@
 import { Outlet } from "react-router-dom"
-import { useState, useEffect } from "react"
+import { useState, useEffect, lazy, Suspense } from "react"
 import { PrinterManager } from "./components/PrinterManager"
 import { PrintTemplates } from "./components/PrintTemplates"
-import { KDS } from "./pages/KDS"
 import { KeyboardShortcutsModal } from "./components/KeyboardShortcutsModal"
 import { usePrinterStore } from "./store/printerStore"
+
+const KDS = lazy(() => import("./pages/KDS").then(m => ({ default: m.KDS })))
 
 function App() {
   const [printerManagerOpen, setPrinterManagerOpen] = useState(false)
@@ -58,7 +59,11 @@ function App() {
       </main>
 
       {/* Global Overlays */}
-      {kdsOpen && <KDS />}
+      {kdsOpen && (
+        <Suspense fallback={null}>
+          <KDS />
+        </Suspense>
+      )}
       <PrinterManager isOpen={printerManagerOpen} onClose={() => setPrinterManagerOpen(false)} />
       <PrintTemplates />
       <KeyboardShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />

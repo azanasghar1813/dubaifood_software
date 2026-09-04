@@ -617,10 +617,16 @@ export const usePosStore = create<POSState>()(
 
       const paymentKeys = get().paymentIdempotencyKeys;
       const updatedPaymentKeys = { ...paymentKeys };
-      const dueNow = Number((order as any).due_total ?? (order as any)?.totals?.due_total ?? 0);
+      let remainingDue = Number(
+        (order as any).due_total
+        ?? (order as any)?.totals?.due_total
+        ?? (order as any).grand_total
+        ?? get().getNetTotal()
+        ?? 0
+      );
 
       for (let i = 0; i < payments.length; i++) {
-        if (dueNow <= 0) break;
+        if (remainingDue <= 0.005) break;
         const p = payments[i];
         const method = String(p.method || p.paymentMethod || 'CASH').toUpperCase().replace(/ /g, '_')
         if (method === 'LATER' || method === 'UNPAID') continue;
@@ -640,6 +646,7 @@ export const usePosStore = create<POSState>()(
           discount_total: discountTotal,
           print_paid: printPaid
         }, paymentKey)
+        remainingDue -= Number(p.amount) || 0
       }
       
       set({ paymentIdempotencyKeys: updatedPaymentKeys });
@@ -688,18 +695,14 @@ export const usePosStore = create<POSState>()(
     return 0;
   },
   getServiceCharge: () => {
-    if (!get().isTaxEnabled || get().orderType !== 'Dine In') return 0;
-    const active = get().activeOrder
-    if (get().editingOrderId && active?.service_charge != null && Number(active.service_charge) > 0) {
-      return Number(active.service_charge)
-    }
-    
+    if (get().orderType !== 'Dine In') return 0;
+    const discount = Number(get().activeOrder?.totals?.discount_total ?? get().activeOrder?.discount_total ?? 0) || 0
     const cfg = get().financeConfig || {};
     const raw = Number(cfg.service_charge_percent ?? cfg.service_charge_rate ?? 7);
-    const rate = !Number.isFinite(raw) || raw <= 0 ? 0.07 : (raw > 1 ? raw / 100 : (raw === 0.1 ? 0.07 : raw));
+    const rate = !Number.isFinite(raw) || raw <= 0 ? 0.07 : (raw > 1 ? raw / 100 : raw);
 
-    const subtotal = get().getSubtotal();
-    return Math.round(subtotal * rate);
+    const food = Math.max(0, get().getSubtotal() - discount);
+    return Math.round(food * rate);
   },
   getGrandTotal: () => {
     const sub = get().getSubtotal();

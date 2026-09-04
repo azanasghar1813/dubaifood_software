@@ -49,6 +49,7 @@ export interface HistoryOrderRow {
   business_date:         string;
   branch_id:             string;
   cashier_user_id:       string;
+  cashier_name?:         string | null;
   shift_id:              string;
   customer_id:           string | null;
   customer_name?:        string | null;

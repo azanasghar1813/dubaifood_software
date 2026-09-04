@@ -191,23 +191,23 @@ class HistoryFilterService {
       }
 
       case 'LAST_7_DAYS': {
-        const d = new Date();
-        d.setDate(d.getDate() - 7);
-        const weekAgo = dateUtils.getBusinessDate(d);
-        return { sql: 'o.business_date >= ?', params: [weekAgo] };
+        const weekAgo = dateUtils.addBusinessDays(today, -6);
+        return { sql: 'o.business_date BETWEEN ? AND ?', params: [weekAgo, today] };
       }
 
       case 'LAST_30_DAYS': {
-        const d = new Date();
-        d.setDate(d.getDate() - 30);
-        const monthAgo = dateUtils.getBusinessDate(d);
-        return { sql: 'o.business_date >= ?', params: [monthAgo] };
+        const monthAgo = dateUtils.addBusinessDays(today, -29);
+        return { sql: 'o.business_date BETWEEN ? AND ?', params: [monthAgo, today] };
+      }
+
+      case 'THIS_WEEK': {
+        return { sql: 'o.business_date BETWEEN ? AND ?', params: [dateUtils.getBusinessWeekStart(), today] };
       }
 
       case 'THIS_MONTH':
       case 'MONTHLY': {
         const monthStart = dateUtils.getBusinessMonthStart();
-        return { sql: 'o.business_date >= ?', params: [monthStart] };
+        return { sql: 'o.business_date BETWEEN ? AND ?', params: [monthStart, today] };
       }
 
       case 'ALL_TIME': {

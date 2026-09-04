@@ -21,6 +21,7 @@ import { orderCreationService } from './orderCreationService.js';
 import { historyCacheService } from './historyCacheService.js';
 import crypto from 'crypto';
 import { dateUtils } from '../utils/dateUtils.js';
+import { orderTotalsService } from './orderTotalsService.js';
 
 class OrderService {
   /**
@@ -146,73 +147,30 @@ class OrderService {
   }
 
   /**
-   * Recalculates order financial totals atomically inside SQLite transaction.
+   * Recalculates order financial totals. Nested-transaction safe.
    */
   recalculateOrderTotals(orderId) {
-    return dbEngine.transaction(() => {
-      const order = orderRepository.findById(orderId);
-      if (!order) throw new Error('Order not found.');
-
-      const items = orderItemRepository.findItemsByOrderId(orderId);
-
-      let subtotal = 0;
-      let taxTotal = 0;
-      let lineDiscountTotal = 0;
-
-      for (const item of items) {
-        subtotal += item.subtotal;
-        taxTotal += item.tax_amount;
-        lineDiscountTotal += item.discount_amount;
-      }
-
-      const discountTotal = Math.max(lineDiscountTotal, Number(order.discount_total) || 0);
-      const grandTotal = subtotal + taxTotal - discountTotal + order.tip_total + order.delivery_fee + order.service_charge;
-      const paidTotal = orderPaymentRepository.getTotalPaidForOrder(orderId);
-      const dueTotal = Math.max(0, grandTotal - paidTotal);
-
-      let paymentState = order.payment_state;
-      if (paidTotal >= grandTotal && grandTotal > 0) {
-        paymentState = 'PAID';
-      } else if (paidTotal > 0) {
-        paymentState = 'PARTIALLY_PAID';
-      } else {
-        paymentState = 'UNPAID';
-      }
-
-      const updated = orderRepository.update(orderId, {
-        subtotal,
-        tax_total: taxTotal,
-        discount_total: discountTotal,
-        grand_total: grandTotal,
-        paid_total: paidTotal,
-        due_total: dueTotal,
-        payment_state: paymentState
-      });
-
+    const run = () => {
+      const updated = orderTotalsService.recalculate(orderId);
       return this._hydrateOrder(updated);
-    });
+    };
+    try {
+      if (dbEngine.db?.inTransaction) return run();
+    } catch { /* fall through to wrapped tx */ }
+    return dbEngine.transaction(run);
   }
 
   applyOrderDiscount(orderId, discountTotal, printPaid = false) {
     const order = orderRepository.findById(orderId);
     if (!order) throw new Error('Order not found.');
     const discount = Math.max(0, Number(discountTotal) || 0);
-    const subtotal = Number(order.subtotal) || 0;
-    const service = Number(order.service_charge) || 0;
-    const delivery = Number(order.delivery_fee) || 0;
-    const grand = Math.max(0, subtotal + service + delivery - discount);
-    const paid = Number(order.paid_total) || 0;
-    const updated = orderRepository.update(orderId, {
-      discount_total: discount,
-      grand_total: grand,
-      due_total: Math.max(0, grand - paid)
-    });
+    orderRepository.update(orderId, { discount_total: discount });
     try {
       orderMetadataRepository.setMeta(orderId, 'receipt_paid_stamp', printPaid ? 'true' : 'false');
     } catch { /* optional */ }
-    orderCacheService.upsertOrder(updated);
+    const updated = this.recalculateOrderTotals(orderId);
     syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', { discount_total: discount });
-    return this._hydrateOrder(updated);
+    return updated;
   }
 
   /**
@@ -222,7 +180,7 @@ class OrderService {
     orderValidationService.validateOrderCreation({ shift_id: shiftId, cashier_user_id: userId });
 
     return dbEngine.transaction(() => {
-      const businessDate = options.business_date || new Date().toISOString().split('T')[0];
+      const businessDate = options.business_date || dateUtils.getBusinessDate();
       const branchId = options.branch_id || 'DEFAULT_BRANCH';
 
       const orderNumber = options.order_number || orderNumberService.generateNextNumber(branchId, businessDate);
@@ -391,20 +349,15 @@ class OrderService {
       const item = orderItemRepository.findItemById(itemId);
       if (!item) throw new Error('Order line item not found.');
 
-      const newSubtotal = item.final_unit_price * newQuantity;
-      let newTaxAmount = 0;
-      if (item.is_tax_inclusive) {
-        newTaxAmount = newSubtotal - (newSubtotal / (1 + item.tax_rate));
-      } else {
-        newTaxAmount = newSubtotal * item.tax_rate;
-      }
-      const newTotalAmount = item.is_tax_inclusive ? newSubtotal : newSubtotal + newTaxAmount;
+      const addonSum = (item.addons || []).reduce((s, a) => s + (Number(a.subtotal) || 0), 0);
+      const unit = Number(item.final_unit_price ?? item.base_unit_price) || 0;
+      const newSubtotal = unit * newQuantity + addonSum;
 
       orderItemRepository.updateItem(itemId, {
         quantity: newQuantity,
         subtotal: newSubtotal,
-        tax_amount: newTaxAmount,
-        total_amount: newTotalAmount
+        tax_amount: 0,
+        total_amount: newSubtotal
       });
 
       const billBefore = Number(order.grand_total || 0);

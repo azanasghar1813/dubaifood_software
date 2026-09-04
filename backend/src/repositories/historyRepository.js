@@ -1,5 +1,6 @@
 import { dbEngine } from '../database/sqlite.js';
 import crypto from 'crypto';
+import { dateUtils } from '../utils/dateUtils.js';
 
 /**
  * HistoryRepository
@@ -40,13 +41,26 @@ class HistoryRepository {
         o.business_date,
         o.branch_id,
         COALESCE(u.username, o.cashier_user_id) AS cashier_user_id,
+        COALESCE(
+          NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''),
+          u.username,
+          o.cashier_user_id
+        ) AS cashier_name,
         o.shift_id,
         o.customer_id,
         IFNULL(dt.table_number, o.table_id) as table_id,
         o.waiter_id,
-        COALESCE(o.waiter_name_snapshot, w.username) AS waiter_name,
+        COALESCE(
+          o.waiter_name_snapshot,
+          NULLIF(TRIM(COALESCE(w.first_name, '') || ' ' || COALESCE(w.last_name, '')), ''),
+          w.username
+        ) AS waiter_name,
         o.rider_id,
-        COALESCE(o.rider_name_snapshot, r.username) AS rider_name,
+        COALESCE(
+          o.rider_name_snapshot,
+          NULLIF(TRIM(COALESCE(r.first_name, '') || ' ' || COALESCE(r.last_name, '')), ''),
+          r.username
+        ) AS rider_name,
         o.order_type,
         o.lifecycle_state,
         o.kitchen_state,
@@ -137,11 +151,24 @@ class HistoryRepository {
     const order = dbEngine.prepare(`
       SELECT o.*,
         COALESCE(u.username, o.cashier_user_id) AS cashier_user_id,
+        COALESCE(
+          NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''),
+          u.username,
+          o.cashier_user_id
+        ) AS cashier_name,
         IFNULL(dt.table_number, o.table_id) as table_id,
         o.waiter_id,
-        COALESCE(o.waiter_name_snapshot, w.username) AS waiter_name,
+        COALESCE(
+          o.waiter_name_snapshot,
+          NULLIF(TRIM(COALESCE(w.first_name, '') || ' ' || COALESCE(w.last_name, '')), ''),
+          w.username
+        ) AS waiter_name,
         o.rider_id,
-        COALESCE(o.rider_name_snapshot, r.username) AS rider_name,
+        COALESCE(
+          o.rider_name_snapshot,
+          NULLIF(TRIM(COALESCE(r.first_name, '') || ' ' || COALESCE(r.last_name, '')), ''),
+          r.username
+        ) AS rider_name,
         o.service_charge AS service_charge,
         o.delivery_fee AS delivery_charges
       FROM orders o 
@@ -189,13 +216,18 @@ class HistoryRepository {
     const combosByItem     = this._groupBy(comboComponents, 'order_item_id');
 
     // Hydrate items
-    order.items = items.map(item => ({
+    order.items = items.map(item => {
+      const variant = variantsByItem[item.id]?.[0] || null;
+      return {
       ...item,
-      variant:           variantsByItem[item.id]?.[0]  || null,
+      variant,
+      variants:          variantsByItem[item.id]       || [],
+      variant_name:      variant?.variant_name_snapshot || null,
       modifiers:         modifiersByItem[item.id]      || [],
       addons:            addonsByItem[item.id]          || [],
       combo_components:  combosByItem[item.id]          || [],
-    }));
+    };
+    });
 
     // Payments
     order.payments = dbEngine.prepare(`
@@ -240,6 +272,12 @@ class HistoryRepository {
       } catch { /* best-effort VIP from saved customer */ }
     }
 
+    const custName = [order.customer?.first_name, order.customer?.last_name].filter(Boolean).join(' ').trim();
+    order.customer_name = order.metadata.customer_name || custName || order.customer_name || null;
+    order.customer_phone = order.metadata.customer_phone || order.customer?.phone || order.customer_phone || null;
+    order.customer_address = order.metadata.customer_address || order.customer?.address || order.customer_address || null;
+    order.is_vip = order.metadata.is_vip === true || order.metadata.is_vip === 'true' || order.metadata.is_vip === 1 || order.customer?.is_vip === 1 || order.customer?.is_vip === true;
+
     // Audit trail (Combine order_audit_trail and activity_logs)
     const audits = dbEngine.prepare(`
       SELECT o.id, COALESCE(u.username, o.user_id) as user_id, o.action, o.old_value, o.new_value, o.reason, o.created_at 
@@ -278,8 +316,18 @@ class HistoryRepository {
   findLightweight(orderId) {
     const order = dbEngine.prepare(`
       SELECT o.id, o.order_number, o.business_date, o.order_type, o.lifecycle_state,
-             o.payment_state, o.kitchen_state, o.grand_total, COALESCE(u.username, o.cashier_user_id) AS cashier_user_id,
-             o.customer_id, o.table_id, o.waiter_id, COALESCE(o.waiter_name_snapshot, w.username) AS waiter_name, o.rider_id, COALESCE(o.rider_name_snapshot, r.username) AS rider_name, o.created_at, o.updated_at, o.sync_status
+             o.payment_state, o.kitchen_state, o.grand_total,
+             COALESCE(u.username, o.cashier_user_id) AS cashier_user_id,
+             COALESCE(
+               NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''),
+               u.username,
+               o.cashier_user_id
+             ) AS cashier_name,
+             o.customer_id, o.table_id, o.waiter_id,
+             COALESCE(o.waiter_name_snapshot, NULLIF(TRIM(COALESCE(w.first_name, '') || ' ' || COALESCE(w.last_name, '')), ''), w.username) AS waiter_name,
+             o.rider_id,
+             COALESCE(o.rider_name_snapshot, NULLIF(TRIM(COALESCE(r.first_name, '') || ' ' || COALESCE(r.last_name, '')), ''), r.username) AS rider_name,
+             o.created_at, o.updated_at, o.sync_status
       FROM orders o 
       LEFT JOIN users u ON u.id = o.cashier_user_id 
       LEFT JOIN users w ON w.id = o.waiter_id
@@ -310,24 +358,27 @@ class HistoryRepository {
    * Stats for history dashboard header.
    */
   getStats(filters = {}) {
-    const today = new Date().toISOString().slice(0, 10);
+    void filters;
+    const today = dateUtils.getBusinessDate();
 
     return {
       today: dbEngine.prepare(`
         SELECT
           COUNT(*) as total_orders,
-          SUM(grand_total) as total_revenue,
+          SUM(CASE WHEN lifecycle_state = 'COMPLETED'
+                OR (lifecycle_state = 'ACTIVE' AND UPPER(COALESCE(payment_state,'')) = 'PAID')
+              THEN grand_total ELSE 0 END) as total_revenue,
           SUM(CASE WHEN lifecycle_state = 'COMPLETED' THEN 1 ELSE 0 END) as completed,
           SUM(CASE WHEN lifecycle_state = 'CANCELLED' THEN 1 ELSE 0 END) as cancelled,
-          SUM(CASE WHEN payment_state = 'PAID' THEN 1 ELSE 0 END) as paid
+          SUM(CASE WHEN UPPER(COALESCE(payment_state,'')) = 'PAID' THEN 1 ELSE 0 END) as paid
         FROM orders
-        WHERE business_date = ?
+        WHERE business_date = ? AND deleted_at IS NULL
       `).get(today),
 
       by_state: dbEngine.prepare(`
         SELECT lifecycle_state, COUNT(*) as count, SUM(grand_total) as total
         FROM orders
-        WHERE business_date = ?
+        WHERE business_date = ? AND deleted_at IS NULL
         GROUP BY lifecycle_state
       `).all(today),
     };

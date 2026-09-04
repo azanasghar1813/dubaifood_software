@@ -19,7 +19,23 @@ export interface ReportSummary {
   serviceCharges: number;
   deliveryCharges: number;
   refunds: number;
+  refundCount?: number;
   averageOrderValue: number;
+  cashSales?: number;
+  digitalSales?: number;
+  unpaidSales?: number;
+  paidCount?: number;
+  unpaidCount?: number;
+  restaurantSales?: number;
+  fastFoodSales?: number;
+  dealsSales?: number;
+  drinksSales?: number;
+  chipsSales?: number;
+  specialDrinksSales?: number;
+  otherSales?: number;
+  totalCatSales?: number;
+  openBillsCount?: number;
+  openBillsTotal?: number;
 }
 
 export interface DetailedSaleRow {

@@ -148,9 +148,17 @@ class ShiftService {
       discounts += Number(order.discount_total) || 0;
     });
 
+    let cashRefunds = 0;
     payments.forEach(payment => {
       const amount = Number(payment.amount) || 0;
-      if (String(payment.payment_method).toUpperCase() === 'CASH') {
+      const method = String(payment.payment_method).toUpperCase();
+      const status = String(payment.status || 'COMPLETED').toUpperCase();
+      if (status === 'REFUNDED' && method === 'CASH') {
+        cashRefunds += amount;
+        return;
+      }
+      if (status !== 'COMPLETED') return;
+      if (method === 'CASH') {
         cashSales += amount;
       } else {
         onlineSales += amount;
@@ -160,7 +168,7 @@ class ShiftService {
     const totalCashDrops = cashDrops.reduce((acc, cd) => acc + cd.amount, 0);
     const totalPaidOuts = paidOuts.reduce((acc, po) => acc + po.amount, 0);
 
-    const expectedCash = session.opening_float + cashSales - refunds - totalCashDrops - totalPaidOuts;
+    const expectedCash = Number(session.opening_float || 0) + cashSales - cashRefunds - totalCashDrops - totalPaidOuts;
 
     const shiftActivities = dbEngine.prepare(`
       SELECT * FROM activity_logs 

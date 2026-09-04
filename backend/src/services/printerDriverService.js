@@ -304,8 +304,8 @@ class PrinterDriverService {
       for (const item of payload.items) {
         const lineTotal = (item.total_amount || item.subtotal || 0).toFixed(2);
         console.log(`[PrinterDriver][VIRTUAL] ${item.quantity}x ${item.product_name} ${this._padLeft(lineTotal, charWidth - item.product_name.length - 4)}`);
-        if (item.variant?.variant_name) {
-          console.log(`[PrinterDriver][VIRTUAL]    • ${item.variant.variant_name}`);
+        if (item.variant?.variant_name || item.variant?.variant_name_snapshot) {
+          console.log(`[PrinterDriver][VIRTUAL]    • ${item.variant.variant_name || item.variant.variant_name_snapshot}`);
         }
         for (const m of item.modifiers || []) {
           console.log(`[PrinterDriver][VIRTUAL]    + ${m.modifier_name}`);

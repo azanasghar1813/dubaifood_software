@@ -1,115 +1,84 @@
 import { dbEngine } from '../database/sqlite.js';
-import { configService } from './configService.js';
-import { activityLogService } from './activityLogService.js';
+import { dateUtils } from '../utils/dateUtils.js';
 import { kitchenService } from './kitchenService.js';
+import { SALE_PREDICATE, OPEN_BILL_PREDICATE, PLACED_PREDICATE, REFUND_PREDICATE } from '../utils/saleScope.js';
 
 export const dashboardService = {
-  /**
-   * Calculates the exact Date objects for the current Business Day
-   */
   getBusinessDayBounds: () => {
-    // We haven't built a full Business Configuration UI yet, so default is 06:00
-    // Actually, configService.getBusinessDay() is implemented!
-    const { start_time } = configService.getBusinessDay();
-    const [startHour, startMinute] = start_time.split(':').map(Number);
-    
-    const now = new Date();
-    
-    // If we are currently before the start time (e.g. 2 AM), 
-    // the "business day" started yesterday at 6 AM.
-    const startOfBusinessDay = new Date(now);
-    startOfBusinessDay.setHours(startHour, startMinute, 0, 0);
-    
-    if (now < startOfBusinessDay) {
-      startOfBusinessDay.setDate(startOfBusinessDay.getDate() - 1);
-    }
-    
-    const endOfBusinessDay = new Date(startOfBusinessDay);
-    endOfBusinessDay.setDate(endOfBusinessDay.getDate() + 1);
-
-    return {
-      start: startOfBusinessDay.toISOString().replace('T', ' ').substring(0, 19),
-      end: endOfBusinessDay.toISOString().replace('T', ' ').substring(0, 19),
-    };
+    const { start, end } = dateUtils.getBusinessDayBounds();
+    return { start, end, businessDate: dateUtils.getBusinessDate() };
   },
 
   getSummary: () => {
-    const { start, end } = dashboardService.getBusinessDayBounds();
-    
-    // Total Sales (completed, confirmed, or active)
-    const stmt = dbEngine.db.prepare(`
-      SELECT 
-        SUM(grand_total) as todaySales,
+    const businessDate = dateUtils.getBusinessDate();
+
+    const sale = dbEngine.get(`
+      SELECT
+        COALESCE(SUM(grand_total), 0) as todaySales,
         COUNT(id) as ordersCount
-      FROM orders
-      WHERE (lifecycle_state = 'COMPLETED' OR lifecycle_state = 'CONFIRMED' OR lifecycle_state = 'ACTIVE')
-      AND created_at >= ? AND created_at < ?
-    `);
-    
-    const result = stmt.get(start, end);
-    const todaySales = result.todaySales || 0;
-    const ordersCount = result.ordersCount || 0;
+      FROM orders o
+      WHERE o.business_date = ? AND ${PLACED_PREDICATE}
+    `, businessDate);
+
+    const todaySales = sale?.todaySales || 0;
+    const ordersCount = sale?.ordersCount || 0;
     const aov = ordersCount > 0 ? Math.round(todaySales / ordersCount) : 0;
 
-    const paidStmt = dbEngine.db.prepare(`
+    const paid = dbEngine.get(`
       SELECT COUNT(id) as paid
-      FROM orders
-      WHERE payment_state = 'PAID'
-      AND created_at >= ? AND created_at < ?
-    `);
-    const paid = paidStmt.get(start, end)?.paid || 0;
+      FROM orders o
+      WHERE o.business_date = ? AND ${SALE_PREDICATE} AND UPPER(COALESCE(o.payment_state, '')) = 'PAID'
+    `, businessDate)?.paid || 0;
 
-    const unpaidStmt = dbEngine.db.prepare(`
+    const unpaid = dbEngine.get(`
       SELECT COUNT(id) as unpaid
-      FROM orders
-      WHERE payment_state != 'PAID'
-      AND created_at >= ? AND created_at < ?
-    `);
-    const unpaid = unpaidStmt.get(start, end)?.unpaid || 0;
+      FROM orders o
+      WHERE o.business_date = ? AND ${SALE_PREDICATE} AND UPPER(COALESCE(o.payment_state, '')) != 'PAID'
+    `, businessDate)?.unpaid || 0;
 
-    const completedStmt = dbEngine.db.prepare(`
+    const cancelled = dbEngine.get(`
+      SELECT COUNT(id) as cancelled
+      FROM orders o
+      WHERE o.business_date = ? AND ${REFUND_PREDICATE}
+    `, businessDate)?.cancelled || 0;
+
+    const completedRow = dbEngine.get(`
       SELECT
         COUNT(id) as completed,
         COALESCE(SUM(grand_total), 0) as completedSales
-      FROM orders
-      WHERE lifecycle_state = 'COMPLETED'
-      AND created_at >= ? AND created_at < ?
-    `);
-    const completedRow = completedStmt.get(start, end);
-    const completed = completedRow?.completed || 0;
-    const completedSales = completedRow?.completedSales || 0;
+      FROM orders o
+      WHERE o.business_date = ? AND o.deleted_at IS NULL AND o.lifecycle_state = 'COMPLETED'
+    `, businessDate);
 
-    const notCompletedStmt = dbEngine.db.prepare(`
+    const notCompleted = dbEngine.get(`
       SELECT COUNT(id) as notCompleted
-      FROM orders
-      WHERE lifecycle_state NOT IN ('COMPLETED', 'CANCELLED', 'REFUNDED', 'ARCHIVED')
-      AND created_at >= ? AND created_at < ?
-    `);
-    const notCompleted = notCompletedStmt.get(start, end)?.notCompleted || 0;
+      FROM orders o
+      WHERE o.business_date = ? AND ${OPEN_BILL_PREDICATE}
+    `, businessDate)?.notCompleted || 0;
 
-    const cashStmt = dbEngine.db.prepare(`
-      SELECT SUM(amount) as cashInDrawer
-      FROM order_payments
-      WHERE (payment_method = 'CASH' OR payment_method = 'Cash')
-      AND created_at >= ? AND created_at < ?
-    `);
-    const cashInDrawer = cashStmt.get(start, end)?.cashInDrawer || 0;
+    const cashInDrawer = dbEngine.get(`
+      SELECT COALESCE(SUM(op.amount), 0) as cashInDrawer
+      FROM order_payments op
+      JOIN orders o ON o.id = op.order_id
+      WHERE o.business_date = ?
+        AND ${SALE_PREDICATE}
+        AND UPPER(COALESCE(op.status, 'COMPLETED')) = 'COMPLETED'
+        AND UPPER(op.payment_method) = 'CASH'
+    `, businessDate)?.cashInDrawer || 0;
 
-    const custStmt = dbEngine.db.prepare(`
+    const customers = dbEngine.get(`
       SELECT COUNT(DISTINCT customer_id) as customers
-      FROM orders
-      WHERE customer_id IS NOT NULL
-      AND created_at >= ? AND created_at < ?
-    `);
-    const customers = custStmt.get(start, end)?.customers || 0;
+      FROM orders o
+      WHERE o.business_date = ? AND o.customer_id IS NOT NULL AND ${SALE_PREDICATE}
+    `, businessDate)?.customers || 0;
 
-    const typeStmt = dbEngine.db.prepare(`
+    const types = dbEngine.all(`
       SELECT order_type, COUNT(id) as count
-      FROM orders
-      WHERE created_at >= ? AND created_at < ?
+      FROM orders o
+      WHERE o.business_date = ? AND ${SALE_PREDICATE}
       GROUP BY order_type
-    `);
-    const types = typeStmt.all(start, end);
+    `, businessDate);
+
     let restaurant = 0, fastFood = 0, deals = 0;
     for (const t of types) {
       if (t.order_type === 'DINE_IN') restaurant += t.count;
@@ -119,44 +88,44 @@ export const dashboardService = {
     return {
       todaySales,
       ordersCount,
-      preparing: 0, // Migrated to operations
+      preparing: 0,
       ready: 0,
       served: 0,
       paid,
       unpaid,
-      completed,
+      cancelled,
+      completed: completedRow?.completed || 0,
       notCompleted,
-      completedSales,
+      completedSales: completedRow?.completedSales || 0,
       aov,
       customers,
       fastFood,
       restaurant,
       deals,
-      cashInDrawer
+      cashInDrawer,
+      businessDate,
+      businessDayLabel: dateUtils.getBusinessDayLabel()
     };
   },
 
   getOperations: () => {
-    const { start, end } = dashboardService.getBusinessDayBounds();
-    
-    // Active cashiers
-    const sessionStmt = dbEngine.db.prepare(`
+    const businessDate = dateUtils.getBusinessDate();
+    const activeCashiers = dbEngine.get(`
       SELECT COUNT(id) as activeCashiers
       FROM cashier_sessions
       WHERE status = 'OPEN'
-    `);
-    const activeCashiers = sessionStmt.get().activeCashiers || 0;
+    `)?.activeCashiers || 0;
 
     const kitchenMetrics = kitchenService.getDashboardMetrics();
 
-    // Unpaid Orders from enterprise order states
-    const unpaidStmt = dbEngine.db.prepare(`
+    const unpaid = dbEngine.get(`
       SELECT COUNT(id) as unpaid
-      FROM orders
-      WHERE payment_state != 'PAID'
-        AND created_at >= ? AND created_at < ?
-    `);
-    const unpaid = unpaidStmt.get(start, end)?.unpaid || 0;
+      FROM orders o
+      WHERE o.business_date = ?
+        AND o.deleted_at IS NULL
+        AND UPPER(COALESCE(o.payment_state, '')) != 'PAID'
+        AND o.lifecycle_state NOT IN ('CANCELLED', 'REFUNDED', 'DRAFT', 'HELD', 'ARCHIVED')
+    `, businessDate)?.unpaid || 0;
 
     return {
       activeCashiers,
@@ -171,14 +140,13 @@ export const dashboardService = {
   },
 
   getRevenueAnalytics: () => {
-    const { start, end } = dashboardService.getBusinessDayBounds();
-    const stmt = dbEngine.db.prepare(`
+    const businessDate = dateUtils.getBusinessDate();
+    const results = dbEngine.all(`
       SELECT created_at, grand_total
-      FROM orders
-      WHERE created_at >= ? AND created_at < ?
-    `);
-    const results = stmt.all(start, end);
-    
+      FROM orders o
+      WHERE o.business_date = ? AND ${SALE_PREDICATE}
+    `, businessDate);
+
     const buckets = [
       { hourStr: "06:00 AM", h: 6 },
       { hourStr: "08:00 AM", h: 8 },
@@ -194,12 +162,14 @@ export const dashboardService = {
       { hourStr: "04:00 AM", h: 4 },
     ];
     const mapped = buckets.map(b => ({ hour: b.hourStr, sales: 0 }));
-    
+
     for (const r of results) {
       if (!r.created_at) continue;
-      const dt = r.created_at.includes('Z') ? new Date(r.created_at) : new Date(r.created_at.replace(' ', 'T') + 'Z');
-      const h = dt.getHours(); 
-      
+      const raw = String(r.created_at);
+      const dt = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T') + (raw.endsWith('Z') ? '' : 'Z'));
+      if (Number.isNaN(dt.getTime())) continue;
+      const h = dt.getHours();
+
       let bucketIndex = 0;
       if (h >= 6 && h < 8) bucketIndex = 0;
       else if (h >= 8 && h < 10) bucketIndex = 1;
@@ -212,26 +182,26 @@ export const dashboardService = {
       else if (h >= 22 && h < 24) bucketIndex = 8;
       else if (h >= 0 && h < 2) bucketIndex = 9;
       else if (h >= 2 && h < 4) bucketIndex = 10;
-      else if (h >= 4 && h < 6) bucketIndex = 11;
-      
+      else bucketIndex = 11;
+
       mapped[bucketIndex].sales += (r.grand_total || 0);
     }
-    
+
     return mapped;
   },
 
   getPopularProducts: () => {
-    const { start, end } = dashboardService.getBusinessDayBounds();
+    const businessDate = dateUtils.getBusinessDate();
     const stmt = dbEngine.db.prepare(`
       SELECT oi.product_name_snapshot as name, SUM(oi.quantity) as sales, oi.product_id as id
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
-      WHERE o.created_at >= ? AND o.created_at < ?
+      WHERE o.business_date = ? AND ${SALE_PREDICATE}
       GROUP BY oi.product_id, oi.product_name_snapshot
       ORDER BY sales DESC
       LIMIT 5
     `);
-    return stmt.all(start, end).map(row => ({
+    return stmt.all(businessDate).map(row => ({
       id: row.id || Math.random().toString(36).substr(2, 9),
       name: row.name || 'Unknown',
       sales: row.sales || 0
@@ -239,9 +209,8 @@ export const dashboardService = {
   },
 
   getActivityFeed: (limit = 10) => {
-    // Query the activity_logs table!
     const stmt = dbEngine.db.prepare(`
-      SELECT a.id, a.action, a.entity_type as module, a.details, a.created_at as time, 
+      SELECT a.id, a.action, a.entity_type as module, a.details, a.created_at as time,
              u.username, u.first_name, u.last_name
       FROM activity_logs a
       LEFT JOIN users u ON a.user_id = u.id
@@ -251,7 +220,7 @@ export const dashboardService = {
     return stmt.all(limit).map(row => ({
       id: row.id,
       title: `${row.action.replace(/_/g, ' ')}`,
-      type: row.module.toLowerCase(),
+      type: (row.module || 'system').toLowerCase(),
       user: row.first_name ? `${row.first_name} ${row.last_name}` : 'System',
       time: row.time
     }));

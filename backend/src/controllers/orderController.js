@@ -163,6 +163,7 @@ export const orderController = {
         {
           userId: ctx.userId,
           reason: req.body.reason,
+          kitchenState: req.body.kitchenState,
         }
       );
       sendSuccess(res, updatedOrder, 'Order state updated');

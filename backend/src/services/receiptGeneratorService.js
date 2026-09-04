@@ -192,7 +192,15 @@ class ReceiptGeneratorService {
   // ──────────────────────────────────────────────────────────────────────────
 
   _formatLineItems(items) {
-    return (items || []).map(item => ({
+    return (items || []).map(item => {
+      const rawVariant = item.variant || (item.variants && item.variants[0]) || null;
+      const variantName = rawVariant?.variant_name
+        || rawVariant?.variant_name_snapshot
+        || rawVariant?.name
+        || item.variant_name
+        || item.variant_name_snapshot
+        || null;
+      return {
       item_id: item.id || item.item_id,
       product_id: item.product_id,
       product_name: item.product_name || item.product_name_snapshot,
@@ -209,11 +217,10 @@ class ReceiptGeneratorService {
       total_amount: item.total_amount,
       notes: item.notes || null,
 
-      // Nested components
-      variant: item.variant || (item.variant_name_snapshot ? {
-        variant_name: item.variant_name_snapshot,
-        price_adj: item.price_adjustment || 0,
-      } : null),
+      variant: variantName ? {
+        variant_name: variantName,
+        price_adj: Number(rawVariant?.price_adjustment || rawVariant?.price_adj || 0),
+      } : null,
 
       modifiers: (item.modifiers || []).map(m => ({
         group_name: m.group_name_snapshot || m.group_name,
@@ -235,7 +242,8 @@ class ReceiptGeneratorService {
         price_adj: c.price_adjustment || 0,
         quantity: c.quantity || 1,
       })),
-    }));
+    };
+    });
   }
 
   _buildBarcode(order) {

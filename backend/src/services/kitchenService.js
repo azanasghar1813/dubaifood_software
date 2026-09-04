@@ -133,7 +133,9 @@ class KitchenService {
 
     if (lifecycleTarget && lifecycleTarget !== order.lifecycle_state) {
       const allowed = AllowedLifecycleTransitions[order.lifecycle_state] || [];
-      if (allowed.includes(lifecycleTarget)) {
+      const reopenCompleted = order.lifecycle_state === OrderLifecycleState.COMPLETED && lifecycleTarget === OrderLifecycleState.ACTIVE;
+      const uncancel = order.lifecycle_state === OrderLifecycleState.CANCELLED && lifecycleTarget !== OrderLifecycleState.CANCELLED;
+      if (allowed.includes(lifecycleTarget) && !reopenCompleted && !uncancel) {
         updates.lifecycle_state = lifecycleTarget;
         if (lifecycleTarget === OrderLifecycleState.COMPLETED) {
           updates.completed_at = new Date().toISOString();

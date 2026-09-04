@@ -127,6 +127,7 @@ const mapKitchenState = (state: string): KitchenStatus => {
 const mapPaymentState = (state: string, paidStamp?: any): PaymentStatus => {
   const normalized = String(state || '').toUpperCase()
   if (normalized === 'REFUNDED') return 'Refunded'
+  if (normalized === 'PAID') return 'Paid'
   if (paidStamp === true || paidStamp === 1 || paidStamp === '1' || paidStamp === 'true') return 'Paid'
   return 'Unpaid'
 }
@@ -151,16 +152,29 @@ const parseBackendDate = (dateStr?: string): string => {
   return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
 }
 
+export const itemVariantName = (item: any): string => {
+  const raw = item?.variant || item?.variants?.[0] || null
+  return String(
+    raw?.variant_name_snapshot
+    || raw?.variant_name
+    || raw?.name
+    || item?.variant_name
+    || item?.variant_name_snapshot
+    || ''
+  ).trim()
+}
+
 export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOrderDetail): Order => {
-  const items = (detail?.items || []).map((item: any, index: number) => ({
+  const items = (detail?.items || []).map((item: any, index: number) => {
+    const vName = itemVariantName(item)
+    const base = item.product_name_snapshot || item.product_name || item.name || 'Item'
+    return {
     cartItemId: item.id || `${row.id}-item-${index}`,
     id: item.product_id || item.id || `${row.id}-product-${index}`,
-    variant_id: item.variant_id || null,
-    name: (() => {
-      const vName = item.variant?.variant_name_snapshot || item.variant_name || item.variants?.[0]?.variant_name_snapshot
-      const base = item.product_name_snapshot || item.product_name || item.name || 'Item'
-      return vName ? `${base} (${vName})` : base
-    })(),
+    variant_id: item.variant_id || item.variant?.variant_id || null,
+    variant_name: vName || null,
+    variant: item.variant || item.variants?.[0] || (vName ? { variant_name_snapshot: vName, variant_name: vName } : null),
+    name: base,
     price: Number(item.final_unit_price ?? item.unit_price ?? item.price ?? 0),
     quantity: Number(item.quantity ?? 1),
     subtotal: Number(item.subtotal ?? (Number(item.final_unit_price ?? item.unit_price ?? item.price ?? 0) * Number(item.quantity ?? 1))),
@@ -168,11 +182,13 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     code: item.code || item.product_code || '',
     selectedModifiers: item.modifiers || item.selectedModifiers || [],
     combo_components: item.combo_components || [],
+    addons: item.addons || [],
     notes: item.notes || '',
     isEdited: Boolean(item.is_edited || item.updated_at),
     discount: Number(item.discount_total ?? item.discount ?? 0),
     status: 'Active'
-  })) as any
+  }
+  }) as any
 
   const payments = (detail?.payments || []).map((payment: any, index: number) => ({
     id: payment.id || `${row.id}-payment-${index}`,
@@ -217,16 +233,16 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     id: row.id,
     orderNumber: formatReceiptOrderNumber(row.order_number),
     waiterId: row.waiter_id || undefined,
-    waiterName: row.waiter_name_snapshot || row.waiter_name || undefined,
+    waiterName: row.waiter_name_snapshot || row.waiter_name || detail?.metadata?.waiter_name || undefined,
     riderId: row.rider_id || undefined,
-    riderName: row.rider_name_snapshot || row.rider_name || undefined,
-    cashierName: formatName(row.cashier_user_id),
-    customerName: row.customer_name || detail?.metadata?.customer_name || (detail as any)?.customer?.first_name || 'Guest',
+    riderName: row.rider_name_snapshot || row.rider_name || detail?.metadata?.rider_name || undefined,
+    cashierName: formatName((row as any).cashier_name || row.cashier_user_id),
+    customerName: row.customer_name || detail?.metadata?.customer_name || [(detail as any)?.customer?.first_name, (detail as any)?.customer?.last_name].filter(Boolean).join(' ').trim() || 'Guest',
     customerPhone: row.customer_phone || detail?.metadata?.customer_phone || (detail as any)?.customer?.phone || undefined,
     customerAddress: detail?.metadata?.customer_address || (detail as any)?.customer?.address || row.customer_address || undefined,
     isVip: detail?.metadata?.is_vip === 'true' || detail?.metadata?.is_vip === true || detail?.metadata?.is_vip === 1 || String(detail?.metadata?.is_vip) === '1' || row.is_vip === 1 || row.is_vip === true || !!(detail as any)?.customer?.is_vip || false,
-    tableNumber: row.table_id || null,
-    guestCount: 1,
+    tableNumber: row.table_id || detail?.metadata?.table_number || null,
+    guestCount: Number(detail?.metadata?.guest_count ?? 1) || 1,
     orderType: (row.order_type === 'TAKEAWAY' ? 'Takeaway' : row.order_type === 'DELIVERY' ? 'Delivery' : row.order_type === 'DRIVE_THROUGH' ? 'Drive Through' : 'Dine In'),
     items,
     subtotal: Number(row.subtotal || 0),
@@ -248,8 +264,10 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     lockedBy: undefined,
     timeline,
     auditLog,
-    notes: row.notes || undefined,
-    kitchenNotes: undefined,
+    notes: row.notes || detail?.metadata?.notes || undefined,
+    kitchenNotes: (typeof detail?.metadata?.kitchen_notes === 'string' && detail.metadata.kitchen_notes.trim())
+      ? detail.metadata.kitchen_notes
+      : undefined,
     payments,
     splits: undefined,
     roundOffAdjustment: 0,

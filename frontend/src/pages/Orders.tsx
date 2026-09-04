@@ -2,20 +2,19 @@ import { useState, useEffect, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "../store/toastStore"
 import { authService } from "../services/authService"
-import { kitchenService } from "../services/kitchenService"
+
 import { motion, AnimatePresence } from "framer-motion"
 import jsPDF from "jspdf"
 import ReceiptPreview from "./ReceiptPreview"
-import { useOrderStore, type Order, mapHistoryDetailToOrder } from "../store/orderStore"
+import { useOrderStore, type Order, mapHistoryDetailToOrder, itemVariantName } from "../store/orderStore"
 import { usePosStore } from "../store/posStore"
 import { useAuthStore } from "../store/authStore"
 import { fetchOrderDetail } from "../api/historyApi"
 import { apiClient } from "../api/client"
 import {
-  Search, Filter, Clock, Pencil, History, Printer,
+  Search, Clock, Pencil, History, Printer,
   X, AlertTriangle, FileText, Download, RotateCcw, Ban, Plus,
-  RefreshCw, ChevronLeft, ChevronRight, CheckCircle2,
-  Utensils, DollarSign, Calendar, Info, Copy, Server, MoreVertical, Trash2
+  RefreshCw, ChevronLeft, ChevronRight, Calendar, Trash2
 } from "lucide-react"
 import { deleteOrder } from "../api/historyApi"
 import { DateUtils } from "../utils/dateUtils"
@@ -23,29 +22,16 @@ import { formatReceiptOrderNumber } from "../utils/receiptOrderNumber"
 
 // Theme Colors
 
-const orderStatusColors: Record<string, string> = {
-  Draft: "bg-zinc-500/10 text-zinc-500 border-zinc-500/20",
-  Held: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-  Active: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  Completed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-  Cancelled: "bg-red-500/10 text-red-500 border-red-500/20",
-  Refunded: "bg-red-500/10 text-red-500 border-red-500/20"
-}
-
-const kitchenStatusColors: Record<string, string> = {
-  Pending: "bg-zinc-500/10 text-zinc-500 border-zinc-500/20",
-  Sent: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+const historyBadgeColors: Record<string, string> = {
   Preparing: "bg-sky-500/10 text-sky-500 border-sky-500/20",
-  Ready: "bg-orange-500/10 text-orange-500 border-orange-500/20",
-  Served: "bg-purple-500/10 text-purple-500 border-purple-500/20",
   Completed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
   Cancelled: "bg-red-500/10 text-red-500 border-red-500/20"
 }
 
-const paymentStatusColors: Record<string, string> = {
-  Unpaid: "bg-red-500/10 text-red-500 border-red-500/20",
-  Paid: "bg-green-500/10 text-green-500 border-green-500/20",
-  Refunded: "bg-purple-500/10 text-purple-500 border-purple-500/20"
+const displayHistoryBadge = (status: string) => {
+  if (status === "Completed") return "Completed"
+  if (status === "Cancelled" || status === "Refunded") return "Cancelled"
+  return "Preparing"
 }
 
 const formatRs = (n: number) => `Rs ${Number(n).toLocaleString()}`
@@ -113,12 +99,10 @@ export default function Orders() {
 
   // State Management
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
-  const [activeTab, setActiveTab] = useState<"general" | "items" | "billing" | "kitchen" | "timeline" | "history">("general")
+  const [activeTab, setActiveTab] = useState<"overview" | "timeline" | "history">("overview")
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("")
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
-
   const [filterDate, setFilterDate] = useState<string>("Today") // Today, Yesterday, Monthly, All Time, Custom Date
   const [customDateFrom, setCustomDateFrom] = useState<string>("")
   const [customDateTo, setCustomDateTo] = useState<string>("")
@@ -258,55 +242,41 @@ export default function Orders() {
     setTimeout(() => setIsRefreshing(false), 500)
   }
 
-  const handlePaymentStatusChange = async (order: Order, newStatus: string) => {
+  const handleHistoryBadgeChange = async (order: Order, badge: string) => {
+    const current = displayHistoryBadge(order.status)
+    if (badge === current) return
+    const nextStatus = badge === 'Completed' ? 'Completed' : badge === 'Cancelled' ? 'Cancelled' : 'Active'
+    const nextKitchen = badge === 'Completed' ? 'Completed' : badge === 'Cancelled' ? 'Cancelled' : 'Preparing'
+    const targetState = badge === 'Completed' ? 'COMPLETED' : badge === 'Cancelled' ? 'CANCELLED' : 'ACTIVE'
+    const kitchenState = badge === 'Completed' ? 'COMPLETED' : badge === 'Cancelled' ? 'CANCELLED' : 'PREPARING'
+    updateOrder(order.id, { status: nextStatus, kitchenStatus: nextKitchen })
+    if (selectedOrder?.id === order.id) {
+      setSelectedOrder(prev => prev ? { ...prev, status: nextStatus, kitchenStatus: nextKitchen } : null)
+    }
     try {
-      if (newStatus === 'Paid' || newStatus === 'Unpaid') {
-        await apiClient.put(`/orders/${order.id}/meta`, { receipt_paid_stamp: newStatus === 'Paid' })
+      if (badge === 'Completed' && current === 'Cancelled') {
+        await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'DRAFT' })
+        await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'ACTIVE' })
+      } else if (badge === 'Preparing' && current === 'Cancelled') {
+        await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'DRAFT' })
       }
-      updateOrder(order.id, { paymentStatus: newStatus as any })
-      addTimelineEvent(order.id, { event: "Payment Status Changed", remarks: `Changed to ${newStatus}`, cashier: user?.name || "Ahmed" })
-      addAuditLog(order.id, { actionType: "Payment Status Changed", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: newStatus, reason: "Manual change from badge" })
+      await apiClient.post(`/orders/${order.id}/transition`, { targetState, kitchenState })
+      addTimelineEvent(order.id, { event: "Status Changed", remarks: `Changed to ${badge}`, cashier: user?.name || "Ahmed" })
+      addAuditLog(order.id, { actionType: "Status Changed", who: user?.name || "Ahmed", oldValue: order.status, newValue: badge, reason: "Manual change from badge" })
       await refetchHistory()
-      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: newStatus as any } : null)
-    } catch (e) { console.error(e) }
-  }
-
-  const handleKitchenStatusChange = async (order: Order, newStatus: string) => {
-    try {
-      const items = (order.items || []).filter((item) => item?.id)
-      const apply = async (itemId: string) => {
-        if (newStatus === 'Preparing') return kitchenService.startPreparingItem(itemId)
-        if (newStatus === 'Ready') return kitchenService.markItemReady(itemId)
-        if (newStatus === 'Served' || newStatus === 'Completed') return kitchenService.markItemServed(itemId)
-        if (newStatus === 'Cancelled') return kitchenService.cancelItem(itemId)
+      if (selectedOrder?.id === order.id) {
+        const refreshed = useOrderStore.getState().orders.find(o => o.id === order.id)
+        setSelectedOrder(refreshed ? { ...refreshed } : {
+          ...order,
+          status: nextStatus,
+          kitchenStatus: nextKitchen
+        })
       }
-      const results = await Promise.allSettled(items.map((item) => apply(item.id)))
-      const failed = results.filter((r) => r.status === 'rejected').length
-      if (failed > 0) {
-        toast.error('Kitchen status', `Updated ${items.length - failed} of ${items.length} items. ${failed} failed.`)
-      }
-      updateOrder(order.id, { kitchenStatus: newStatus as any })
-      addTimelineEvent(order.id, { event: "Kitchen Status Changed", remarks: `Changed to ${newStatus}`, cashier: user?.name || "Ahmed" })
-      addAuditLog(order.id, { actionType: "Kitchen Status Changed", who: user?.name || "Ahmed", oldValue: order.kitchenStatus, newValue: newStatus, reason: "Manual change from badge" })
+    } catch (e: any) {
+      console.error(e)
       await refetchHistory()
-      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, kitchenStatus: newStatus as any } : null)
-    } catch (e) { console.error(e) }
-  }
-
-  const handleOrderStatusChange = async (order: Order, newStatus: string) => {
-    try {
-      if (newStatus === 'Completed' && order.status !== 'Completed') {
-        await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'COMPLETED' })
-      }
-      if (newStatus === 'Cancelled' && order.status !== 'Cancelled') {
-        await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'CANCELLED' })
-      }
-      updateOrder(order.id, { status: newStatus as any })
-      addTimelineEvent(order.id, { event: "Order Status Changed", remarks: `Changed to ${newStatus}`, cashier: user?.name || "Ahmed" })
-      addAuditLog(order.id, { actionType: "Status Changed", who: user?.name || "Ahmed", oldValue: order.status, newValue: newStatus, reason: "Manual change from badge" })
-      await refetchHistory()
-      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, status: newStatus as any } : null)
-    } catch (e) { console.error(e) }
+      toast.error("Order status", e?.response?.data?.message || e?.message || "Could not change order status")
+    }
   }
 
 
@@ -376,6 +346,19 @@ export default function Orders() {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  const openOrderDetail = async (order: Order) => {
+    setActiveTab("overview")
+    setSelectedOrder(order)
+    try {
+      const res = await fetchOrderDetail(order.id)
+      if (res.success && res.data) {
+        setSelectedOrder(mapHistoryDetailToOrder(res.data, res.data))
+      }
+    } catch {
+      // Keep the list snapshot if the full receipt cannot be loaded.
+    }
   }
 
   const handleEditClick = async (order: Order) => {
@@ -544,11 +527,12 @@ export default function Orders() {
   const filteredAndSortedOrders = useMemo(() => {
     let result = orders.filter(order => {
       const bd = order.businessDate || DateUtils.getBusinessDate(order.timestamp)
-      if (filterDate === 'Today' && bd !== DateUtils.getBusinessDate()) return false
-      if (filterDate === 'Yesterday' && bd !== DateUtils.getYesterdayBusinessDate()) return false
-      if (filterDate === 'Monthly' && !bd.startsWith(DateUtils.getBusinessMonthStart().slice(0, 7))) return false
-      if (filterDate === 'Custom Date' && customDateFrom && bd !== customDateFrom) return false
-      if (filterDate === 'Custom Range' && customDateFrom && customDateTo && (bd < customDateFrom || bd > customDateTo)) return false
+      const range = DateUtils.resolveReportRange({
+        timeRange: filterDate === 'Monthly' ? 'This Month' : filterDate,
+        customDateFrom,
+        customDateTo
+      })
+      if (bd < range.startDate || bd > range.endDate) return false
 
       // Global Search Match
       const q = searchQuery.toLowerCase().trim()
@@ -565,14 +549,7 @@ export default function Orders() {
       // Exact Filters
       const matchType = filterType === "All" || order.orderType === filterType
       
-      let matchOrderState = true;
-      if (filterOrderState === "Red Edited") {
-        matchOrderState = !!order.isEdited && !!order.isNegativeEdit;
-      } else if (filterOrderState === "Green Edited") {
-        matchOrderState = !!order.isEdited && !order.isNegativeEdit;
-      } else {
-        matchOrderState = filterOrderState === "All" || order.status === filterOrderState;
-      }
+      const matchOrderState = filterOrderState === "All" || displayHistoryBadge(order.status) === filterOrderState
       const matchPayment = filterPayment === "All" || order.paymentStatus === filterPayment
       const matchUserDrop = filterUser === "All" || order.cashierName === filterUser || order.waiterName === filterUser
 
@@ -595,6 +572,16 @@ export default function Orders() {
   const totalPages = Math.ceil(filteredAndSortedOrders.length / itemsPerPage)
   const paginatedOrders = filteredAndSortedOrders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
+  const historySaleTotals = useMemo(() => {
+    const saleOrders = filteredAndSortedOrders.filter(o =>
+      o.status === 'Completed' || (o.status === 'Active' && o.paymentStatus === 'Paid')
+    )
+    const listed = filteredAndSortedOrders.reduce((s, o) => s + (Number(o.total) || 0), 0)
+    const sale = saleOrders.reduce((s, o) => s + (Number(o.total) || 0), 0)
+    const food = saleOrders.reduce((s, o) => s + Math.max(0, (Number(o.subtotal) || 0) - (Number(o.discount) || 0)), 0)
+    return { listed, sale, food, saleCount: saleOrders.length, listedCount: filteredAndSortedOrders.length }
+  }, [filteredAndSortedOrders])
+
   return (
     <div className="space-y-3 max-w-[1600px] mx-auto text-foreground text-[13px] leading-tight">
 
@@ -606,7 +593,10 @@ export default function Orders() {
             <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full uppercase tracking-wider">Enterprise Ops</span>
           </h1>
           <p className="text-xs text-muted-foreground font-bold mt-0.5">
-            {filteredAndSortedOrders.length} order(s) found based on current filters.
+            {historySaleTotals.listedCount} listed ({formatRs(historySaleTotals.listed)}) · Sale: {formatRs(historySaleTotals.sale)} from {historySaleTotals.saleCount} completed bills · Food net: {formatRs(historySaleTotals.food)}
+          </p>
+          <p className="text-[10px] text-muted-foreground font-semibold">
+            Business day 6AM–6AM · {DateUtils.getBusinessDayLabel()} · Sale matches Reports Gross for the same dates
           </p>
         </div>
 
@@ -666,12 +656,9 @@ export default function Orders() {
             </select>
             <select value={filterOrderState} onChange={(e) => setFilterOrderState(e.target.value)} className="h-10 rounded-xl bg-secondary border border-border text-[11px] font-bold px-3 focus:outline-none shrink-0 cursor-pointer hover:bg-secondary/80">
               <option value="All">Status: All</option>
-              <option value="Draft">Status: Draft</option>
-              <option value="Confirmed">Status: Confirmed</option>
+              <option value="Preparing">Status: Preparing</option>
               <option value="Completed">Status: Completed</option>
               <option value="Cancelled">Status: Cancelled</option>
-              <option value="Red Edited">Status: Red Edited</option>
-              <option value="Green Edited">Status: Green Edited</option>
             </select>
             
             <div className="h-6 w-px bg-border mx-1 shrink-0"></div>
@@ -735,13 +722,13 @@ export default function Orders() {
                 <th className="px-3 py-2">Table/Waiter</th>
                 <th className="px-3 py-2">Items</th>
                 <th className="px-3 py-2">Total</th>
-                <th className="px-3 py-2">Badges (Pay/Status)</th>
+                <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {paginatedOrders.map((order) => (
-                <tr key={order.id} className={`hover:bg-secondary/40 transition-colors group cursor-pointer ${selectedOrderIds.has(order.id) ? 'bg-primary/5' : ''}`} onClick={() => setSelectedOrder(order)}>
+                <tr key={order.id} className={`hover:bg-secondary/40 transition-colors group cursor-pointer ${selectedOrderIds.has(order.id) ? 'bg-primary/5' : ''}`} onClick={() => { void openOrderDetail(order) }}>
                   <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" checked={selectedOrderIds.has(order.id)} onChange={() => handleSelectOrder(order.id)} className="w-4 h-4 rounded border-border text-primary focus:ring-primary" />
                   </td>
@@ -788,55 +775,24 @@ export default function Orders() {
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <div className="flex flex-col gap-1 w-max">
-                      <div className="flex items-center gap-1">
-                        <span className="text-[10px] font-bold w-6">PAY:</span>
-                        <select
-                          value={order.paymentStatus}
-                          onChange={(e) => handlePaymentStatusChange(order, e.target.value)}
-                          onClick={e => e.stopPropagation()}
-                          className={`text-[9px] pl-1.5 pr-4 py-0.5 rounded font-black uppercase border cursor-pointer outline-none ${paymentStatusColors[order.paymentStatus] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}`}
-                        >
-                          {Object.keys(paymentStatusColors).map(status => (
-                            <option key={status} value={status} className="bg-card text-foreground">{status}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-[10px] font-bold w-6">KIT:</span>
-                        <select
-                          value={order.kitchenStatus}
-                          onChange={(e) => handleKitchenStatusChange(order, e.target.value)}
-                          onClick={e => e.stopPropagation()}
-                          className={`text-[9px] pl-1.5 pr-4 py-0.5 rounded font-black uppercase border cursor-pointer outline-none ${kitchenStatusColors[order.kitchenStatus] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}`}
-                        >
-                          {Object.keys(kitchenStatusColors).map(status => (
-                            <option key={status} value={status} className="bg-card text-foreground">{status}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-[10px] font-bold w-6">ORD:</span>
-                        <select
-                          value={order.status}
-                          onChange={(e) => handleOrderStatusChange(order, e.target.value)}
-                          onClick={e => e.stopPropagation()}
-                          className={`text-[9px] pl-1.5 pr-4 py-0.5 rounded font-black uppercase border cursor-pointer outline-none ${orderStatusColors[order.status] || 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'}`}
-                        >
-                          {Object.keys(orderStatusColors).map(status => (
-                            <option key={status} value={status} className="bg-card text-foreground">{status}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
+                    <select
+                      value={displayHistoryBadge(order.status)}
+                      onChange={(e) => handleHistoryBadgeChange(order, e.target.value)}
+                      onClick={e => e.stopPropagation()}
+                      className={`text-[10px] pl-2 pr-6 py-1 rounded-lg font-black uppercase border cursor-pointer outline-none ${historyBadgeColors[displayHistoryBadge(order.status)]}`}
+                    >
+                      {Object.keys(historyBadgeColors).map(status => (
+                        <option key={status} value={status} className="bg-card text-foreground">{status}</option>
+                      ))}
+                    </select>
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <div className="grid grid-cols-5 gap-1 w-[175px] ml-auto" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => setSelectedOrder(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center" title="View Details"><FileText className="w-4 h-4" /></button>
-                      <button onClick={() => handlePrintReceipt(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-primary transition-colors flex items-center justify-center" title="Print/Reprint Receipt"><Printer className="w-4 h-4" /></button>
-                      <button onClick={() => handleEditClick(order)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-amber-500 transition-colors flex items-center justify-center" title="Edit Order"><Pencil className="w-4 h-4" /></button>
-                      <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCancelOrder(order) }} className={`p-2 hover:bg-secondary rounded-lg transition-colors flex items-center justify-center ${order.status === 'Cancelled' ? 'text-emerald-500 hover:text-emerald-600' : 'text-muted-foreground hover:text-red-500'}`} title={order.status === 'Cancelled' ? 'Recover Order' : 'Cancel Order'}>{order.status === 'Cancelled' ? <RotateCcw className="w-4 h-4" /> : <Ban className="w-4 h-4" />}</button>
-                      <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteOrder(order) }} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-red-600 transition-colors flex items-center justify-center" title="Delete Order"><Trash2 className="w-4 h-4" /></button>
+                    <div className="grid grid-cols-5 gap-1.5 w-[212px] ml-auto" onClick={e => e.stopPropagation()}>
+                      <button type="button" onClick={() => { void openOrderDetail(order) }} className="w-8 h-8 border-2 border-foreground/40 rounded-lg bg-card text-foreground hover:text-primary hover:border-primary hover:bg-secondary transition-colors flex items-center justify-center" title="View Details"><FileText className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => handlePrintReceipt(order)} className="w-8 h-8 border-2 border-foreground/40 rounded-lg bg-card text-foreground hover:text-primary hover:border-primary hover:bg-secondary transition-colors flex items-center justify-center" title="Print/Reprint Receipt"><Printer className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => handleEditClick(order)} className="w-8 h-8 border-2 border-foreground/40 rounded-lg bg-card text-foreground hover:text-amber-500 hover:border-amber-500 hover:bg-secondary transition-colors flex items-center justify-center" title="Edit Order"><Pencil className="w-4 h-4" /></button>
+                      <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCancelOrder(order) }} className={`w-8 h-8 border-2 rounded-lg bg-card transition-colors flex items-center justify-center ${order.status === 'Cancelled' ? 'border-emerald-600 text-emerald-600 hover:bg-emerald-500/10' : 'border-foreground/40 text-foreground hover:text-red-500 hover:border-red-500 hover:bg-secondary'}`} title={order.status === 'Cancelled' ? 'Recover Order' : 'Cancel Order'}>{order.status === 'Cancelled' ? <RotateCcw className="w-4 h-4" /> : <Ban className="w-4 h-4" />}</button>
+                      <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteOrder(order) }} className="w-8 h-8 border-2 border-foreground/40 rounded-lg bg-card text-foreground hover:text-red-600 hover:border-red-500 hover:bg-secondary transition-colors flex items-center justify-center" title="Delete Order"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>
@@ -890,7 +846,7 @@ export default function Orders() {
                       {formatReceiptOrderNumber(selectedOrder.orderNumber)}
                       {selectedOrder.isEdited && <span className={`text-[10px] px-2 py-0.5 rounded uppercase border font-bold tracking-widest leading-none ${selectedOrder.isNegativeEdit ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>Edited</span>}
                     </h2>
-                    <span className={`text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest border ${orderStatusColors[selectedOrder.status]}`}>{selectedOrder.status}</span>
+                    <span className={`text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest border ${historyBadgeColors[displayHistoryBadge(selectedOrder.status)]}`}>{displayHistoryBadge(selectedOrder.status)}</span>
                   </div>
                   <p className="text-sm font-bold text-muted-foreground">{new Date(selectedOrder.timestamp).toLocaleString()}</p>
                 </div>
@@ -903,10 +859,7 @@ export default function Orders() {
               {/* Drawer Tabs */}
               <div className="flex overflow-x-auto border-b border-border hide-scrollbar shrink-0 px-2">
                 {[
-                  { id: "general", icon: Info, label: "General" },
-                  { id: "items", icon: Utensils, label: "Items" },
-                  { id: "billing", icon: DollarSign, label: "Billing & Payment" },
-                  { id: "kitchen", icon: Server, label: "Kitchen & Sync" },
+                  { id: "overview", icon: FileText, label: "Receipt" },
                   { id: "timeline", icon: Clock, label: "Timeline" },
                   { id: "history", icon: History, label: "Edit History" },
                 ].map(tab => (
@@ -919,127 +872,135 @@ export default function Orders() {
               {/* Drawer Content Area */}
               <div className="flex-1 overflow-auto p-6 bg-background custom-scrollbar">
 
-                {/* 1. General Tab */}
-                {activeTab === "general" && (
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 bg-secondary/30 rounded-2xl border border-border">
-                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Customer</p>
-                        <p className="text-base font-black">{selectedOrder.customerName || "Guest"}</p>
-                        <p className="text-sm font-bold mt-1 text-muted-foreground">{selectedOrder.customerPhone || "No Phone Number"}</p>
-                      </div>
-                      <div className="p-4 bg-secondary/30 rounded-2xl border border-border">
-                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Order Details</p>
-                        <p className="text-base font-black">{selectedOrder.orderType}</p>
-                        <p className="text-sm font-bold mt-1 text-muted-foreground">Table: {selectedOrder.tableNumber || "N/A"} • Guests: {selectedOrder.guestCount || 1}</p>
-                      </div>
-                      <div className="p-4 bg-secondary/30 rounded-2xl border border-border">
-                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Staff</p>
-                        <p className="text-base font-black">{selectedOrder.cashierName}</p>
-                      </div>
-                      <div className="p-4 bg-secondary/30 rounded-2xl border border-border">
-                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Notes</p>
-                        <p className="text-sm font-bold">{selectedOrder.notes || "No general notes provided."}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 2. Items Tab */}
-                {activeTab === "items" && (
-                  <div className="space-y-4">
-                    {selectedOrder.items.map((item, idx) => (
-                      <div key={idx} className="flex gap-4 p-4 border border-border rounded-2xl bg-card items-center">
-                        <div className="w-16 h-16 bg-secondary rounded-xl flex items-center justify-center shrink-0">
-                          <Utensils className="w-6 h-6 text-muted-foreground opacity-50" />
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-black text-base">{item.name}</h4>
-                          {item.selectedModifiers && item.selectedModifiers.length > 0 && (
-                            <p className="text-xs text-muted-foreground font-bold mt-1">Mods: {item.selectedModifiers.map(m => m.name).join(", ")}</p>
+                {activeTab === "overview" && (() => {
+                  const paidAmt = (selectedOrder.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0)
+                  const dueAmt = Math.max(0, Number(selectedOrder.total || 0) - paidAmt)
+                  const lineTotal = (item: any) => {
+                    const extras = [...(item.selectedModifiers || []), ...(item.addons || [])]
+                    const extraSum = extras.reduce((s: number, m: any) => s + (Number(m.price || m.unit_price || m.addon_price) || 0), 0)
+                    if (item.subtotal != null && Number(item.subtotal) > 0) return Number(item.subtotal)
+                    return (Number(item.price) + extraSum) * Number(item.quantity || 1)
+                  }
+                  const isDineIn = selectedOrder.orderType === 'Dine In'
+                  const waiterLabel = selectedOrder.waiterName || (selectedOrder.waiterId ? selectedOrder.waiterId.substring(0, 8) : "")
+                  const riderLabel = selectedOrder.riderName || (selectedOrder.riderId ? selectedOrder.riderId.substring(0, 8) : "")
+                  const stamped = new Date(selectedOrder.timestamp).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true }).replace(",", "")
+                  return (
+                    <div className="max-w-[420px] mx-auto">
+                      <div className="bg-white text-black rounded-sm shadow-xl border border-black/20 p-5 font-sans">
+                        <div className="text-[11px] space-y-0.5 mb-3">
+                          <p className="text-[16px] font-black leading-tight">{formatReceiptOrderNumber(selectedOrder.orderNumber)}</p>
+                          <p>
+                            <span className="font-black">Customer:</span>{" "}
+                            {selectedOrder.customerName || "Guest"}
+                            {selectedOrder.customerPhone ? <> — <span className="font-black text-[13px]">{selectedOrder.customerPhone}</span></> : ""}
+                          </p>
+                          <p><span className="font-black">Address:</span> {selectedOrder.customerAddress || "—"}</p>
+                          {selectedOrder.isVip && <p className="text-center font-black uppercase text-sm py-1">** VIP ORDER **</p>}
+                          {isDineIn && (
+                            <p><span className="font-black">Table No:</span> {selectedOrder.tableNumber || "Unassigned"}</p>
                           )}
-                          {item.combo_components && item.combo_components.length > 0 && (
-                            <div className="text-xs text-muted-foreground font-bold mt-1">
-                              Combo:
-                              <ul className="list-disc pl-4 mt-0.5 space-y-0.5 text-[10px]">
-                                {item.combo_components.map((c: any, i: number) => (
-                                  <li key={i}>{c.quantity || 1}x {c.product_name_snapshot || c.name || "Component"} {c.variant_snapshot ? `(${c.variant_snapshot})` : ''} {c.price_adjustment > 0 ? `(+Rs. ${c.price_adjustment})` : ''}</li>
-                                ))}
-                              </ul>
-                            </div>
+                          {isDineIn && Number(selectedOrder.guestCount || 0) > 1 && (
+                            <p><span className="font-black">Guests:</span> {selectedOrder.guestCount}</p>
                           )}
-                          {item.notes && <p className="text-xs text-amber-500 font-bold mt-1">Note: {item.notes}</p>}
+                          <p><span className="font-black">Order Type:</span> {selectedOrder.orderType}</p>
+                          <p><span className="font-black">Cashier:</span> {selectedOrder.cashierName || "—"}</p>
+                          {(isDineIn || waiterLabel) && (
+                            <p><span className="font-black">Waiter:</span> {waiterLabel || "Unassigned"}</p>
+                          )}
+                          {(selectedOrder.orderType === "Delivery" || riderLabel) && (
+                            <p><span className="font-black">Rider:</span> {riderLabel || "Unassigned"}</p>
+                          )}
+                          <p><span className="font-black">Order:</span> {displayHistoryBadge(selectedOrder.status)}</p>
+                          <p><span className="font-black">Kitchen:</span> {selectedOrder.kitchenStatus}</p>
+                          <p><span className="font-black">Payment:</span> {selectedOrder.paymentStatus === "Paid" ? "Paid" : "Unpaid"}</p>
+                          <p className="font-black text-[13px] pt-1">{stamped}</p>
+                          {selectedOrder.businessDate && (
+                            <p className="text-[10px]">Business day {selectedOrder.businessDate} · 6AM–6AM</p>
+                          )}
                         </div>
-                        <div className="text-right">
-                          <p className="text-xs font-bold text-muted-foreground">{item.quantity}x @ Rs. {item.price}</p>
-                          <p className="text-lg font-black text-primary mt-1">Rs. {(item.price * item.quantity).toLocaleString()}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
 
-                {/* 3. Billing & Payment Tab */}
-                {activeTab === "billing" && (
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="bg-card border border-border rounded-2xl p-5">
-                      <h3 className="font-black text-lg mb-4 flex items-center gap-2"><FileText className="w-5 h-5 text-primary" /> Billing Summary</h3>
-                      <div className="space-y-3 text-sm font-bold">
-                        <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>Rs. {selectedOrder.subtotal.toLocaleString()}</span></div>
-                        {selectedOrder.serviceCharge > 0 && (
-                          <div className="flex justify-between text-muted-foreground"><span>Service Charges</span><span>Rs. {selectedOrder.serviceCharge.toLocaleString()}</span></div>
-                        )}
-                        {selectedOrder.deliveryCharge !== undefined && selectedOrder.deliveryCharge > 0 && (
-                          <div className="flex justify-between text-muted-foreground"><span>Delivery Charges</span><span>Rs. {selectedOrder.deliveryCharge.toLocaleString()}</span></div>
-                        )}
-                        <div className="flex justify-between text-muted-foreground"><span>Discount</span><span>- Rs. {selectedOrder.discount.toLocaleString()}</span></div>
-                        <div className="pt-3 border-t border-border flex justify-between text-lg font-black text-foreground">
-                          <span>Grand Total</span><span>Rs. {selectedOrder.total.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="bg-card border border-border rounded-2xl p-5">
-                      <h3 className="font-black text-lg mb-4 flex items-center gap-2"><DollarSign className="w-5 h-5 text-emerald-500" /> Payment Information</h3>
-                      <div className="space-y-4">
-                        <div className="flex gap-2">
-                          <span className={`text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest border ${paymentStatusColors[selectedOrder.paymentStatus]}`}>{selectedOrder.paymentStatus}</span>
-                        </div>
-                        {selectedOrder.payments?.map((pay, i) => (
-                          <div key={i} className="p-3 bg-secondary/50 rounded-xl border border-border text-sm font-bold">
-                            <div className="flex justify-between mb-2"><span className="text-foreground">{pay.method}</span><span className="text-primary">Rs. {pay.amount.toLocaleString()}</span></div>
-                            <div className="flex justify-between text-xs text-muted-foreground"><span>Received: Rs. {pay.received || pay.amount}</span><span>Change: Rs. {pay.change || 0}</span></div>
-                            <div className="text-xs text-muted-foreground mt-2">{new Date(pay.timestamp).toLocaleString()} • by {pay.cashier}</div>
+                        <table className="w-full text-[11px] font-bold border-2 border-black mb-3 border-collapse">
+                          <thead>
+                            <tr className="border-b-2 border-black">
+                              <th className="text-center py-1 px-1 border-r-2 border-black w-[60%]">Item</th>
+                              <th className="text-center py-1 px-1 border-r-2 border-black w-[15%]">Qty</th>
+                              <th className="text-center py-1 px-1 w-[25%]">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(selectedOrder.items || []).length === 0 ? (
+                              <tr><td colSpan={3} className="text-center py-3">No items</td></tr>
+                            ) : selectedOrder.items.map((item, idx) => (
+                              <tr key={idx} className="border-b-2 border-black last:border-b-0">
+                                <td className="text-center py-1 px-1 border-r-2 border-black uppercase">
+                                  <div className="font-black">{item.name}</div>
+                                  {itemVariantName(item) ? (
+                                    <div className="text-[10px] font-normal normal-case">({itemVariantName(item)})</div>
+                                  ) : null}
+                                  {(item.selectedModifiers || []).map((m: any, i: number) => (
+                                    <div key={`m-${i}`} className="text-[10px] font-normal normal-case">+ {m.name || m.modifier_name_snapshot}</div>
+                                  ))}
+                                  {((item as any).addons || []).map((a: any, i: number) => (
+                                    <div key={`a-${i}`} className="text-[10px] font-normal normal-case">+ {a.name || a.addon_name_snapshot || a.product_name_snapshot}</div>
+                                  ))}
+                                  {(item.combo_components || []).map((c: any, i: number) => (
+                                    <div key={`c-${i}`} className="text-[10px] font-normal normal-case">- {c.quantity > 1 ? `${c.quantity}x ` : ""}{c.product_name_snapshot || c.name}{c.variant_snapshot ? ` (${c.variant_snapshot})` : ""}</div>
+                                  ))}
+                                  {item.notes && <div className="text-[10px] font-black normal-case">Note: {item.notes}</div>}
+                                </td>
+                                <td className="text-center py-1 px-1 border-r-2 border-black font-black align-middle">{item.quantity}</td>
+                                <td className="text-center py-1 px-1 font-black whitespace-nowrap align-middle">Rs {lineTotal(item).toFixed(2)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+
+                        {(selectedOrder.notes || selectedOrder.kitchenNotes) && (
+                          <div className="border-t-2 border-dashed border-black pt-2 mb-3 text-[11px] font-bold space-y-1">
+                            {selectedOrder.notes && <p>NOTE: {selectedOrder.notes}</p>}
+                            {selectedOrder.kitchenNotes && <p>KITCHEN: {selectedOrder.kitchenNotes}</p>}
                           </div>
-                        )) || <p className="text-sm font-bold text-muted-foreground">No payment records found.</p>}
-                      </div>
-                    </div>
-                  </div>
-                )}
+                        )}
 
-                {/* 4. Kitchen & Sync Tab */}
-                {activeTab === "kitchen" && (
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="bg-card border border-border rounded-2xl p-5">
-                      <h3 className="font-black text-lg mb-4">Kitchen Information</h3>
-                      <div className="space-y-4">
-                        <div className="flex gap-2">
-                          <span className={`text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest border ${kitchenStatusColors[selectedOrder.kitchenStatus]}`}>{selectedOrder.kitchenStatus}</span>
+                        <div className="text-[11px] font-bold space-y-0.5 mb-3">
+                          <div className="flex justify-between"><span>Subtotal:</span><span>Rs {Number(selectedOrder.subtotal || 0).toFixed(2)}</span></div>
+                          {Number(selectedOrder.discount || 0) > 0 && (
+                            <div className="flex justify-between"><span>Discount:</span><span>- Rs {Number(selectedOrder.discount).toFixed(2)}</span></div>
+                          )}
+                          {Number(selectedOrder.tax || 0) > 0 && (
+                            <div className="flex justify-between"><span>Tax:</span><span>Rs {Number(selectedOrder.tax).toFixed(2)}</span></div>
+                          )}
+                          {Number(selectedOrder.serviceCharge || 0) > 0 && (
+                            <div className="flex justify-between"><span>Service Charges:</span><span>Rs {Number(selectedOrder.serviceCharge).toFixed(2)}</span></div>
+                          )}
+                          {Number(selectedOrder.deliveryCharge || 0) > 0 && (
+                            <div className="flex justify-between"><span>Delivery:</span><span>Rs {Number(selectedOrder.deliveryCharge).toFixed(2)}</span></div>
+                          )}
+                          <div className="flex justify-between text-[13px] font-black underline underline-offset-2 pt-1">
+                            <span>Total Amount:</span><span>Rs {Number(selectedOrder.total || 0).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between pt-1"><span>Paid:</span><span>Rs {paidAmt.toFixed(2)}</span></div>
+                          <div className="flex justify-between"><span>Due:</span><span>Rs {dueAmt.toFixed(2)}</span></div>
                         </div>
-                        <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl">
-                          <p className="text-xs font-bold text-amber-600 uppercase mb-1">Kitchen Notes</p>
-                          <p className="text-sm font-bold text-amber-700">{selectedOrder.kitchenNotes || "No kitchen notes."}</p>
+
+                        <div className="border-t-2 border-dashed border-black pt-2 text-[11px] font-bold">
+                          <p className="font-black mb-1">Payments</p>
+                          {(selectedOrder.payments || []).length === 0 ? (
+                            <p>No payment recorded · {selectedOrder.paymentStatus}</p>
+                          ) : selectedOrder.payments.map((pay, i) => (
+                            <div key={i} className="flex justify-between gap-2">
+                              <span>{pay.method}{pay.cashier ? ` · ${pay.cashier}` : ""}</span>
+                              <span>Rs {Number(pay.amount || 0).toFixed(2)}</span>
+                            </div>
+                          ))}
                         </div>
+
+                        <p className="text-center text-[11px] font-semibold mt-4">Thank you for your order!<br />Please visit again.</p>
                       </div>
                     </div>
-                    <div className="bg-card border border-border rounded-2xl p-5">
-                      <h3 className="font-black text-lg mb-4">System & Sync</h3>
-                      <div className="space-y-3 text-sm font-bold">
-                        <div className="flex justify-between"><span className="text-muted-foreground">Sync Status</span><span className="text-primary">{selectedOrder.syncStatus || 'Synced'}</span></div>
-                        <div className="flex justify-between"><span className="text-muted-foreground">Receipt Reprints</span><span>{selectedOrder.receiptReprints || 0} times</span></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                  )
+                })()}
 
                 {/* 5. Timeline Tab */}
                 {activeTab === "timeline" && (

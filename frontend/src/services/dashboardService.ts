@@ -8,6 +8,7 @@ export interface DashboardSummary {
   served: number
   paid: number
   unpaid: number
+  cancelled: number
   completed: number
   notCompleted: number
   completedSales: number

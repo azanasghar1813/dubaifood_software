@@ -16,6 +16,8 @@ import { historyCacheService } from './historyCacheService.js';
 import { kitchenService } from './kitchenService.js';
 import { dbEngine } from '../database/sqlite.js';
 import { releaseTableIfIdle } from '../controllers/tableController.js';
+import { orderTotalsService } from './orderTotalsService.js';
+import { dateUtils } from '../utils/dateUtils.js';
 
 class OrderLifecycleService {
   /**
@@ -85,11 +87,11 @@ class OrderLifecycleService {
         }
       }
 
-      // 2. Validate Kitchen State Transition if requested
+      // 2. Kitchen state is best-effort so History status can still change
       let targetKitchenState = context.kitchenState || order.kitchen_state;
       if (context.kitchenState && context.kitchenState !== order.kitchen_state) {
         if (!this.canTransitionKitchen(order.kitchen_state, context.kitchenState)) {
-          throw new Error(`Invalid kitchen transition from ${order.kitchen_state} to ${context.kitchenState} for order ${order.order_number}.`);
+          targetKitchenState = context.kitchenState;
         }
       }
 
@@ -136,13 +138,44 @@ class OrderLifecycleService {
       }
       if (targetLifecycleState === OrderLifecycleState.COMPLETED) {
         updates.completed_at = new Date().toISOString();
+        if (!order.business_date) {
+          updates.business_date = dateUtils.getBusinessDate(order.created_at || new Date());
+        }
+        if (!context.kitchenState) updates.kitchen_state = KitchenState.COMPLETED;
       }
       if (targetLifecycleState === OrderLifecycleState.ARCHIVED) {
         updates.archived_at = new Date().toISOString();
       }
 
       // Execute update
-      const updatedOrder = orderRepository.update(orderId, updates);
+      let updatedOrder = orderRepository.update(orderId, updates);
+
+      try {
+        if (targetLifecycleState === OrderLifecycleState.COMPLETED) {
+          dbEngine.prepare(`
+            UPDATE order_items SET kitchen_state = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE order_id = ? AND kitchen_state != ?
+          `).run(KitchenState.COMPLETED, orderId, KitchenState.CANCELLED);
+        } else if (targetLifecycleState === OrderLifecycleState.CANCELLED) {
+          dbEngine.prepare(`
+            UPDATE order_items SET kitchen_state = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE order_id = ?
+          `).run(KitchenState.CANCELLED, orderId);
+        } else if (targetLifecycleState === OrderLifecycleState.ACTIVE && targetKitchenState === KitchenState.PREPARING) {
+          dbEngine.prepare(`
+            UPDATE order_items SET kitchen_state = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE order_id = ? AND kitchen_state != ?
+          `).run(KitchenState.PREPARING, orderId, KitchenState.CANCELLED);
+        }
+      } catch { /* item kitchen sync is best-effort */ }
+
+      if (targetLifecycleState === OrderLifecycleState.COMPLETED) {
+        try {
+          updatedOrder = orderTotalsService.recalculate(orderId) || updatedOrder;
+        } catch (e) {
+          console.warn('Complete-order totals recalc skipped:', e.message);
+        }
+      }
 
       if (targetLifecycleState === OrderLifecycleState.COMPLETED || targetLifecycleState === OrderLifecycleState.CANCELLED) {
         try { releaseTableIfIdle(order.table_id); } catch { /* table release is best-effort */ }

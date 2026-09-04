@@ -1,55 +1,126 @@
 /**
  * Centralized Date Utilities
- * 
- * Handles business day logic where the day runs from 6:00 AM to 5:59 AM the next calendar day.
+ *
+ * Business day: 6:00 AM local → 5:59:59 AM the next calendar day.
  */
 
 class DateUtils {
-  /**
-   * Calculates the business date for a given Date object.
-   * If the time is before 6:00 AM, the business date is the previous calendar day.
-   * 
-   * @param {Date|string|number} [dateInput] - The date to calculate for. Defaults to now.
-   * @param {number} [startHour=6] - The hour the business day starts (0-23).
-   * @returns {string} The business date in YYYY-MM-DD format.
-   */
-  getBusinessDate(dateInput = new Date(), startHour = 6) {
-    const d = new Date(dateInput);
-    
-    // If the current hour is less than the start hour, it belongs to the previous business day
-    if (d.getHours() < startHour) {
-      d.setDate(d.getDate() - 1);
+  getStartHour() {
+    return 6;
+  }
+
+  _toDate(dateInput = new Date()) {
+    if (dateInput instanceof Date) return new Date(dateInput.getTime());
+    if (typeof dateInput === 'number') return new Date(dateInput);
+    const raw = String(dateInput || '').trim();
+    if (!raw) return new Date();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const [y, m, d] = raw.split('-').map(Number);
+      return new Date(y, m - 1, d, 12, 0, 0, 0);
     }
-    
-    // Format to YYYY-MM-DD in local time
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  }
+
+  formatLocalDate(date) {
+    const d = this._toDate(date);
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
-    
     return `${year}-${month}-${day}`;
   }
 
   /**
-   * Returns the business date for yesterday.
+   * Business date for a timestamp. Before 6:00 AM local → previous calendar day.
    */
+  getBusinessDate(dateInput = new Date(), startHour = this.getStartHour()) {
+    const d = this._toDate(dateInput);
+    if (d.getHours() < startHour) {
+      d.setDate(d.getDate() - 1);
+    }
+    return this.formatLocalDate(d);
+  }
+
   getYesterdayBusinessDate() {
-    const d = new Date();
-    // Offset by 24 hours
-    d.setDate(d.getDate() - 1);
-    return this.getBusinessDate(d);
+    const today = this.getBusinessDate();
+    return this.addBusinessDays(today, -1);
+  }
+
+  addBusinessDays(businessDateStr, deltaDays) {
+    const [y, m, d] = String(businessDateStr).split('-').map(Number);
+    const dt = new Date(y, m - 1, d, 12, 0, 0, 0);
+    dt.setDate(dt.getDate() + Number(deltaDays || 0));
+    return this.formatLocalDate(dt);
+  }
+
+  getBusinessMonthStart(dateInput = new Date()) {
+    const today = this.getBusinessDate(dateInput);
+    return `${today.slice(0, 8)}01`;
   }
 
   /**
-   * Returns the first business day of the current month (e.g., YYYY-MM-01).
+   * Sunday of the current business week, as a business date.
    */
-  getBusinessMonthStart() {
-    const d = new Date();
-    if (d.getHours() < 6) {
-      d.setDate(d.getDate() - 1);
+  getBusinessWeekStart(dateInput = new Date()) {
+    const today = this.getBusinessDate(dateInput);
+    const [y, m, d] = today.split('-').map(Number);
+    const dt = new Date(y, m - 1, d, 12, 0, 0, 0);
+    dt.setDate(dt.getDate() - dt.getDay());
+    return this.formatLocalDate(dt);
+  }
+
+  getBusinessDayBounds(dateInput = new Date(), startHour = this.getStartHour()) {
+    const now = this._toDate(dateInput);
+    const start = new Date(now);
+    start.setHours(startHour, 0, 0, 0);
+    if (now < start) start.setDate(start.getDate() - 1);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { start, end };
+  }
+
+  getBusinessDayLabel(dateInput = new Date()) {
+    const { start, end } = this.getBusinessDayBounds(dateInput);
+    const endDisplay = new Date(end.getTime() - 1000);
+    const fmt = (d) => d.toLocaleString(undefined, {
+      day: 'numeric', month: 'short', year: 'numeric',
+      hour: 'numeric', minute: '2-digit'
+    });
+    return `${fmt(start)} → ${fmt(endDisplay)}`;
+  }
+
+  /**
+   * Resolve Reports / History date filters onto business_date strings.
+   */
+  resolveReportRange(filters = {}) {
+    const today = this.getBusinessDate();
+    const dateFilter = String(filters.dateFilter || filters.date_preset || '').trim();
+    const customFrom = filters.startDate || filters.date_from || '';
+    const customTo = filters.endDate || filters.date_to || '';
+
+    if (dateFilter === 'Yesterday') {
+      const y = this.getYesterdayBusinessDate();
+      return { startDate: y, endDate: y };
     }
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    return `${year}-${month}-01`;
+    if (dateFilter === 'This Week') {
+      return { startDate: this.getBusinessWeekStart(), endDate: today };
+    }
+    if (dateFilter === 'This Month' || dateFilter === 'Monthly') {
+      return { startDate: this.getBusinessMonthStart(), endDate: today };
+    }
+    if (dateFilter === 'All Time') {
+      return { startDate: '1970-01-01', endDate: '2099-12-31' };
+    }
+    if ((dateFilter === 'Custom Date' || dateFilter === 'Custom Range' || dateFilter === 'CUSTOM_DATE') && customFrom) {
+      return { startDate: customFrom, endDate: customTo || customFrom };
+    }
+    if (!dateFilter || dateFilter === 'Today' || dateFilter === 'TODAY') {
+      return { startDate: today, endDate: today };
+    }
+    if (customFrom) {
+      return { startDate: customFrom, endDate: customTo || customFrom };
+    }
+    return { startDate: today, endDate: today };
   }
 }
 

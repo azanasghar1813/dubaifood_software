@@ -130,9 +130,12 @@ class OrderSnapshotService {
 
     // 4. Process Combo Components Snapshots
     const comboSnapshots = [];
+    let comboPriceAdj = 0;
     if (Array.isArray(comboComponents) && comboComponents.length > 0) {
       for (const compInput of comboComponents) {
         const compProd = productRepository.findById(compInput.product_id);
+        const adj = Number(compInput.price_adjustment || 0);
+        comboPriceAdj += adj;
         if (compProd) {
           comboSnapshots.push({
             id: crypto.randomUUID(),
@@ -140,15 +143,16 @@ class OrderSnapshotService {
             component_id: compInput.component_id || crypto.randomUUID(),
             product_id: compProd.id,
             product_name_snapshot: compProd.display_name || compProd.name,
-            variant_snapshot: compInput.variant_name || null,
-            price_adjustment: Number(compInput.price_adjustment || 0)
+            variant_snapshot: compInput.variant_name || compInput.variant_snapshot || null,
+            price_adjustment: adj,
+            quantity: Number(compInput.quantity) || 1
           });
         }
       }
     }
 
     // 5. Pricing Calculations
-    const finalUnitPrice = baseUnitPrice + modifierTotalAdj;
+    const finalUnitPrice = baseUnitPrice + modifierTotalAdj + comboPriceAdj;
     const itemSubtotal = (finalUnitPrice * quantity) + addonSubtotalSum;
 
     // 6. Tax Settings Snapshot

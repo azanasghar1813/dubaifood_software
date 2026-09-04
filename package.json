@@ -1,7 +1,8 @@
 {
   "name": "restaurant-pos",
   "productName": "Restaurant POS",
-  "version": "1.0.16",
+  "version": "1.0.18",
+  "author": "Dubai Food",
   "description": "Offline Windows Desktop Restaurant POS",
   "main": "main.js",
   "type": "module",
@@ -10,7 +11,7 @@
     "start": "electron .",
     "start:build": "cross-env TEST_BUILD=true electron .",
     "build:frontend": "npm run build --prefix frontend",
-    "build:exe": "npm run build:frontend && electron-builder"
+    "build:exe": "node scripts/unlock-electron-output.mjs && npm run build:frontend && electron-builder"
   },
   "dependencies": {
     "adm-zip": "^0.6.0",
@@ -91,9 +92,14 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
       "deleteAppDataOnUninstall": false,
-      "createDesktopShortcut": true,
+      "runAfterFinish": true,
+      "differentialPackage": false,
+      "useZip": true,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "Restaurant POS"
+      "shortcutName": "Restaurant POS",
+      "include": "build/installer.nsh",
+      "warningsAsErrors": false
     },
     "asar": true,
     "publish": [

@@ -67,6 +67,7 @@ export const AllowedLifecycleTransitions = Object.freeze({
     OrderLifecycleState.CANCELLED
   ],
   [OrderLifecycleState.COMPLETED]: [
+    OrderLifecycleState.ACTIVE,
     OrderLifecycleState.REFUNDED,
     OrderLifecycleState.ARCHIVED,
     OrderLifecycleState.CANCELLED
@@ -87,10 +88,10 @@ export const AllowedKitchenTransitions = Object.freeze({
   [KitchenState.PENDING]: [KitchenState.SENT, KitchenState.PREPARING, KitchenState.READY, KitchenState.SERVED, KitchenState.COMPLETED, KitchenState.CANCELLED],
   [KitchenState.SENT]: [KitchenState.PREPARING, KitchenState.READY, KitchenState.SERVED, KitchenState.COMPLETED, KitchenState.CANCELLED],
   [KitchenState.PREPARING]: [KitchenState.READY, KitchenState.SERVED, KitchenState.COMPLETED, KitchenState.CANCELLED],
-  [KitchenState.READY]: [KitchenState.SERVED, KitchenState.COMPLETED, KitchenState.CANCELLED],
-  [KitchenState.SERVED]: [KitchenState.COMPLETED],
-  [KitchenState.COMPLETED]: [],
-  [KitchenState.CANCELLED]: [KitchenState.PENDING, KitchenState.SENT, KitchenState.PREPARING]
+  [KitchenState.READY]: [KitchenState.PREPARING, KitchenState.SERVED, KitchenState.COMPLETED, KitchenState.CANCELLED],
+  [KitchenState.SERVED]: [KitchenState.PREPARING, KitchenState.COMPLETED, KitchenState.CANCELLED],
+  [KitchenState.COMPLETED]: [KitchenState.PREPARING, KitchenState.CANCELLED],
+  [KitchenState.CANCELLED]: [KitchenState.PENDING, KitchenState.SENT, KitchenState.PREPARING, KitchenState.COMPLETED]
 });
 
 export const AllowedPaymentTransitions = Object.freeze({
