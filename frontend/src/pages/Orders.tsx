@@ -534,7 +534,8 @@ export default function Orders() {
       await refetchHistory()
     } catch (e: any) {
       console.error(e)
-      alert(e?.response?.data?.message || e?.message || 'Error deleting order.')
+      const msg = e?.response?.data?.message || e?.message || 'Error deleting order.'
+      alert(msg === 'Network Error' ? 'Could not reach the till API to delete this order. Check the backend is running, then try again.' : msg)
     }
   }
 
@@ -888,14 +889,23 @@ export default function Orders() {
               <div className="flex-1 overflow-auto p-6 bg-background custom-scrollbar">
 
                 {activeTab === "overview" && (() => {
-                  const paidAmt = (selectedOrder.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0)
-                  const dueAmt = Math.max(0, Number(selectedOrder.total || 0) - paidAmt)
                   const lineTotal = (item: any) => {
                     const extras = [...(item.selectedModifiers || []), ...(item.addons || [])]
                     const extraSum = extras.reduce((s: number, m: any) => s + (Number(m.price || m.unit_price || m.addon_price) || 0), 0)
                     if (item.subtotal != null && Number(item.subtotal) > 0) return Number(item.subtotal)
                     return (Number(item.price) + extraSum) * Number(item.quantity || 1)
                   }
+                  const foodNet = (selectedOrder.items || []).reduce((s, item) => s + lineTotal(item), 0)
+                  const storedSub = Number(selectedOrder.subtotal || 0)
+                  const subtotal = foodNet > 0 && Math.abs(foodNet - storedSub) > 0.5 ? foodNet : (storedSub || foodNet)
+                  const discountAmt = Number(selectedOrder.discount || 0)
+                  const serviceAmt = Number(selectedOrder.serviceCharge || 0)
+                  const deliveryAmt = Number(selectedOrder.deliveryCharge || 0)
+                  const reconstructed = Math.max(0, subtotal - discountAmt + serviceAmt + deliveryAmt)
+                  const storedTotal = Number(selectedOrder.total || 0)
+                  const ticketTotal = Math.abs(reconstructed - storedTotal) > 0.5 ? reconstructed : (storedTotal || reconstructed)
+                  const paidAmt = (selectedOrder.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0)
+                  const dueAmt = Math.max(0, ticketTotal - paidAmt)
                   const isDineIn = selectedOrder.orderType === 'Dine In'
                   const waiterLabel = selectedOrder.waiterName || (selectedOrder.waiterId ? selectedOrder.waiterId.substring(0, 8) : "")
                   const riderLabel = selectedOrder.riderName || (selectedOrder.riderId ? selectedOrder.riderId.substring(0, 8) : "")
@@ -979,21 +989,21 @@ export default function Orders() {
                         )}
 
                         <div className="text-[11px] font-bold space-y-0.5 mb-3">
-                          <div className="flex justify-between"><span>Subtotal:</span><span>Rs {Number(selectedOrder.subtotal || 0).toFixed(2)}</span></div>
-                          {Number(selectedOrder.discount || 0) > 0 && (
-                            <div className="flex justify-between"><span>Discount:</span><span>- Rs {Number(selectedOrder.discount).toFixed(2)}</span></div>
+                          <div className="flex justify-between"><span>Subtotal:</span><span>Rs {subtotal.toFixed(2)}</span></div>
+                          {discountAmt > 0 && (
+                            <div className="flex justify-between"><span>Discount:</span><span>- Rs {discountAmt.toFixed(2)}</span></div>
                           )}
                           {Number(selectedOrder.tax || 0) > 0 && (
                             <div className="flex justify-between"><span>Tax:</span><span>Rs {Number(selectedOrder.tax).toFixed(2)}</span></div>
                           )}
-                          {Number(selectedOrder.serviceCharge || 0) > 0 && (
-                            <div className="flex justify-between"><span>Service Charges:</span><span>Rs {Number(selectedOrder.serviceCharge).toFixed(2)}</span></div>
+                          {serviceAmt > 0 && (
+                            <div className="flex justify-between"><span>Service Charges:</span><span>Rs {serviceAmt.toFixed(2)}</span></div>
                           )}
-                          {Number(selectedOrder.deliveryCharge || 0) > 0 && (
-                            <div className="flex justify-between"><span>Delivery:</span><span>Rs {Number(selectedOrder.deliveryCharge).toFixed(2)}</span></div>
+                          {deliveryAmt > 0 && (
+                            <div className="flex justify-between"><span>Delivery:</span><span>Rs {deliveryAmt.toFixed(2)}</span></div>
                           )}
                           <div className="flex justify-between text-[13px] font-black underline underline-offset-2 pt-1">
-                            <span>Total Amount:</span><span>Rs {Number(selectedOrder.total || 0).toFixed(2)}</span>
+                            <span>Total Amount:</span><span>Rs {ticketTotal.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between pt-1"><span>Paid:</span><span>Rs {paidAmt.toFixed(2)}</span></div>
                           <div className="flex justify-between"><span>Due:</span><span>Rs {dueAmt.toFixed(2)}</span></div>

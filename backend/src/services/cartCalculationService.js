@@ -23,8 +23,8 @@ class CartCalculationService {
    */
   calculateLineItem(itemInput) {
     const financeConfig = configService.getFinanceConfig() || {};
-    const taxRate = Number(financeConfig.tax_rate !== undefined ? financeConfig.tax_rate : 0);
-    const isTaxInclusive = financeConfig.tax_inclusive === true || financeConfig.tax_inclusive === 1;
+    const taxRate = 0;
+    const isTaxInclusive = false;
     const taxName = financeConfig.tax_name || 'VAT';
 
     let product = productRepository.findById(itemInput.product_id);
@@ -166,15 +166,9 @@ class CartCalculationService {
     const finalUnitPrice = baseUnitPrice + modifierTotalAdj + comboPriceAdj;
     const lineSubtotal = (finalUnitPrice * quantity) + addonTotalPrice;
 
-    // 6. Tax calculation
-    let taxAmount = 0;
-    if (isTaxInclusive) {
-      taxAmount = lineSubtotal - (lineSubtotal / (1 + taxRate));
-    } else {
-      taxAmount = lineSubtotal * taxRate;
-    }
-
-    const totalAmount = isTaxInclusive ? lineSubtotal : lineSubtotal + taxAmount;
+    // Tax is not charged. Service charge is applied on the order, not the line.
+    const taxAmount = 0;
+    const totalAmount = lineSubtotal;
 
     const resolvedKitchenStationId = routingService.resolveKitchenPrinter(product, resolvedVariant);
 
@@ -224,12 +218,7 @@ class CartCalculationService {
       discountTotal += item.discount_amount || 0;
     }
 
-    const financeConfig = configService.getFinanceConfig() || {};
-    const isTaxInclusive = financeConfig.tax_inclusive === true || financeConfig.tax_inclusive === 1;
-
-    const grandTotal = isTaxInclusive
-      ? subtotal - discountTotal
-      : subtotal + taxTotal - discountTotal;
+    const grandTotal = subtotal - discountTotal;
 
     return {
       subtotal: this._round(subtotal),

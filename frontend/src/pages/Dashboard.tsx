@@ -115,20 +115,23 @@ export default function Dashboard() {
 
     orders.forEach(o => {
       const isToday = o.businessDate === currentBusinessDate
-      if (isToday) {
-        const shown = displayOrderStatus(o.status)
-        if (shown === 'Cancelled') {
-          cancelledOrders++
-        } else {
-          todayOrders++
-          todaySales += o.total || 0
-        }
-        if (shown === 'Completed') {
-          completedOrders++
-          completedSales += o.total || 0
-        } else if (shown === 'Active') {
-          notCompletedOrders++
-        }
+      if (!isToday) return
+      const shown = displayOrderStatus(o.status)
+      const isPaid = String(o.paymentStatus || '') === 'Paid'
+      if (shown === 'Cancelled') {
+        cancelledOrders++
+        return
+      }
+      const isSale = shown === 'Completed' || (shown === 'Active' && isPaid)
+      if (isSale) {
+        todayOrders++
+        todaySales += o.total || 0
+      }
+      if (shown === 'Completed') {
+        completedOrders++
+        completedSales += o.total || 0
+      } else if (shown === 'Active' && !isPaid) {
+        notCompletedOrders++
       }
     })
     return { todaySales, todayOrders, cancelledOrders, completedOrders, notCompletedOrders, completedSales }
@@ -230,8 +233,8 @@ export default function Dashboard() {
           ================================================== */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { title: "Today's Sales", value: `Rs. ${(summary?.todaySales ?? liveStats.todaySales ?? 0).toLocaleString()}`, desc: "All placed orders today minus cancelled (6AM–6AM)", trend: "Live data", color: "text-emerald-500", icon: DollarSign },
-          { title: "Today's Orders", value: summary?.ordersCount ?? liveStats.todayOrders ?? 0, desc: "Placed orders today, excluding cancelled", trend: "Live data", color: "text-blue-500", icon: ShoppingBag },
+          { title: "Today's Sales", value: `Rs. ${(summary?.todaySales ?? liveStats.todaySales ?? 0).toLocaleString()}`, desc: "Completed bills + paid kitchen tickets (6AM–6AM). Open unpaid bills are not included.", trend: "Live data", color: "text-emerald-500", icon: DollarSign },
+          { title: "Today's Orders", value: summary?.ordersCount ?? liveStats.todayOrders ?? 0, desc: "Sale tickets today — completed, or active and already paid", trend: "Live data", color: "text-blue-500", icon: ShoppingBag },
           { title: "Cancelled Orders", value: summary?.cancelled ?? liveStats.cancelledOrders ?? 0, desc: "Cancelled bills this business day", trend: "Live data", color: "text-red-500", icon: Ban },
           { title: "Completed Sale", value: `Rs. ${(summary?.completedSales ?? liveStats.completedSales ?? 0).toLocaleString()}`, desc: "Sales of completed orders only", trend: "Live data", color: "text-emerald-500", icon: DollarSign },
           { title: "Completed Orders", value: summary?.completed ?? liveStats.completedOrders ?? 0, desc: "Orders marked completed today", trend: "Live data", color: "text-emerald-500", icon: Check },

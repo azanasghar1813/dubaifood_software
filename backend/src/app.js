@@ -39,7 +39,9 @@ app.use(helmet({
 // Cross-Origin Resource Sharing
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  // Reflect requested headers. A whitelist dropped x-manager-pin and the
+  // browser then blocked DELETE /orders/:id as a "Network Error".
   allowedHeaders: [
     'Content-Type',
     'Authorization',
@@ -48,7 +50,8 @@ app.use(cors({
     'x-cashier-session-id',
     'x-terminal-id',
     'x-device-name',
-    'x-branch-id'
+    'x-branch-id',
+    'x-manager-pin'
   ]
 }));
 

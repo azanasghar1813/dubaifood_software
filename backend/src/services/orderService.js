@@ -40,12 +40,10 @@ class OrderService {
    * Retrieves full hydrated order graph.
    */
   getOrderById(orderId) {
-    const cached = orderCacheService.getOrder(orderId);
-    if (cached) return cached;
-
+    // Never serve cached money. Edits must always see live item totals.
+    orderCacheService.invalidate(orderId);
     const order = orderRepository.findById(orderId);
     if (!order) return null;
-
     return this._hydrateOrder(order);
   }
 
@@ -148,16 +146,24 @@ class OrderService {
 
   /**
    * Recalculates order financial totals. Nested-transaction safe.
+   * Never swallow hydrate errors into a second nested transaction — that
+   * can commit a line delete while rolling back the header totals.
    */
   recalculateOrderTotals(orderId) {
     const run = () => {
       const updated = orderTotalsService.recalculate(orderId);
+      try { historyCacheService.invalidateOrder(orderId); } catch { /* optional */ }
+      orderCacheService.invalidate(orderId);
       return this._hydrateOrder(updated);
     };
-    try {
-      if (dbEngine.db?.inTransaction) return run();
-    } catch { /* fall through to wrapped tx */ }
+    if (dbEngine.db?.inTransaction) return run();
     return dbEngine.transaction(run);
+  }
+
+  _commitItemEdit(orderId) {
+    orderCacheService.invalidate(orderId);
+    try { historyCacheService.invalidateOrder(orderId); } catch { /* optional */ }
+    return this.recalculateOrderTotals(orderId);
   }
 
   applyOrderDiscount(orderId, discountTotal, printPaid = false) {
@@ -249,7 +255,7 @@ class OrderService {
    * Adds an item to a specific order.
    */
   addItemToOrder(orderId, itemInput, actorUserId = 'SYSTEM', terminalId = 'SYSTEM') {
-    return dbEngine.transaction(() => {
+    dbEngine.transaction(() => {
       this._enforceLock(orderId, terminalId);
       const order = orderRepository.findById(orderId);
       orderValidationService.validateItemAddition(order, itemInput);
@@ -329,22 +335,22 @@ class OrderService {
       });
 
       try { historyCacheService.invalidateOrder(orderId); } catch { /* optional */ }
-      return updatedOrder;
     });
+    return this._commitItemEdit(orderId);
   }
 
   /**
    * Updates an item's quantity or removes if quantity <= 0.
    */
   updateItemQuantity(orderId, itemId, newQuantity, actorUserId = 'SYSTEM', terminalId = 'SYSTEM') {
-    return dbEngine.transaction(() => {
+    if (newQuantity <= 0) {
+      return this.removeItem(orderId, itemId, actorUserId, null, terminalId);
+    }
+
+    dbEngine.transaction(() => {
       this._enforceLock(orderId, terminalId);
       const order = orderRepository.findById(orderId);
       orderValidationService.validateItemModification(order, itemId);
-
-      if (newQuantity <= 0) {
-        return this.removeItem(orderId, itemId, actorUserId);
-      }
 
       const item = orderItemRepository.findItemById(itemId);
       if (!item) throw new Error('Order line item not found.');
@@ -383,16 +389,15 @@ class OrderService {
         bill_before: billBefore,
         bill_after: Number(updatedOrder.grand_total || 0)
       });
-
-      return updatedOrder;
     });
+    return this._commitItemEdit(orderId);
   }
 
   /**
    * Removes an item from an order.
    */
   removeItem(orderId, itemId, actorUserId = 'SYSTEM', reason = null, terminalId = 'SYSTEM') {
-    return dbEngine.transaction(() => {
+    dbEngine.transaction(() => {
       this._enforceLock(orderId, terminalId);
       const order = orderRepository.findById(orderId);
       orderValidationService.validateItemModification(order, itemId);
@@ -440,9 +445,8 @@ class OrderService {
         bill_after: Number(updatedOrder.grand_total || 0),
         reason: reason
       });
-
-      return updatedOrder;
     });
+    return this._commitItemEdit(orderId);
   }
 
   /**

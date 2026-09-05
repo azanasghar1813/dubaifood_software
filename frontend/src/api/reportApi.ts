@@ -18,6 +18,7 @@ export interface ReportSummary {
   tax: number;
   serviceCharges: number;
   deliveryCharges: number;
+  tips?: number;
   refunds: number;
   refundCount?: number;
   averageOrderValue: number;

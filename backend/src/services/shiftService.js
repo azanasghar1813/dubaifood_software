@@ -142,10 +142,16 @@ class ShiftService {
     let discounts = 0;
 
     orders.forEach(order => {
-      if (order.lifecycle_state === 'REFUNDED' || order.lifecycle_state === 'CANCELLED') {
+      const life = String(order.lifecycle_state || '').toUpperCase();
+      const paid = String(order.payment_state || '').toUpperCase() === 'PAID';
+      if (life === 'REFUNDED' || life === 'CANCELLED') {
         refunds += Number(order.grand_total) || 0;
+        return;
       }
-      discounts += Number(order.discount_total) || 0;
+      const isSale = life === 'COMPLETED' || (life === 'ACTIVE' && paid);
+      if (isSale) {
+        discounts += Number(order.discount_total) || 0;
+      }
     });
 
     let cashRefunds = 0;

@@ -245,12 +245,31 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     guestCount: Number(detail?.metadata?.guest_count ?? 1) || 1,
     orderType: (row.order_type === 'TAKEAWAY' ? 'Takeaway' : row.order_type === 'DELIVERY' ? 'Delivery' : (row.order_type === 'DRIVE_THROUGH' || row.order_type === 'DRIVE_THRU') ? 'Drive Through' : 'Dine In'),
     items,
-    subtotal: Number(row.subtotal || 0),
-    tax: Number(row.tax_total || 0),
-    serviceCharge: Number(row.service_charge ?? detail?.metadata?.service_charge ?? 0),
-    deliveryCharge: Number(row.delivery_charges ?? detail?.metadata?.delivery_charges ?? 0),
-    discount: Number(row.discount_total || 0),
-    total: Number(row.grand_total || 0),
+    ...(() => {
+      const foodNet = items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0)
+      const serviceCharge = Number(detail?.service_charge ?? row.service_charge ?? detail?.metadata?.service_charge ?? 0) || 0
+      const deliveryCharge = Number(
+        (detail as any)?.delivery_fee
+        ?? detail?.delivery_charges
+        ?? row.delivery_charges
+        ?? detail?.metadata?.delivery_charges
+        ?? 0
+      ) || 0
+      const discount = Number(detail?.discount_total ?? row.discount_total ?? 0) || 0
+      let subtotal = Number(detail?.subtotal ?? row.subtotal ?? foodNet ?? 0) || 0
+      if (foodNet > 0 && Math.abs(foodNet - subtotal) > 0.5) subtotal = foodNet
+      const reconstructed = Math.max(0, subtotal - discount + serviceCharge + deliveryCharge)
+      let total = Number(detail?.grand_total ?? row.grand_total ?? reconstructed) || 0
+      if (Math.abs(reconstructed - total) > 0.5) total = reconstructed
+      return {
+        subtotal,
+        tax: Number(detail?.tax_total ?? row.tax_total ?? 0) || 0,
+        serviceCharge,
+        deliveryCharge,
+        discount,
+        total
+      }
+    })(),
     businessDate: row.business_date,
     status: mapLifecycleState(row.lifecycle_state),
     kitchenStatus: mapKitchenState(row.kitchen_state),

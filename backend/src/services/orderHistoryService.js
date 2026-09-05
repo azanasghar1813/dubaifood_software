@@ -6,6 +6,8 @@ import { auditService } from './auditService.js';
 import { syncStatusService } from './syncStatusService.js';
 import { dbEngine } from '../database/sqlite.js';
 import { kitchenQueueService } from './kitchenQueueService.js';
+import { orderTotalsService } from './orderTotalsService.js';
+import { orderCacheService } from './orderCacheService.js';
 
 /**
  * OrderHistoryService — The Central History Orchestrator
@@ -65,17 +67,36 @@ class OrderHistoryService {
    * @param {string} orderId
    * @returns {Object|null}
    */
-  getOrderDetail(orderId) {
-    // Check cache
-    const cached = historyCacheService.getDetail(orderId);
-    if (cached) return cached;
+  _foodSum(order) {
+    return (order.items || []).reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0);
+  }
 
-    const order = historyRepository.findFullDetail(orderId);
+  _headerMatchesLines(order) {
+    const food = this._foodSum(order);
+    const stored = Number(order.subtotal) || 0;
+    if (!(order.items || []).length) return stored <= 0.009;
+    return Math.abs(food - stored) <= 0.5;
+  }
+
+  getOrderDetail(orderId) {
+    const cached = historyCacheService.getDetail(orderId);
+    if (cached && this._headerMatchesLines(cached)) return cached;
+
+    let order = historyRepository.findFullDetail(orderId);
     if (!order) return null;
 
-    // Cache with appropriate TTL based on business date
-    historyCacheService.setDetail(orderId, order, order.business_date);
+    if (!this._headerMatchesLines(order)) {
+      try {
+        orderTotalsService.recalculate(orderId);
+        orderCacheService.invalidate(orderId);
+        historyCacheService.invalidateOrder(orderId);
+        order = historyRepository.findFullDetail(orderId) || order;
+      } catch (err) {
+        console.warn('[history] repaired stale ticket totals failed:', err.message);
+      }
+    }
 
+    historyCacheService.setDetail(orderId, order, order.business_date);
     return order;
   }
 

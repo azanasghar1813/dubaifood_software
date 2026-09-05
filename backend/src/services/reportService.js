@@ -69,9 +69,9 @@ export const reportService = {
         COALESCE(SUM(o.subtotal - o.discount_total), 0) as netSales,
         COALESCE(SUM(o.grand_total), 0) as grossSales,
         COALESCE(SUM(o.discount_total), 0) as discounts,
-        COALESCE(SUM(o.tax_total), 0) as tax,
         COALESCE(SUM(COALESCE(o.delivery_fee, 0)), 0) as deliveryCharges,
-        COALESCE(SUM(COALESCE(o.service_charge, 0)), 0) as serviceCharges
+        COALESCE(SUM(COALESCE(o.service_charge, 0)), 0) as serviceCharges,
+        COALESCE(SUM(COALESCE(o.tip_total, 0)), 0) as tips
       FROM orders o
       WHERE ${where} AND ${SALE_PREDICATE}
     `, ...params) || {};
@@ -144,6 +144,9 @@ export const reportService = {
     const cashSales = Number(paymentSplit?.cashSales) || 0;
     const digitalSales = Number(paymentSplit?.digitalSales) || 0;
     const unpaidSales = Math.max(0, grossSales - cashSales - digitalSales);
+    const serviceCharges = Number(summary.serviceCharges) || 0;
+    const deliveryCharges = Number(summary.deliveryCharges) || 0;
+    const tips = Number(summary.tips) || 0;
     const totalCatSales =
       buckets.restaurantSales + buckets.fastFoodSales + buckets.dealsSales
       + buckets.drinksSales + buckets.chipsSales + buckets.specialDrinksSales + buckets.otherSales;
@@ -155,8 +158,9 @@ export const reportService = {
       itemsSold: Number(items?.itemsSold) || 0,
       discounts: Number(summary.discounts) || 0,
       tax: 0,
-      serviceCharges: Number(summary.serviceCharges) || 0,
-      deliveryCharges: Number(summary.deliveryCharges) || 0,
+      serviceCharges,
+      deliveryCharges,
+      tips,
       refunds: Number(refundsRow?.refunds) || 0,
       refundCount: Number(refundsRow?.refundCount) || 0,
       cashSales,
@@ -164,7 +168,7 @@ export const reportService = {
       unpaidSales,
       paidCount: Number(paidCounts?.paidCount) || 0,
       unpaidCount: Number(paidCounts?.unpaidCount) || 0,
-      averageOrderValue: ordersCount > 0 ? netSales / ordersCount : 0,
+      averageOrderValue: ordersCount > 0 ? grossSales / ordersCount : 0,
       openBillsCount: Number(openRow?.openCount) || 0,
       openBillsTotal: Number(openRow?.openTotal) || 0,
       totalCatSales,
@@ -188,15 +192,7 @@ export const reportService = {
         SUM(oi.quantity) as qty,
         COUNT(DISTINCT o.id) as orders,
         SUM(COALESCE(oi.subtotal, 0)) as gross,
-        SUM(
-          COALESCE(oi.discount_amount, 0)
-          + COALESCE(
-              (COALESCE(o.discount_total, 0) - COALESCE((
-                SELECT SUM(COALESCE(x.discount_amount, 0)) FROM order_items x WHERE x.order_id = o.id
-              ), 0))
-              * ((COALESCE(oi.subtotal, 0) - COALESCE(oi.discount_amount, 0)) / NULLIF(o.subtotal, 0))
-            , 0)
-        ) as discount,
+        SUM(COALESCE(oi.subtotal, 0) - (${ITEM_FOOD_NET_SQL})) as discount,
         0 as tax,
         SUM(${ITEM_FOOD_NET_SQL}) as net,
         0 as refunds,

@@ -240,8 +240,7 @@ export async function fetchReprintLog(orderId: string): Promise<{ success: boole
  */
 export async function deleteOrder(orderId: string, pin?: string): Promise<{ success: boolean; message?: string }> {
   return apiClient.delete(`/orders/${orderId}`, {
-    data: { pin },
-    headers: pin ? { 'x-manager-pin': pin } : undefined
+    data: { pin }
   } as any);
 }
 

@@ -194,6 +194,23 @@ export default function Reports() {
 
   const toggleExpand = (id: string) => setExpandedCategories(prev => ({ ...prev, [id]: !prev[id] }));
 
+  const reportOrders = useMemo(() => {
+    const { startDate, endDate } = DateUtils.resolveReportRange({ timeRange, customDateFrom, customDateTo })
+    return orders.filter(o => {
+      const bd = o.businessDate || DateUtils.getBusinessDate(o.timestamp)
+      return bd >= startDate && bd <= endDate
+    })
+  }, [orders, timeRange, customDateFrom, customDateTo])
+
+  const saleOrders = useMemo(() => {
+    return reportOrders.filter(o => {
+      const status = String(o.status || '')
+      if (status === 'Cancelled' || status === 'Refunded' || status === 'Draft' || status === 'Held') return false
+      if (status === 'Completed') return true
+      return status === 'Active' && String(o.paymentStatus || '') === 'Paid'
+    })
+  }, [reportOrders])
+
   const handleExportData = () => {
     // Build CSV content based on active tab
     let csvContent = ''
@@ -202,7 +219,8 @@ export default function Reports() {
 
     if (activeTab === 'Dashboard Summary' || activeTab === 'Orders Report') {
       const headers = ['Order #', 'Date', 'Customer', 'Type', 'Subtotal', 'Tax', 'Service Charge', 'Delivery', 'Discount', 'Total', 'Payment Method', 'Payment Status', 'Order Status']
-      const rows = reportOrders.map(o => [
+      const exportOrders = activeTab === 'Dashboard Summary' ? saleOrders : reportOrders
+      const rows = exportOrders.map(o => [
         o.orderNumber,
         `"${new Date(o.timestamp).toLocaleString()}"`,
         `"${o.customerName || 'Guest'}"`,
@@ -219,7 +237,7 @@ export default function Reports() {
       ])
       csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
     } else if (activeTab === 'Detailed Sales') {
-      const headers = ['Main Category', 'Sub Category', 'Product', 'Qty Sold', 'Gross Sales', 'Discounts', 'Service / Delivery Charge', 'Refunds', 'Net Sales']
+      const headers = ['Main Category', 'Sub Category', 'Product', 'Qty Sold', 'Gross Sales', 'Discounts', 'Tax', 'Refunds', 'Net Sales']
       const rows = detailedSales.map(r => [
         `"${r.main_category}"`, `"${r.sub_category}"`, `"${r.product_name}"`, r.qty, r.gross.toFixed(2), r.discount.toFixed(2), r.tax.toFixed(2), r.refunds.toFixed(2), r.net.toFixed(2)
       ])
@@ -281,11 +299,13 @@ export default function Reports() {
             head: [['Metric', 'Value']],
             body: [
               ['Total Orders', reportStats.totalOrdersCount],
-              ['Gross Sales', `Rs. ${formatCurrency(reportStats.grossSales)}`],
-              ['Net Sales', `Rs. ${formatCurrency(reportStats.netSales)}`],
-              ['Tax Collected', `Rs. ${formatCurrency(reportStats.totalTax)}`],
-              ['Service Charges', `Rs. ${formatCurrency(reportStats.totalService)}`],
+              ['Gross Sales (ticket total)', `Rs. ${formatCurrency(reportStats.grossSales)}`],
+              ['Net Sales (food after discount)', `Rs. ${formatCurrency(reportStats.netSales)}`],
+              ['Tax (0%)', `Rs. ${formatCurrency(0)}`],
+              ['Service Charges (dine-in 7%)', `Rs. ${formatCurrency(reportStats.totalService)}`],
               ['Delivery Charges', `Rs. ${formatCurrency(reportStats.totalDelivery)}`],
+              ['Average ticket', `Rs. ${formatCurrency(reportStats.avgBill)}`],
+              ['Refunds / cancelled', `Rs. ${formatCurrency(reportStats.refundsAmount || 0)}`],
               ['Cash Sales', `Rs. ${formatCurrency(reportStats.cashSales || 0)}`],
               ['Card/Digital Sales', `Rs. ${formatCurrency(reportStats.cardSales || 0)}`],
               ['Restaurant Sales', `Rs. ${formatCurrency(reportStats.restaurantSales || 0)}`],
@@ -303,7 +323,7 @@ export default function Reports() {
           autoTable(doc, {
             startY: (doc as any).lastAutoTable.finalY + 14,
             head: [["Order #", "Date", "Cashier", "Order Type", "Customer", "Subtotal", "Discount", "Tax", "Total", "Pay Method", "Status", "Items"]],
-            body: reportOrders.map(o => [
+            body: (activeTab === 'Dashboard Summary' ? saleOrders : reportOrders).map(o => [
               o.orderNumber,
               new Date(o.timestamp).toLocaleString(),
               o.cashierName || 'Staff',
@@ -360,11 +380,13 @@ export default function Reports() {
         <h2>Summary</h2>
         <table>
           <tr><td>Total Orders</td><td>${reportStats.totalOrdersCount}</td></tr>
-          <tr><td>Gross Sales</td><td>Rs. ${formatCurrency(reportStats.grossSales)}</td></tr>
-          <tr><td>Net Sales</td><td>Rs. ${formatCurrency(reportStats.netSales)}</td></tr>
-          <tr><td>Tax Collected</td><td>Rs. ${formatCurrency(reportStats.totalTax)}</td></tr>
-          <tr><td>Service Charges</td><td>Rs. ${formatCurrency(reportStats.totalService)}</td></tr>
+          <tr><td>Gross Sales (ticket total)</td><td>Rs. ${formatCurrency(reportStats.grossSales)}</td></tr>
+          <tr><td>Net Sales (food after discount)</td><td>Rs. ${formatCurrency(reportStats.netSales)}</td></tr>
+          <tr><td>Tax (0%)</td><td>Rs. ${formatCurrency(0)}</td></tr>
+          <tr><td>Service Charges (dine-in 7%)</td><td>Rs. ${formatCurrency(reportStats.totalService)}</td></tr>
           <tr><td>Delivery Charges</td><td>Rs. ${formatCurrency(reportStats.totalDelivery)}</td></tr>
+          <tr><td>Average ticket</td><td>Rs. ${formatCurrency(reportStats.avgBill)}</td></tr>
+          <tr><td>Refunds / cancelled</td><td>Rs. ${formatCurrency(reportStats.refundsAmount || 0)}</td></tr>
           <tr><td>Cash Sales</td><td>Rs. ${formatCurrency(reportStats.cashSales || 0)}</td></tr>
           <tr><td>Card/Digital Sales</td><td>Rs. ${formatCurrency(reportStats.cardSales || 0)}</td></tr>
           <tr><td>Restaurant Sales</td><td>Rs. ${formatCurrency(reportStats.restaurantSales || 0)}</td></tr>
@@ -376,7 +398,7 @@ export default function Reports() {
         <table>
           <thead><tr><th>Order #</th><th>Date</th><th>Type</th><th>Total</th><th>Payment</th><th>Status</th></tr></thead>
           <tbody>
-            ${reportOrders.map(o => `<tr><td>${o.orderNumber}</td><td>${new Date(o.timestamp).toLocaleString()}</td><td>${o.orderType}</td><td>Rs. ${formatCurrency(o.total)}</td><td>${o.payments?.[0]?.method || 'Cash'}</td><td>${o.status}</td></tr>`).join('')}
+            ${(activeTab === 'Dashboard Summary' ? saleOrders : reportOrders).map(o => `<tr><td>${o.orderNumber}</td><td>${new Date(o.timestamp).toLocaleString()}</td><td>${o.orderType}</td><td>Rs. ${formatCurrency(o.total)}</td><td>${o.payments?.[0]?.method || 'Cash'}</td><td>${o.status}</td></tr>`).join('')}
           </tbody>
         </table>`
     } else if (activeTab === 'Product Sales') {
@@ -406,7 +428,7 @@ export default function Reports() {
     if (!reportSummary) {
       return {
         totalOrdersCount: 0, grossSales: 0, netSales: 0, totalTax: 0, totalService: 0,
-        totalDiscount: 0, totalDelivery: 0, paidCount: 0, unpaidCount: 0, refundsCount: 0, cashSales: 0,
+        totalDiscount: 0, totalDelivery: 0, paidCount: 0, unpaidCount: 0, refundsCount: 0, refundsAmount: 0, cashSales: 0,
         cardSales: 0, digitalSales: 0, unpaidSales: 0, avgBill: 0, netEstimatedProfit: 0,
         restaurantSales: 0, fastFoodSales: 0, dealsSales: 0, drinksSales: 0, chipsSales: 0,
         specialDrinksSales: 0, otherSales: 0, totalCatSales: 0, openBillsCount: 0, openBillsTotal: 0
@@ -440,7 +462,8 @@ export default function Reports() {
       totalDelivery,
       paidCount: reportSummary.paidCount || 0,
       unpaidCount: reportSummary.unpaidCount || 0,
-      refundsCount: reportSummary.refunds || 0,
+      refundsCount: reportSummary.refundCount || 0,
+      refundsAmount: reportSummary.refunds || 0,
       cashSales,
       cardSales: digitalSales,
       digitalSales,
@@ -543,14 +566,6 @@ export default function Reports() {
   }, [productSalesData])
 
   // Orders Report Specific Data
-  const reportOrders = useMemo(() => {
-    const { startDate, endDate } = DateUtils.resolveReportRange({ timeRange, customDateFrom, customDateTo })
-    return orders.filter(o => {
-      const bd = o.businessDate || DateUtils.getBusinessDate(o.timestamp)
-      return bd >= startDate && bd <= endDate
-    })
-  }, [orders, timeRange, customDateFrom, customDateTo])
-
   const orderReportStats = useMemo(() => {
     let completed = 0, preparing = 0, ready = 0, cancelled = 0, edited = 0
     reportOrders.forEach(o => {
@@ -783,7 +798,7 @@ export default function Reports() {
                         <th className="py-3 px-4 text-right">Qty</th>
                         <th className="py-3 px-4 text-right">Gross</th>
                         <th className="py-3 px-4 text-right">Discounts</th>
-                        <th className="py-3 px-4 text-right">Service / Delivery Charges</th>
+                        <th className="py-3 px-4 text-right">Tax</th>
                         <th className="py-3 px-4 text-right">Refunds</th>
                         <th className="py-3 px-4 text-right">Net Sales</th>
                       </tr>
@@ -907,6 +922,22 @@ export default function Reports() {
                     <h3 className="text-xl md:text-2xl font-black text-foreground tracking-tight mt-3">Rs. {formatCurrency(reportStats.totalDelivery)}</h3>
                   </div>
                   <span className="text-[9px] font-bold mt-3 px-2 py-0.5 rounded border w-fit text-indigo-500 bg-indigo-500/10 border-indigo-500/25">Delivery fees</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-card border border-border rounded-[1.5rem] shadow-sm">
+                  <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide">Sale orders</span>
+                  <h3 className="text-xl font-black mt-2">{reportStats.totalOrdersCount}</h3>
+                </div>
+                <div className="p-4 bg-card border border-border rounded-[1.5rem] shadow-sm">
+                  <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide">Discounts</span>
+                  <h3 className="text-xl font-black mt-2 text-amber-500">Rs. {formatCurrency(reportStats.totalDiscount)}</h3>
+                </div>
+                <div className="p-4 bg-card border border-border rounded-[1.5rem] shadow-sm">
+                  <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wide">Refunds / cancelled</span>
+                  <h3 className="text-xl font-black mt-2 text-red-500">Rs. {formatCurrency(reportStats.refundsAmount || 0)}</h3>
+                  <span className="text-[9px] font-bold text-muted-foreground">{reportStats.refundsCount || 0} tickets</span>
                 </div>
               </div>
 
@@ -1174,12 +1205,12 @@ export default function Reports() {
                       <span className="text-foreground">Rs. {formatCurrency(reportStats.grossSales)}</span>
                     </div>
                     <div className="flex justify-between p-3 bg-secondary/40 border border-border rounded-xl font-bold text-xs">
-                      <span className="text-muted-foreground">Net Sales (Excl Tax):</span>
+                      <span className="text-muted-foreground">Net Sales (food after discount):</span>
                       <span className="text-foreground">Rs. {formatCurrency(reportStats.netSales)}</span>
                     </div>
                     <div className="flex justify-between p-3 bg-secondary/40 border border-border rounded-xl font-bold text-xs">
-                      <span className="text-muted-foreground">GST Tax Collected (16%):</span>
-                      <span className="text-foreground">Rs. {formatCurrency(reportStats.totalTax)}</span>
+                      <span className="text-muted-foreground">Tax (0%):</span>
+                      <span className="text-foreground">Rs. {formatCurrency(0)}</span>
                     </div>
                   </div>
 
@@ -1190,7 +1221,7 @@ export default function Reports() {
                     </div>
                     <div className="flex justify-between p-3 bg-secondary/40 border border-border rounded-xl font-bold text-xs">
                       <span className="text-muted-foreground">Cancelled / Refunded:</span>
-                      <span className="text-red-500">Rs. {formatCurrency(reportStats.refundsCount || 0)}</span>
+                      <span className="text-red-500">Rs. {formatCurrency(reportStats.refundsAmount || 0)}</span>
                     </div>
                     <div className="flex justify-between p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl font-bold text-xs">
                       <span className="text-emerald-500">Food net (same as Net Sales):</span>

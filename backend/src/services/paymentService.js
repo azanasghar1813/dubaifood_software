@@ -19,6 +19,7 @@ import { kitchenService } from './kitchenService.js';
 import { printService } from './printService.js';
 import { OrderLifecycleState, PaymentState, KitchenState } from '../constants/orderStates.js';
 import { releaseTableIfIdle } from '../controllers/tableController.js';
+import { orderTotalsService } from './orderTotalsService.js';
 import crypto from 'crypto';
 
 /**
@@ -93,16 +94,9 @@ class PaymentService {
       const live = orderRepository.findById(orderId);
       if (live) {
         const discount = Math.max(0, Number(input.discount_total) || 0);
-        const subtotal = Number(live.subtotal) || 0;
-        const service = Number(live.service_charge) || 0;
-        const delivery = Number(live.delivery_fee) || 0;
-        const grand = Math.max(0, subtotal + service + delivery - discount);
-        const paid = Number(live.paid_total) || 0;
-        orderRepository.update(orderId, {
-          discount_total: discount,
-          grand_total: grand,
-          due_total: Math.max(0, grand - paid)
-        });
+        orderRepository.update(orderId, { discount_total: discount });
+        // Recompute 7% dine-in service on food-after-discount, then grand/due.
+        orderTotalsService.recalculate(orderId);
         try {
           orderMetadataRepository.setMeta(orderId, 'receipt_paid_stamp', input.print_paid ? 'true' : 'false');
         } catch { /* optional */ }

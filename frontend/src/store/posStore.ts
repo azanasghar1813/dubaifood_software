@@ -690,7 +690,17 @@ export const usePosStore = create<POSState>()(
     void get().fetchDraftOrder()
   },
 
-  getSubtotal: () => get().activeOrder?.totals?.subtotal ?? get().activeOrder?.subtotal ?? 0,
+  getSubtotal: () => {
+    const cart = get().cart || []
+    if (cart.length > 0) {
+      return cart.reduce((sum, item: any) => {
+        const line = Number(item.subtotal)
+        if (Number.isFinite(line) && line > 0) return sum + line
+        return sum + (Number(item.price) || 0) * (Number(item.quantity) || 1)
+      }, 0)
+    }
+    return Number(get().activeOrder?.totals?.subtotal ?? get().activeOrder?.subtotal ?? 0) || 0
+  },
   getTax: () => {
     return 0;
   },
