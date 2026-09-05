@@ -371,7 +371,8 @@ export default function POS() {
       (window as any)._checkoutOpenedAt = Date.now()
       setSelectedPaymentMethod(null)
       setAmountReceived('')
-      setDiscountAmount('')
+      const existingDiscount = Number((activeOrder as any)?.totals?.discount_total ?? (activeOrder as any)?.discount_total ?? 0) || 0
+      setDiscountAmount(existingDiscount > 0 ? String(existingDiscount) : '')
       setCheckoutFocusZone('methods')
       setCheckoutMethodIndex(0)
       setCheckoutQuickCashIndex(-1)
@@ -567,6 +568,7 @@ export default function POS() {
     activeProductForSize, editingOrderId, sizeSelectedIndex, gridSelectedIndex,
     isCartMode, cartSelectedIndex, gridDensity, checkoutFocusZone, checkoutMethodIndex,
     checkoutQuickCashIndex, checkoutDiscountPctIndex, selectedPaymentMethod, discountAmount,
+    storedDiscount: Number((activeOrder as any)?.totals?.discount_total ?? (activeOrder as any)?.discount_total ?? 0) || 0,
     orderType, categories, activeCategory, products, dealModalOpen, searchQuery,
     handleSendKot, handleProceedToPay, getNetTotal, addToCart, removeFromCart,
     updateQuantity, clearCart, duplicateItem, clearEditMode, setWaiterId, setRiderId,
@@ -583,11 +585,13 @@ export default function POS() {
         activeProductForSize, editingOrderId, sizeSelectedIndex, gridSelectedIndex,
         isCartMode, cartSelectedIndex, gridDensity, checkoutFocusZone, checkoutMethodIndex,
         checkoutQuickCashIndex, checkoutDiscountPctIndex, selectedPaymentMethod,
-        orderType, categories, activeCategory, products, dealModalOpen, searchQuery,
-        handleSendKot, handleProceedToPay, getNetTotal, addToCart, removeFromCart,
+        orderType, categories: categoriesRaw, activeCategory, products: productsRaw, dealModalOpen, searchQuery,
+        handleSendKot, handleProceedToPay, getNetTotal, storedDiscount, addToCart, removeFromCart,
         updateQuantity, clearCart, clearEditMode, setWaiterId, setRiderId,
         setTableNumber, setCustomer, setDeliveryCharges, toggleTax,
       } = keyCtxRef.current
+      const categories: any[] = Array.isArray(categoriesRaw) ? categoriesRaw : []
+      const products: Product[] = Array.isArray(productsRaw) ? productsRaw : []
 
       const isTyping = isTypingInField(e)
       const searchEl = searchInputRef.current
@@ -690,7 +694,7 @@ export default function POS() {
           // Enter on discount-pct pill: apply that percentage
           if (checkoutFocusZone === 'discountpct' && checkoutDiscountPctIndex >= 0) {
             const pct = DISCOUNT_PCTS[checkoutDiscountPctIndex]
-            const raw = getNetTotal()
+            const raw = getNetTotal() + (Number(storedDiscount) || 0)
             setDiscountAmount(Math.round(raw * pct / 100).toString())
             return
           }
@@ -2141,6 +2145,13 @@ export default function POS() {
                       </div>
 
 
+                      {Math.min(Number((activeOrder as any)?.totals?.discount_total ?? (activeOrder as any)?.discount_total ?? 0) || 0, getSubtotal()) > 0 && (
+                        <div className="flex justify-between text-xs font-black text-emerald-600 border-l-2 border-emerald-500 pl-2 p-1 -mx-1">
+                          <span>Discount</span>
+                          <span>-Rs {Math.min(Number((activeOrder as any)?.totals?.discount_total ?? (activeOrder as any)?.discount_total ?? 0) || 0, getSubtotal()).toLocaleString()}</span>
+                        </div>
+                      )}
+
                       {orderType === 'Dine In' && getServiceCharge() > 0 && (
                         <div className="flex justify-between text-xs font-black text-foreground border-l-2 border-orange-500 pl-2 p-1 -mx-1">
                           <span>Service Charges (7%)</span>
@@ -2443,7 +2454,8 @@ export default function POS() {
       <AnimatePresence>
         {checkoutModalOpen && (() => {
           const discountVal = Number(discountAmount) || 0
-          const baseTotal = getNetTotal()
+          const storedDiscount = Number((activeOrder as any)?.totals?.discount_total ?? (activeOrder as any)?.discount_total ?? 0) || 0
+          const baseTotal = getNetTotal() + storedDiscount
           const totalToPay = Math.max(0, baseTotal - discountVal)
           return (
             <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">

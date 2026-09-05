@@ -188,7 +188,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     discount: Number(item.discount_total ?? item.discount ?? 0),
     status: 'Active'
   }
-  }) as any
+  }) as unknown as CartItem[]
 
   const payments = (detail?.payments || []).map((payment: any, index: number) => ({
     id: payment.id || `${row.id}-payment-${index}`,

@@ -718,13 +718,13 @@ export const usePosStore = create<POSState>()(
     const sub = get().getSubtotal();
     const tax = get().getTax();
     const service = get().getServiceCharge();
-    const discount = get().activeOrder?.totals?.discount_total ?? get().activeOrder?.discount_total ?? 0;
+    const discount = Number(get().activeOrder?.totals?.discount_total ?? get().activeOrder?.discount_total ?? 0) || 0;
     const isInclusive = get().activeOrder?.items?.[0]?.is_tax_inclusive === true;
     
     if (isInclusive) {
-      return sub + service - discount;
+      return Math.max(0, sub + service - discount);
     }
-    return sub + tax + service - discount;
+    return Math.max(0, sub + tax + service - discount);
   },
   getNetTotal: () => {
     const base = get().getGrandTotal();

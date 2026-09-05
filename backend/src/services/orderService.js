@@ -23,6 +23,22 @@ import crypto from 'crypto';
 import { dateUtils } from '../utils/dateUtils.js';
 import { orderTotalsService } from './orderTotalsService.js';
 
+function orderLineMergeKey(productId, variantId, modifiers, addons, comboComponents, notes) {
+  const mods = [...(modifiers || [])]
+    .map((m) => `${m.modifier_id}:${m.quantity || 1}`)
+    .sort()
+    .join('|');
+  const ads = [...(addons || [])]
+    .map((a) => `${a.addon_id}:${a.quantity || 1}`)
+    .sort()
+    .join('|');
+  const combos = [...(comboComponents || [])]
+    .map((c) => `${c.product_id}:${c.variant_snapshot || ''}`)
+    .sort()
+    .join('|');
+  return `${productId || ''}::${variantId || ''}::${mods}::${ads}::${combos}::${String(notes || '').trim()}`;
+}
+
 class OrderService {
   /**
    * Internal guard to prevent concurrent modification of an order by different devices.
@@ -169,7 +185,8 @@ class OrderService {
   applyOrderDiscount(orderId, discountTotal, printPaid = false) {
     const order = orderRepository.findById(orderId);
     if (!order) throw new Error('Order not found.');
-    const discount = Math.max(0, Number(discountTotal) || 0);
+    const subtotal = Math.max(0, Number(order.subtotal) || 0);
+    const discount = Math.min(Math.max(0, Number(discountTotal) || 0), subtotal);
     orderRepository.update(orderId, { discount_total: discount });
     try {
       orderMetadataRepository.setMeta(orderId, 'receipt_paid_stamp', printPaid ? 'true' : 'false');
@@ -272,67 +289,106 @@ class OrderService {
         notes: itemInput.notes || null
       });
 
-      // Save item
-      snapshot.item.order_id = orderId;
-      orderItemRepository.addItem(snapshot.item);
-
-      // Save variant
-      if (snapshot.variant) {
-        orderItemRepository.addVariant(snapshot.variant);
-      }
-
-      // Save modifiers
-      if (snapshot.modifiers.length > 0) {
-        for (const mod of snapshot.modifiers) {
-          orderItemRepository.addModifier(mod);
-        }
-      }
-
-      // Save addons
-      if (snapshot.addons.length > 0) {
-        for (const add of snapshot.addons) {
-          orderItemRepository.addAddon(add);
-        }
-      }
-
-      // Save combo components
-      if (snapshot.comboComponents.length > 0) {
-        for (const comp of snapshot.comboComponents) {
-          orderItemRepository.addComboComponent(comp);
-        }
-      }
+      const incomingKey = orderLineMergeKey(
+        snapshot.item.product_id,
+        snapshot.variant?.variant_id || null,
+        snapshot.modifiers,
+        snapshot.addons,
+        snapshot.comboComponents,
+        snapshot.item.notes
+      );
+      const match = orderItemRepository.findItemsByOrderId(orderId).find((it) => (
+        orderLineMergeKey(
+          it.product_id,
+          it.variants?.[0]?.variant_id || it.variant?.variant_id || null,
+          it.modifiers,
+          it.addons,
+          it.combo_components || it.comboComponents,
+          it.notes
+        ) === incomingKey
+      ));
 
       const billBefore = Number(order.grand_total || 0);
       const addQty = Number(snapshot.item.quantity || 1);
       const addUnitPrice = Number(snapshot.item.final_unit_price || snapshot.item.base_unit_price || 0);
       const addLineTotal = Number(snapshot.item.subtotal || addUnitPrice * addQty);
+      let updatedOrder;
 
-      // Recalculate Totals
-      const updatedOrder = this.recalculateOrderTotals(orderId);
+      if (match) {
+        const oldQty = Number(match.quantity || 0);
+        const newQty = oldQty + addQty;
+        const addonSum = (match.addons || []).reduce((s, a) => s + (Number(a.subtotal) || 0), 0);
+        const unit = Number(match.final_unit_price ?? match.base_unit_price) || 0;
+        const newSubtotal = unit * newQty + addonSum;
+        orderItemRepository.updateItem(match.id, {
+          quantity: newQty,
+          subtotal: newSubtotal,
+          tax_amount: 0,
+          total_amount: newSubtotal
+        });
+        updatedOrder = this.recalculateOrderTotals(orderId);
+        orderTimelineService.recordEvent(orderId, actorUserId, 'ITEM_QUANTITY_CHANGED', {
+          description: `Updated quantity of ${match.product_name_snapshot} to ${newQty}`,
+          metadata: { item_id: match.id, old_qty: oldQty, new_qty: newQty, unit_price: unit, line_delta: unit * addQty }
+        });
+        activityLogService.logActivity(actorUserId, 'QUANTITY_CHANGED', 'ORDER', orderId, {
+          order_number: order.order_number,
+          item_name: match.product_name_snapshot,
+          product: match.product_name_snapshot,
+          old_quantity: oldQty,
+          new_quantity: newQty,
+          unit_price: unit,
+          line_delta: unit * addQty,
+          bill_before: billBefore,
+          bill_after: Number(updatedOrder.grand_total || 0)
+        });
+        syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', {
+          action: 'ITEM_QTY_MERGED',
+          order_number: order.order_number
+        });
+      } else {
+        snapshot.item.order_id = orderId;
+        orderItemRepository.addItem(snapshot.item);
 
-      // Record Timeline Event
-      orderTimelineService.recordEvent(orderId, actorUserId, 'ITEM_ADDED', {
-        description: `Added ${snapshot.item.quantity}x ${snapshot.item.product_name_snapshot} to order ${order.order_number}`,
-        metadata: { item_id: snapshot.item.id, product_id: snapshot.item.product_id, unit_price: addUnitPrice, line_total: addLineTotal, quantity: addQty }
-      });
+        if (snapshot.variant) {
+          orderItemRepository.addVariant(snapshot.variant);
+        }
+        if (snapshot.modifiers.length > 0) {
+          for (const mod of snapshot.modifiers) {
+            orderItemRepository.addModifier(mod);
+          }
+        }
+        if (snapshot.addons.length > 0) {
+          for (const add of snapshot.addons) {
+            orderItemRepository.addAddon(add);
+          }
+        }
+        if (snapshot.comboComponents.length > 0) {
+          for (const comp of snapshot.comboComponents) {
+            orderItemRepository.addComboComponent(comp);
+          }
+        }
 
-      // Log Activity
-      activityLogService.logActivity(actorUserId, 'ITEM_ADDED', 'ORDER', orderId, {
-        order_number: order.order_number,
-        item_name: snapshot.item.product_name_snapshot,
-        product: snapshot.item.product_name_snapshot,
-        quantity: addQty,
-        unit_price: addUnitPrice,
-        line_total: addLineTotal,
-        bill_before: billBefore,
-        bill_after: Number(updatedOrder.grand_total || 0)
-      });
-
-      // Queue Sync Event
-      syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', {
-        action: 'ITEM_ADDED',
-        order_number: order.order_number
-      });
+        updatedOrder = this.recalculateOrderTotals(orderId);
+        orderTimelineService.recordEvent(orderId, actorUserId, 'ITEM_ADDED', {
+          description: `Added ${snapshot.item.quantity}x ${snapshot.item.product_name_snapshot} to order ${order.order_number}`,
+          metadata: { item_id: snapshot.item.id, product_id: snapshot.item.product_id, unit_price: addUnitPrice, line_total: addLineTotal, quantity: addQty }
+        });
+        activityLogService.logActivity(actorUserId, 'ITEM_ADDED', 'ORDER', orderId, {
+          order_number: order.order_number,
+          item_name: snapshot.item.product_name_snapshot,
+          product: snapshot.item.product_name_snapshot,
+          quantity: addQty,
+          unit_price: addUnitPrice,
+          line_total: addLineTotal,
+          bill_before: billBefore,
+          bill_after: Number(updatedOrder.grand_total || 0)
+        });
+        syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', {
+          action: 'ITEM_ADDED',
+          order_number: order.order_number
+        });
+      }
 
       try { historyCacheService.invalidateOrder(orderId); } catch { /* optional */ }
     });

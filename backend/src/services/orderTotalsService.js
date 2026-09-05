@@ -78,11 +78,12 @@ class OrderTotalsService {
 
     subtotal = this._round(subtotal);
     const storedDiscount = Number(order.discount_total);
-    const discountTotal = this._round(
+    const rawDiscount = this._round(
       Number.isFinite(storedDiscount) && storedDiscount > 0
         ? storedDiscount
         : lineDiscountTotal
     );
+    const discountTotal = this._round(Math.min(Math.max(0, rawDiscount), subtotal));
 
     const orderType = order.order_type;
     const serviceCharge = this.computeServiceCharge(subtotal - discountTotal, orderType);
