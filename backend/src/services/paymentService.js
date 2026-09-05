@@ -17,7 +17,7 @@ import { activityLogService } from './activityLogService.js';
 import { syncService } from './syncService.js';
 import { kitchenService } from './kitchenService.js';
 import { printService } from './printService.js';
-import { OrderLifecycleState, PaymentState } from '../constants/orderStates.js';
+import { OrderLifecycleState, PaymentState, KitchenState } from '../constants/orderStates.js';
 import { releaseTableIfIdle } from '../controllers/tableController.js';
 import crypto from 'crypto';
 
@@ -326,6 +326,91 @@ class PaymentService {
         new_lifecycle_state: finalOrder.lifecycle_state
       }
     };
+  }
+
+  refundOrder(orderId, sessionId, cashierUserId, input = {}, idempotencyKey = null) {
+    if (idempotencyKey) {
+      const existingPayment = orderPaymentRepository.findByIdempotencyKey(idempotencyKey);
+      if (existingPayment) {
+        return { payment: existingPayment, order: this._hydrateOrder(orderId), replayed: true };
+      }
+    }
+
+    paymentValidationService.validateSession(sessionId, cashierUserId);
+    const order = this._hydrateOrder(orderId);
+    if (!order) throw new Error('Order not found.');
+    if (order.lifecycle_state === OrderLifecycleState.REFUNDED || order.payment_state === PaymentState.REFUNDED) {
+      return { order, alreadyRefunded: true };
+    }
+    if (order.payment_state !== PaymentState.PAID) {
+      throw new Error('Only paid orders can be refunded. Cancel unpaid tickets instead.');
+    }
+
+    const reason = String(input.reason || 'Refund from History').slice(0, 500);
+
+    const result = dbEngine.transaction(() => {
+      if (idempotencyKey) {
+        const existingPayment = orderPaymentRepository.findByIdempotencyKey(idempotencyKey);
+        if (existingPayment) {
+          return { payment: existingPayment, order: this._hydrateOrder(orderId), replayed: true };
+        }
+      }
+
+      dbEngine.prepare(`
+        UPDATE order_payments
+        SET status = 'REFUNDED'
+        WHERE order_id = ? AND UPPER(COALESCE(status, 'COMPLETED')) = 'COMPLETED'
+      `).run(orderId);
+
+      const refundId = crypto.randomUUID();
+      const refundPayment = orderPaymentRepository.addPayment({
+        id: refundId,
+        order_id: orderId,
+        shift_id: sessionId,
+        cashier_user_id: cashierUserId,
+        business_date: order.business_date,
+        payment_method: 'CASH',
+        payment_method_label: 'Refund',
+        amount: 0,
+        amount_received: 0,
+        change_returned: Number(order.paid_total) || 0,
+        notes: reason,
+        status: 'REFUNDED',
+        idempotency_key: idempotencyKey
+      });
+
+      orderLifecycleService.transition(orderId, OrderLifecycleState.REFUNDED, {
+        userId: cashierUserId,
+        reason,
+        paymentState: PaymentState.REFUNDED,
+        kitchenState: KitchenState.CANCELLED
+      });
+      orderRepository.update(orderId, {
+        paid_total: 0,
+        due_total: 0,
+        payment_state: PaymentState.REFUNDED
+      });
+
+      orderTimelineService.recordEvent(orderId, cashierUserId, 'ORDER_REFUNDED', {
+        to_state: OrderLifecycleState.REFUNDED,
+        description: reason,
+        metadata: { payment_id: refundId }
+      });
+      activityLogService.logActivity(cashierUserId, 'ORDER_REFUNDED', 'PAYMENT', refundId, {
+        order_id: orderId,
+        order_number: order.order_number,
+        reason
+      });
+      syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', {
+        order_number: order.order_number,
+        lifecycle_state: OrderLifecycleState.REFUNDED,
+        payment_state: PaymentState.REFUNDED
+      });
+      orderCacheService.invalidate(orderId);
+      return { payment: refundPayment, order: this._hydrateOrder(orderId) };
+    });
+
+    return result;
   }
 
   // ──────────────────────────────────────────────────────────────────────────

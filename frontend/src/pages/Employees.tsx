@@ -79,6 +79,7 @@ export default function Employees() {
 
       // Ctrl + N: Add employee
       if (e.ctrlKey && e.key === "n") {
+        if (isInput) return
         e.preventDefault()
         handleOpenAdd()
       }

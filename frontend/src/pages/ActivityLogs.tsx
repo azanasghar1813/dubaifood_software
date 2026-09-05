@@ -40,7 +40,8 @@ export default function ActivityLogs() {
   // Keyboard Shortcuts Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isInput = document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA" || document.activeElement?.tagName === "SELECT"
+      const t = e.target as HTMLElement
+      const isInput = t?.tagName === "INPUT" || t?.tagName === "TEXTAREA" || t?.tagName === "SELECT" || !!t?.isContentEditable
 
       // F2 Focus Search
       if (e.key === "F2") {
@@ -50,6 +51,7 @@ export default function ActivityLogs() {
 
       // Ctrl + E: Export
       if (e.ctrlKey && e.key === "e") {
+        if (isInput) return
         e.preventDefault()
         alert("Exporting audit log table as CSV.")
       }

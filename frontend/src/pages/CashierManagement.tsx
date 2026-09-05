@@ -173,7 +173,8 @@ export default function CashierManagement() {
   // --- KEYBOARD SHORTCUTS LISTENERS ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isInput = document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA"
+      const t = e.target as HTMLElement
+      const isInput = t?.tagName === "INPUT" || t?.tagName === "TEXTAREA" || t?.tagName === "SELECT" || !!t?.isContentEditable
       if (e.key === "Escape") {
         setShowCashDropModal(false)
         setShowPaidOutModal(false)

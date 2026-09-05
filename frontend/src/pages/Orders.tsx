@@ -150,7 +150,11 @@ export default function Orders() {
       const order = orders.find(o => o.id === id)
       if (order && order.paymentStatus !== 'Paid') {
         try {
-          await apiClient.post(`/payments/order/${id}`, { amount_received: order.total, payment_method: 'CASH' })
+          await apiClient.post(
+            `/payments/order/${id}`,
+            { amount_received: order.total, payment_method: 'CASH' },
+            { headers: { 'Idempotency-Key': crypto.randomUUID() } }
+          )
           updateOrder(id, { paymentStatus: 'Paid' })
         } catch (e) {
           toast.error('Bulk pay failed', 'One or more payments could not be recorded.')
@@ -227,9 +231,10 @@ export default function Orders() {
   // Shortcut Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isInputFocused = document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA"
-      if (e.key === "F2") { e.preventDefault(); searchInputRef.current?.focus() }
-      if (e.key === "Escape" && selectedOrder) { e.preventDefault(); setSelectedOrder(null) }
+      const t = e.target as HTMLElement
+      const typing = t?.tagName === "INPUT" || t?.tagName === "TEXTAREA" || t?.tagName === "SELECT" || !!t?.isContentEditable
+      if (e.key === "F2") { e.preventDefault(); searchInputRef.current?.focus(); return }
+      if (e.key === "Escape" && selectedOrder && !typing) { e.preventDefault(); setSelectedOrder(null) }
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
@@ -435,34 +440,44 @@ export default function Orders() {
     }
   }
 
-  const handleRefund = (order: Order) => {
+  const handleRefund = async (order: Order) => {
     const reason = prompt("Reason for refunding this order:")
     if (reason === null) return
-    updateOrder(order.id, { paymentStatus: "Refunded", status: "Cancelled" })
-    addTimelineEvent(order.id, { event: "Order Refunded", remarks: reason || "Full refund processed", cashier: user?.name || "Ahmed" })
-    addAuditLog(order.id, { actionType: "Refund Processed", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: "Refunded", reason: reason || "Full Refund via OCC" })
-    if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: "Refunded", status: "Cancelled" } : null)
+    try {
+      await apiClient.post(
+        `/payments/order/${order.id}/refund`,
+        { reason: reason || 'Full refund processed' },
+        { headers: { 'Idempotency-Key': crypto.randomUUID() } }
+      )
+      updateOrder(order.id, { paymentStatus: "Refunded", status: "Cancelled" })
+      addTimelineEvent(order.id, { event: "Order Refunded", remarks: reason || "Full refund processed", cashier: user?.name || "Ahmed" })
+      addAuditLog(order.id, { actionType: "Refund Processed", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: "Refunded", reason: reason || "Full Refund via OCC" })
+      await refetchHistory()
+      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: "Refunded", status: "Cancelled" } : null)
+    } catch (e: any) {
+      toast.error('Refund failed', e?.response?.data?.message || e?.message || 'Could not refund this order.')
+    }
   }
 
   const handleMarkPaid = async (order: Order) => {
     try {
       if (order.paymentStatus === 'Paid') {
-        await apiClient.put(`/orders/${order.id}/meta`, { receipt_paid_stamp: false })
-        updateOrder(order.id, { paymentStatus: 'Unpaid' })
-        addTimelineEvent(order.id, { event: "Marked Unpaid", remarks: "Marked unpaid from Order History", cashier: user?.name || "Ahmed" })
-        addAuditLog(order.id, { actionType: "Payment Status Changed", who: user?.name || "Ahmed", oldValue: "Paid", newValue: "Unpaid", reason: "Toggle from History" })
-        await refetchHistory()
-        if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: "Unpaid" } : null)
-      } else {
-        await apiClient.put(`/orders/${order.id}/meta`, { receipt_paid_stamp: true })
-        updateOrder(order.id, { paymentStatus: 'Paid' })
-        addTimelineEvent(order.id, { event: "Marked Paid", remarks: "Marked paid from Order History", cashier: user?.name || "Ahmed" })
-        addAuditLog(order.id, { actionType: "Payment Received", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: "Paid", reason: "Action from History" })
-        await refetchHistory()
-        if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: "Paid" } : null)
+        if (!confirm('This order is already paid. Refund it instead of marking unpaid?')) return
+        await handleRefund(order)
+        return
       }
-    } catch (e) {
-      console.error(e)
+      await apiClient.post(
+        `/payments/order/${order.id}`,
+        { amount_received: order.total, payment_method: 'CASH' },
+        { headers: { 'Idempotency-Key': crypto.randomUUID() } }
+      )
+      updateOrder(order.id, { paymentStatus: 'Paid' })
+      addTimelineEvent(order.id, { event: "Marked Paid", remarks: "Payment recorded from Order History", cashier: user?.name || "Ahmed" })
+      addAuditLog(order.id, { actionType: "Payment Received", who: user?.name || "Ahmed", oldValue: order.paymentStatus, newValue: "Paid", reason: "Action from History" })
+      await refetchHistory()
+      if (selectedOrder?.id === order.id) setSelectedOrder(prev => prev ? { ...prev, paymentStatus: "Paid" } : null)
+    } catch (e: any) {
+      toast.error('Payment failed', e?.response?.data?.message || e?.message || 'Could not record payment.')
     }
   }
 
@@ -495,9 +510,9 @@ export default function Orders() {
   const confirmDeleteWithPin = async () => {
     if (!deleteDialog) return
     const pin = deletePin.trim()
-    const pinOk = pin === '748810' || await authService.verifyManagerPin(pin)
+    const pinOk = await authService.verifyManagerPin(pin)
     if (!pinOk) {
-      alert('Unauthorized. Enter the owner PIN.')
+      alert('Unauthorized. Enter a manager PIN.')
       return
     }
     try {

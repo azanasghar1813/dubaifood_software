@@ -22,6 +22,7 @@ router.get('/recent',               paymentController.getRecentPayments);
 // ── Order-Scoped Payment Routes ─────────────────────────────────────────────
 // POST   /api/payments/order/:orderId        — Process a payment for an order
 router.post('/order/:orderId',      paymentController.processPayment);
+router.post('/order/:orderId/refund', paymentController.refundPayment);
 
 // GET    /api/payments/order/:orderId        — Get all payments for an order
 router.get('/order/:orderId',       paymentController.getOrderPayments);

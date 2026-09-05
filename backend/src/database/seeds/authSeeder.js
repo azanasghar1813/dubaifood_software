@@ -61,8 +61,9 @@ export const runAuthSeeder = (db) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
+    const adminPin = String(process.env.DEFAULT_ADMIN_PIN || '1234');
     const hashedPassword = bcrypt.hashSync('admin123', 10);
-    const hashedPin = bcrypt.hashSync('1234', 10);
+    const hashedPin = bcrypt.hashSync(adminPin, 10);
 
     const res = insertUser.run(
       crypto.randomUUID(),
@@ -74,7 +75,12 @@ export const runAuthSeeder = (db) => {
       hashedPin,
       1
     );
-    if (res.changes > 0) inserted++;
+    if (res.changes > 0) {
+      inserted++;
+      try {
+        db.prepare('UPDATE users SET force_pin_change = 1 WHERE username = ?').run('admin');
+      } catch { /* column may not exist on very old DBs */ }
+    }
   }
 
   return { name: 'Auth', inserted };

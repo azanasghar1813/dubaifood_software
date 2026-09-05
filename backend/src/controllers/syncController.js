@@ -2,6 +2,8 @@ import { dbEngine } from '../database/sqlite.js';
 import { syncWorker } from '../sync/syncWorker.js';
 import { configService } from '../services/configService.js';
 import { syncService } from '../services/syncService.js';
+import { getSyncCloudClient } from '../sync/syncCloudClient.js';
+import config from '../config/index.js';
 
 export const getSyncStatus = async (req, res) => {
   try {
@@ -25,6 +27,7 @@ export const getSyncStatus = async (req, res) => {
     }
 
     const syncConfig = configService.getSyncConfig();
+    const cloud = getSyncCloudClient(config).getState();
 
     res.status(200).json({
       pending,
@@ -35,7 +38,11 @@ export const getSyncStatus = async (req, res) => {
       currentPhase: syncWorker.currentPhase,
       logs: syncWorker.logs,
       nextRunDelay: syncWorker.currentDelayMs,
-      deviceId: syncConfig.device_id || 'UNKNOWN_DEVICE'
+      deviceId: syncConfig.device_id || 'UNKNOWN_DEVICE',
+      cloudHost: cloud.activeHost,
+      cloudUrlHost: (() => {
+        try { return new URL(cloud.activeUrl).host; } catch { return cloud.activeHost; }
+      })()
     });
   } catch (error) {
     console.error('[SyncController] Status fetch failed:', error);

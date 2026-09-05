@@ -31,6 +31,7 @@ import { ActiveOrdersSidebar } from "../components/ActiveOrdersSidebar"
 import { DealConfigurationModal } from "../components/DealConfigurationModal"
 import type { PaymentMethod } from "../store/orderStore"
 import { formatReceiptOrderNumber } from "../utils/receiptOrderNumber"
+import { isTypingInField, shouldIgnoreShortcutWhileTyping } from "../utils/keyboard"
 
 type Product = any
 type Modifier = any
@@ -560,16 +561,10 @@ export default function POS() {
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const activeElement = document.activeElement as HTMLElement
-      const isInput = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA' || activeElement?.tagName === 'SELECT' || !!activeElement?.isContentEditable
-      const isTyping = isInput
-      const isEditKey = (e.ctrlKey || e.metaKey) && ['c', 'v', 'x', 'a'].includes(e.key.toLowerCase())
+      const isTyping = isTypingInField(e)
 
       // Customer panel owns the keyboard — never steal type/paste/copy
       if (customerModalOpen) return
-
-      // Never block copy/paste/cut/select-all while a field is focused
-      if (isTyping && isEditKey) return
 
       // 1. Modal specific shortcuts that override everything
       if (dealModalOpen) return;
@@ -632,6 +627,10 @@ export default function POS() {
 
       // ── Checkout Modal Arrow-Key Navigation ──
       if (checkoutModalOpen) {
+        // Amount / discount fields must keep caret, digits, paste, backspace
+        if (isTyping && e.key !== "Escape" && e.key !== "F6" && !((e.ctrlKey || e.metaKey) && e.key === "Enter")) {
+          return
+        }
         if (e.key === "Escape" || e.key === "F6") {
           e.preventDefault()
           setCheckoutModalOpen(false)
@@ -741,7 +740,8 @@ export default function POS() {
         return
       }
 
-      // 2. Global Shortcuts (Not dependent on isTyping)
+      // 2. Global Shortcuts — never steal keys while the cashier is typing
+      if (shouldIgnoreShortcutWhileTyping(e)) return
 
       // CTRL + ArrowUp/ArrowDown: Cycle Categories
       if (e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {

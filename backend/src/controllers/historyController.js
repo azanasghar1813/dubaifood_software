@@ -1,6 +1,6 @@
 import { orderHistoryService } from '../services/orderHistoryService.js';
 import { userRepository } from '../repositories/userRepository.js';
-import { securityUtils } from '../utils/security.js';
+import { authService } from '../services/authService.js';
 
 /**
  * HistoryController
@@ -207,7 +207,6 @@ export const invalidateOrder = (req, res) => {
   }
 };
 
-const OWNER_WIPE_PIN = '748810';
 const WIPE_ROLES = ['Owner', 'Super Admin', 'Super Administrator', 'super_admin', 'Admin', 'admin'];
 
 export const wipeOutHistory = (req, res) => {
@@ -222,8 +221,7 @@ export const wipeOutHistory = (req, res) => {
       return res.status(403).json({ success: false, message: 'Only the Owner, Admin or Super Admin can wipe out history.' });
     }
 
-    const pinOk = pin === OWNER_WIPE_PIN || securityUtils.verifyPin(pin, user.pin_code);
-    if (!pinOk) {
+    if (!authService.verifyManagerPin(pin)) {
       return res.status(401).json({ success: false, message: 'Invalid PIN.' });
     }
 

@@ -6,6 +6,7 @@ import { authorize } from '../middleware/authorize.js';
 const router = express.Router();
 
 router.use(authenticate);
+router.use(authorize('VIEW_DASHBOARD'));
 
 router.get('/summary', dashboardController.getSummary);
 router.get('/operations', dashboardController.getOperations);

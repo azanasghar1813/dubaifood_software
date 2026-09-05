@@ -106,7 +106,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement
-      const typing = el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || !!el?.isContentEditable
+      const typing = el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || el?.tagName === 'SELECT' || !!el?.isContentEditable
 
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -114,9 +114,9 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
         return
       }
 
-      // Phone / address / name / notes must always accept typing, paste, copy, cut
-      if (typing && el !== searchInputRef.current) {
-        if (e.ctrlKey && e.key.toLowerCase() === 'n') {
+      // Name / phone / address / notes / search must accept typing, paste, copy, cut
+      if (typing) {
+        if (e.ctrlKey && e.key.toLowerCase() === 'n' && el !== notesRef.current) {
           e.preventDefault()
           notesRef.current?.focus()
         }

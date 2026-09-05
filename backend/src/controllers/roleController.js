@@ -1,5 +1,6 @@
 import { roleService } from '../services/roleService.js';
 import { z } from 'zod';
+import { zodFirstMessage } from '../utils/zodErrors.js';
 
 const roleSchema = z.object({
   name: z.string().min(2, 'Name is required'),
@@ -32,7 +33,7 @@ export const roleController = {
       const roleId = roleService.createRole(req.user.userId, parsed.name, parsed.description, parsed.permissionIds);
       res.status(201).json({ message: 'Role created', data: { id: roleId } });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors[0].message });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodFirstMessage(error) });
       res.status(400).json({ error: error.message });
     }
   },
@@ -43,7 +44,7 @@ export const roleController = {
       roleService.updateRole(req.user.userId, req.params.id, parsed.name, parsed.description, parsed.permissionIds);
       res.status(200).json({ message: 'Role updated successfully' });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors[0].message });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodFirstMessage(error) });
       res.status(400).json({ error: error.message });
     }
   },

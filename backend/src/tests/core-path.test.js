@@ -53,7 +53,8 @@ test('archiver ZipArchive named export can write a zip', async () => {
 });
 
 test('login succeeds with the default admin PIN', () => {
-  const result = authService.login('admin', '1234', 'TEST');
+  const pin = process.env.DEFAULT_ADMIN_PIN || '1234';
+  const result = authService.login('admin', pin, 'TEST');
   assert.ok(result.token);
   assert.equal(result.user.username, 'admin');
   assert.ok(result.cashierSessionId);
@@ -76,20 +77,21 @@ test('checkout then cash payment is idempotent', async () => {
   });
 
   const checkoutKey = crypto.randomUUID();
-  const order = await orderCreationService.checkoutCart(sessionId, userId, {}, checkoutKey);
+  const order = await orderCreationService.checkoutCart(sessionId, userId, { order_type: 'TAKEAWAY' }, checkoutKey);
   assert.ok(order.id);
   assert.ok(order.order_number);
 
+  const due = Number(order.due_total || order.grand_total || 100);
   const payKey = crypto.randomUUID();
   const first = paymentService.processPayment(order.id, sessionId, userId, {
     payment_method: 'CASH',
-    amount_received: 100
+    amount_received: due
   }, payKey);
   assert.ok(first.payment);
 
   const second = paymentService.processPayment(order.id, sessionId, userId, {
     payment_method: 'CASH',
-    amount_received: 100
+    amount_received: due
   }, payKey);
   assert.equal(second.payment.id, first.payment.id);
 });

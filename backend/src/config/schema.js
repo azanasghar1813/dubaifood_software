@@ -24,7 +24,15 @@ export const envSchema = z.object({
   // Logging
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly']).default('info'),
 
-  // Sync API
+  // Sync API — DEVICE_SECRET must come from env or Electron secrets.json, never a source default
   SYNC_API_URL: z.string().url().default('https://dubaifood-sync-api.vercel.app/api/v1'),
-  DEVICE_SECRET: z.string().min(16).default('Azan@181314Sync2026'),
+  SYNC_API_FALLBACK_URL: z.preprocess(
+    (value) => {
+      if (value == null) return undefined;
+      const trimmed = String(value).trim();
+      return trimmed === '' ? undefined : trimmed;
+    },
+    z.string().url().optional()
+  ),
+  DEVICE_SECRET: z.string().min(16),
 });

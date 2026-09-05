@@ -1,6 +1,7 @@
 import { customerService } from '../services/customerService.js';
 import { activityLogService } from '../services/activityLogService.js';
 import { z } from 'zod';
+import { zodIssueList } from '../utils/zodErrors.js';
 
 const customerSchema = z.object({
   first_name: z.string().min(1, 'First name is required'),
@@ -45,7 +46,7 @@ export const customerController = {
       res.status(201).json(customer);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: error.errors });
+        return res.status(400).json({ error: zodIssueList(error) });
       }
       res.status(400).json({ error: error.message });
     }
@@ -61,7 +62,7 @@ export const customerController = {
       res.json(customer);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: error.errors });
+        return res.status(400).json({ error: zodIssueList(error) });
       }
       if (error.message === 'Customer not found') {
         return res.status(404).json({ error: error.message });

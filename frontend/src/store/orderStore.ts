@@ -243,7 +243,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     isVip: detail?.metadata?.is_vip === 'true' || detail?.metadata?.is_vip === true || detail?.metadata?.is_vip === 1 || String(detail?.metadata?.is_vip) === '1' || row.is_vip === 1 || row.is_vip === true || !!(detail as any)?.customer?.is_vip || false,
     tableNumber: row.table_id || detail?.metadata?.table_number || null,
     guestCount: Number(detail?.metadata?.guest_count ?? 1) || 1,
-    orderType: (row.order_type === 'TAKEAWAY' ? 'Takeaway' : row.order_type === 'DELIVERY' ? 'Delivery' : row.order_type === 'DRIVE_THROUGH' ? 'Drive Through' : 'Dine In'),
+    orderType: (row.order_type === 'TAKEAWAY' ? 'Takeaway' : row.order_type === 'DELIVERY' ? 'Delivery' : (row.order_type === 'DRIVE_THROUGH' || row.order_type === 'DRIVE_THRU') ? 'Drive Through' : 'Dine In'),
     items,
     subtotal: Number(row.subtotal || 0),
     tax: Number(row.tax_total || 0),

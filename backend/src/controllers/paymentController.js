@@ -53,6 +53,31 @@ export const paymentController = {
     }
   },
 
+  refundPayment: (req, res) => {
+    const sessionId     = req.headers['x-cashier-session-id'];
+    const cashierUserId = req.user?.userId;
+    const idempotencyKey = req.headers['idempotency-key'];
+    const { orderId }   = req.params;
+
+    if (!sessionId)     return sendError(res, 400, 'x-cashier-session-id header is required.');
+    if (!cashierUserId) return sendError(res, 400, 'x-user-id header is required.');
+    if (!orderId)       return sendError(res, 400, 'orderId path parameter is required.');
+    if (!idempotencyKey) return sendError(res, 400, 'Idempotency-Key header is required.');
+
+    try {
+      const result = paymentService.refundOrder(
+        orderId,
+        sessionId,
+        cashierUserId,
+        req.body || {},
+        idempotencyKey
+      );
+      sendSuccess(res, result, 'Order refunded.');
+    } catch (error) {
+      sendError(res, 400, error.message);
+    }
+  },
+
   /**
    * GET /api/payments/order/:orderId
    * Returns all payment records for an order.

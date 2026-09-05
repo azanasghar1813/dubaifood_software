@@ -121,7 +121,7 @@ export const authService = {
 
   verifyManagerPin: (pin) => {
     const trimmed = String(pin || '').trim();
-    if (trimmed === '748810') return true;
+    if (trimmed.length < 4) return false;
 
     const managers = dbEngine.prepare(`
       SELECT u.pin_code, r.name as role_name

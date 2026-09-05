@@ -49,9 +49,10 @@ const config = {
   // 4. Dynamically generate and expose absolute paths
   paths: generatePaths(env.STORAGE_ROOT),
   
-  // 5. Sync API configuration
+  // 5. Sync API configuration (Vercel primary, optional Render fallback — same Supabase)
   sync: {
     apiUrl: env.SYNC_API_URL,
+    fallbackApiUrl: env.SYNC_API_FALLBACK_URL || '',
     deviceSecret: env.DEVICE_SECRET
   }
 };

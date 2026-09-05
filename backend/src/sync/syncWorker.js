@@ -11,6 +11,9 @@ import { menuCacheService } from '../services/menuCacheService.js';
 import { preferLocalProductImage } from '../utils/localProductImage.js';
 import { orderNumberService } from '../services/orderNumberService.js';
 import { dateUtils } from '../utils/dateUtils.js';
+import { getSyncCloudClient, FALLBACK_IDLE_DELAY_MS, hostLabel } from './syncCloudClient.js';
+
+const syncCloud = getSyncCloudClient(config);
 
 const LOCAL_SETTING_KEYS = new Set([
   'order_prefix',
@@ -253,6 +256,7 @@ const PENDING_TYPE_MAP = {
   products: ['PRODUCT'],
   categories: ['CATEGORY', 'CATEGORIE'],
   deals: ['DEAL'],
+  deal_components: ['DEAL_COMPONENT'],
   customers: ['CUSTOMER'],
   users: ['USER', 'EMPLOYEE'],
   orders: ['ORDER'],
@@ -260,7 +264,10 @@ const PENDING_TYPE_MAP = {
   order_payments: ['ORDER_PAYMENT', 'PAYMENT'],
   dining_tables: ['DINING_TABLE'],
   application_settings: ['SETTING'],
-  product_variants: ['VARIANT']
+  product_variants: ['VARIANT'],
+  product_images: ['PRODUCT_IMAGE'],
+  modifiers: ['MODIFIER'],
+  modifier_groups: ['MODIFIER_GROUP']
 };
 
 class SyncWorker {
@@ -276,6 +283,7 @@ class SyncWorker {
     
     this.currentPhase = 'IDLE';
     this.logs = [];
+    this._imageUploadCache = new Map();
   }
 
   _resolveLocalImage(relPath) {
@@ -303,32 +311,26 @@ class SyncWorker {
     const abs = this._resolveLocalImage(relPath);
     if (!abs) return relPath;
     try {
+      const st = fs.statSync(abs);
+      const cached = this._imageUploadCache.get(abs);
+      if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size && cached.url) {
+        return cached.url;
+      }
       const buf = fs.readFileSync(abs);
       const form = new FormData();
       form.append('image', new Blob([buf], { type: this._guessMime(abs) }), path.basename(abs));
       form.append('folder', 'pos_images');
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 30000);
-      let response;
-      try {
-        response = await fetch(`${config.sync.apiUrl}/sync/upload-image`, {
-          method: 'POST',
-          headers: {
-            'x-device-secret': config.sync.deviceSecret,
-            'x-terminal-id': terminalId
-          },
-          body: form,
-          signal: controller.signal
-        });
-      } finally {
-        clearTimeout(timer);
-      }
-      if (!response.ok) {
-        this.logActivity(`Image upload failed (${response.status}) for ${path.basename(abs)}`, 'error');
-        return relPath;
-      }
-      const data = await response.json();
-      return data.url || relPath;
+      const result = await syncCloud.request('/sync/upload-image', {
+        method: 'POST',
+        headers: {
+          'x-device-secret': config.sync.deviceSecret,
+          'x-terminal-id': terminalId
+        },
+        body: form
+      });
+      const url = result.json?.url || relPath;
+      this._imageUploadCache.set(abs, { mtimeMs: st.mtimeMs, size: st.size, url });
+      return url;
     } catch (err) {
       this.logActivity(`Image upload error for ${path.basename(abs)}: ${err.message}`, 'error');
       return relPath;
@@ -527,25 +529,21 @@ class SyncWorker {
     const pending = this._pendingCount();
     if (pending >= 50) this.currentDelayMs = 0;
     else if (pending > 0) this.currentDelayMs = this.drainDelayMs;
+    else if (syncCloud.getState().activeHost === 'fallback') this.currentDelayMs = FALLBACK_IDLE_DELAY_MS;
     else this.currentDelayMs = this.idleDelayMs;
   }
 
   async _cloudHeartbeat(sinceMs, terminalId) {
     if (process.env.NODE_ENV === 'test' || !config.sync?.apiUrl) return null;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
     try {
       const qs = new URLSearchParams({ last_sync_timestamp: String(sinceMs || 0) });
-      const response = await fetch(`${config.sync.apiUrl}/sync/heartbeat?${qs}`, {
+      const result = await syncCloud.request(`/sync/heartbeat?${qs}`, {
         headers: {
           'x-device-secret': config.sync.deviceSecret,
           'x-terminal-id': terminalId
-        },
-        signal: controller.signal
+        }
       });
-      if (!response.ok) return null;
-      const body = await response.json();
-      const data = body?.data || body;
+      const data = result.json?.data || result.json;
       if (typeof data?.changed !== 'boolean') return null;
       return {
         changed: data.changed === true,
@@ -553,8 +551,6 @@ class SyncWorker {
       };
     } catch {
       return null;
-    } finally {
-      clearTimeout(timer);
     }
   }
 
@@ -596,7 +592,9 @@ class SyncWorker {
         if (collapsed > 0) this.logActivity(`Collapsed ${collapsed} duplicate pending rows.`);
       } catch { /* optional */ }
 
-      const pendingEvents = syncService.getPendingEvents(50).filter((event) => {
+      await syncCloud.maybeFailBack();
+
+      const pendingEvents = syncService.getPendingEvents(100).filter((event) => {
         if (event.entity_type === 'USER' && event.entity_id === SYSTEM_USER_ID) {
           syncService.markEventSynced(event.id);
           return false;
@@ -610,7 +608,7 @@ class SyncWorker {
 
       if (pendingEvents.length > 0) {
         this.currentPhase = 'PUSHING';
-        this.logActivity(`Pushing ${pendingEvents.length} pending events to cloud...`);
+        this.logActivity(`Pushing ${pendingEvents.length} pending events via ${hostLabel(syncCloud.getState().activeUrl)}...`);
         
         // Dynamically fetch payloads for triggers that did not include them
         for (const event of pendingEvents) {
@@ -700,31 +698,21 @@ class SyncWorker {
           this._stripCloudUnknownFields(event);
         }
 
-        // Push to cloud
-        const pushController = new AbortController();
-        const pushTimeout = setTimeout(() => pushController.abort(), 30000); // 30s timeout
-        
-        let response;
-        try {
-          response = await fetch(`${config.sync.apiUrl}/sync/push`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-device-secret': config.sync.deviceSecret,
-              'x-terminal-id': terminalId
-            },
-            body: JSON.stringify({ events: pendingEvents, terminal_id: terminalId }),
-            signal: pushController.signal
-          });
-        } finally {
-          clearTimeout(pushTimeout);
+        const pushResult = await syncCloud.request('/sync/push', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-device-secret': config.sync.deviceSecret,
+            'x-terminal-id': terminalId
+          },
+          body: JSON.stringify({ events: pendingEvents, terminal_id: terminalId })
+        });
+        const data = pushResult.json || {};
+        if (!Array.isArray(data.successful)) {
+          throw new Error(`Cloud API push returned unexpected body from ${hostLabel(pushResult.hostUrl)}`);
         }
-
-        if (!response.ok) {
-          throw new Error(`Cloud API responded with status: ${response.status}`);
-        }
-
-        const data = await response.json();
+        data.failed = Array.isArray(data.failed) ? data.failed : [];
+        data.conflicts = Array.isArray(data.conflicts) ? data.conflicts : [];
 
         // Mark successful
         for (const eventId of data.successful) {
@@ -745,11 +733,9 @@ class SyncWorker {
           ...((data.failed || []).map((f) => f.eventId)),
           ...((data.conflicts || []).map((c) => c.eventId))
         ]);
-        for (const event of pendingEvents) {
-          if (accounted.has(event.id)) continue;
-          if (event.action === 'DELETE' || event.action === 'ARCHIVED') {
-            syncService.markEventSynced(event.id);
-          }
+        const unaccounted = pendingEvents.filter((event) => !accounted.has(event.id));
+        if (unaccounted.length > 0) {
+          this.logActivity(`Cloud did not acknowledge ${unaccounted.length} event(s); leaving them pending.`, 'warn');
         }
 
         for (const conflict of data.conflicts || []) {
@@ -782,24 +768,20 @@ class SyncWorker {
       this.currentPhase = 'PULLING';
       this.logActivity(`Pulling new data from cloud... (Since: ${lastSyncTimestamp})`);
 
-      const pullPage = async (offset) => {
-        const pullController = new AbortController();
-        const pullTimeout = setTimeout(() => pullController.abort(), 30000);
-        try {
-          const pullResponse = await fetch(`${config.sync.apiUrl}/sync/pull?last_sync_timestamp=${lastSyncTimestamp}&limit=${limit}&offset=${offset}`, {
-            headers: {
-              'x-device-secret': config.sync.deviceSecret,
-              'x-terminal-id': terminalId
-            },
-            signal: pullController.signal
-          });
-          if (!pullResponse.ok) {
-            throw new Error(`Cloud API Pull responded with status: ${pullResponse.status}`);
+      const pullPage = async (offset, table) => {
+        const qs = new URLSearchParams({
+          last_sync_timestamp: String(lastSyncTimestamp || 0),
+          limit: String(limit),
+          offset: String(offset)
+        });
+        if (table) qs.set('table', table);
+        const pullResult = await syncCloud.request(`/sync/pull?${qs}`, {
+          headers: {
+            'x-device-secret': config.sync.deviceSecret,
+            'x-terminal-id': terminalId
           }
-          return await pullResponse.json();
-        } finally {
-          clearTimeout(pullTimeout);
-        }
+        });
+        return pullResult.json || {};
       };
 
       const bumpTimestamp = (rows) => {
@@ -835,28 +817,28 @@ class SyncWorker {
         customers: [],
         users: [],
         deals: [],
+        deal_components: [],
         order_payments: [],
         dining_tables: [],
         application_settings: [],
-        product_variants: []
+        product_variants: [],
+        product_images: [],
+        modifiers: [],
+        modifier_groups: []
       };
 
-      let offset = 0;
-      let hasMore = true;
-      while (hasMore) {
-        const pullData = await pullPage(offset);
-        const page = pullData.data || {};
-        let pageCount = 0;
-        for (const key of Object.keys(gathered)) {
-          const rows = Array.isArray(page[key]) ? page[key] : [];
-          gathered[key].push(...rows);
-          pageCount += rows.length;
+      for (const tableName of Object.keys(gathered)) {
+        let offset = 0;
+        while (true) {
+          const pullData = await pullPage(offset, tableName);
+          const rows = Array.isArray(pullData.data?.[tableName]) ? pullData.data[tableName] : [];
+          gathered[tableName].push(...rows);
           bumpTimestamp(rows);
+          totalPulled += rows.length;
+          if (rows.length < limit) break;
+          offset += limit;
+          if (offset > 50000) break;
         }
-        totalPulled += pageCount;
-        hasMore = Object.values(page).some((arr) => Array.isArray(arr) && arr.length === limit);
-        offset += limit;
-        if (offset > 20000) break;
       }
 
       if (totalPulled > 0) {
@@ -963,9 +945,13 @@ class SyncWorker {
           upsertData('categories', gathered.categories);
           upsertData('products', gathered.products);
           upsertData('product_variants', gathered.product_variants);
+          upsertData('product_images', gathered.product_images);
+          upsertData('modifiers', gathered.modifiers);
+          upsertData('modifier_groups', gathered.modifier_groups);
           upsertData('users', gathered.users);
           upsertData('customers', gathered.customers);
           upsertData('deals', gathered.deals);
+          upsertData('deal_components', gathered.deal_components);
           upsertData('dining_tables', gathered.dining_tables);
           upsertFloorTablesFromDining(gathered.dining_tables);
           upsertData('application_settings', gathered.application_settings);
@@ -1014,7 +1000,7 @@ class SyncWorker {
     } catch (error) {
       this.currentPhase = 'ERROR';
       const cause = error.cause?.code || error.cause?.message || error.cause || '';
-      const url = config.sync?.apiUrl || 'unknown';
+      const url = hostLabel(syncCloud.getState().activeUrl || config.sync?.apiUrl);
       this.logActivity(`Sync failed (Offline or API Error): ${error.message}${cause ? ' [' + cause + ']' : ''} → ${url}`, 'error');
       // Exponential backoff
       this.currentDelayMs = Math.min(this.currentDelayMs * 2, this.maxDelayMs);

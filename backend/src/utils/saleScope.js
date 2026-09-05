@@ -39,7 +39,9 @@ export const PLACED_PREDICATE = `(
 export const CATEGORY_BUCKET_SQL = `
   CASE
     WHEN d.id IS NOT NULL THEN 'Deals'
-    WHEN LOWER(TRIM(COALESCE(c1.name, ''))) = 'soda bar' THEN 'Soda Bar'
+    WHEN LOWER(TRIM(COALESCE(c1.name, ''))) IN ('soda bar', 'special drinks')
+      OR LOWER(TRIM(COALESCE(c1.name, ''))) LIKE '%soda bar%'
+      OR LOWER(TRIM(COALESCE(c1.name, ''))) LIKE '%special drink%' THEN 'Soda Bar'
     WHEN LOWER(TRIM(COALESCE(oi.product_name_snapshot, ''))) IN ('potato chips', 'shani fries') THEN 'Fries'
     WHEN LOWER(TRIM(COALESCE(c1.name, ''))) IN ('drinks', 'cold drinks')
       OR LOWER(TRIM(COALESCE(c1.name, ''))) LIKE '%cold drink%' THEN 'Drinks'

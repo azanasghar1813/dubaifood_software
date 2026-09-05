@@ -1,7 +1,7 @@
 import { dbEngine } from '../database/sqlite.js';
 import { dateUtils } from '../utils/dateUtils.js';
 import { kitchenService } from './kitchenService.js';
-import { SALE_PREDICATE, OPEN_BILL_PREDICATE, PLACED_PREDICATE, REFUND_PREDICATE } from '../utils/saleScope.js';
+import { SALE_PREDICATE, OPEN_BILL_PREDICATE, REFUND_PREDICATE } from '../utils/saleScope.js';
 
 export const dashboardService = {
   getBusinessDayBounds: () => {
@@ -17,7 +17,7 @@ export const dashboardService = {
         COALESCE(SUM(grand_total), 0) as todaySales,
         COUNT(id) as ordersCount
       FROM orders o
-      WHERE o.business_date = ? AND ${PLACED_PREDICATE}
+      WHERE o.business_date = ? AND ${SALE_PREDICATE}
     `, businessDate);
 
     const todaySales = sale?.todaySales || 0;

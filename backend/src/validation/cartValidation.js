@@ -66,7 +66,7 @@ export const setCartMetaSchema = z.object({
 }).passthrough();
 
 export const checkoutCartSchema = z.object({
-  order_type: z.enum(['DINE_IN', 'TAKEAWAY', 'DELIVERY', 'DRIVE_THRU', 'ONLINE']).optional(),
+  order_type: z.enum(['DINE_IN', 'TAKEAWAY', 'DELIVERY', 'DRIVE_THRU', 'DRIVE_THROUGH', 'ONLINE']).optional(),
   customer_id: z.string().uuid().optional().nullable(),
   table_id: z.string().optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),

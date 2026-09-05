@@ -117,6 +117,10 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement
+      const typing = t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.tagName === 'SELECT' || !!t?.isContentEditable
+      if (typing && e.key !== 'Escape') return
+
       const orders = activeOrdersRef.current
       const curIdx = selectedIndexRef.current
       const curAction = selectedActionIndexRef.current

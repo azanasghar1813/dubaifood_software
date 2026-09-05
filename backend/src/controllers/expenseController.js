@@ -1,6 +1,7 @@
 import { expenseService } from '../services/expenseService.js';
 import { activityLogService } from '../services/activityLogService.js';
 import { z } from 'zod';
+import { zodIssueList } from '../utils/zodErrors.js';
 
 const expenseSchema = z.object({
   category: z.string().min(1),
@@ -41,7 +42,7 @@ export const expenseController = {
       
       res.status(201).json(expense);
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodIssueList(error) });
       res.status(400).json({ error: error.message });
     }
   },
@@ -55,7 +56,7 @@ export const expenseController = {
       
       res.json(expense);
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodIssueList(error) });
       if (error.message === 'Expense not found') return res.status(404).json({ error: error.message });
       res.status(400).json({ error: error.message });
     }

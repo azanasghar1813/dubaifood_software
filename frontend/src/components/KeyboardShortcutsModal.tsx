@@ -15,53 +15,57 @@ const SHORTCUT_GROUPS: ShortcutCategory[] = [
   {
     category: "Global Application",
     shortcuts: [
-      { key: "Ctrl + \\", desc: "Show Keyboard Shortcuts Help", detail: "Opens this detailed menu from anywhere in the app." },
-      { key: "Ctrl + Shift + R", desc: "Refresh Software", detail: "Fully reloads the software and clears cache." },
-      { key: "F12", desc: "Toggle Kitchen Display System (KDS)", detail: "Quickly switch to the kitchen view to manage orders." },
-      { key: "Ctrl + P", desc: "Print Last Receipt", detail: "Instantly sends the most recent order to the receipt printer." },
-      { key: "Ctrl + Shift + P", desc: "Printer Settings", detail: "Open the global printer management and status panel." },
-      { key: "Esc", desc: "Close Modals / Clear Focus", detail: "Closes any open popup, modal, or resets the current input focus." },
+      { key: "Ctrl + \\", desc: "Show Keyboard Shortcuts Help", detail: "Opens this menu from anywhere. Never blocks typing in a field." },
+      { key: "F12", desc: "Toggle Kitchen Display (KDS)", detail: "Open or close the kitchen display overlay." },
+      { key: "Ctrl + Shift + P", desc: "Printer Settings", detail: "Open printer management." },
+      { key: "Esc", desc: "Close Modals", detail: "Closes the top popup. Does not wipe text you are typing." },
     ]
   },
   {
-    category: "Point of Sale (POS) - Navigation",
+    category: "POS — Menu",
     shortcuts: [
-      { key: "Ctrl + ↑/↓", desc: "Cycle Categories", detail: "Move instantly between categories like Fast Food or Deals without the mouse." },
-      { key: "Arrow Keys (↑↓←→)", desc: "Navigate Menus & Cart", detail: "Move between product categories, items, and the cart seamlessly." },
-      { key: "Enter", desc: "Select Item / Open Checkout", detail: "Adds highlighted item to cart, or opens payment window if cart is focused." },
-      { key: "Ctrl + Enter", desc: "Fast Cash Payment", detail: "Instantly checks out the order using Exact Cash." },
-      { key: "Tab", desc: "Switch Focus Area", detail: "Cycle focus between Categories, Menu Items, and the Cart." },
-      { key: "Ctrl + S", desc: "Toggle Service Charges", detail: "Toggle whether service charges apply to the current order." },
-      { key: "Ctrl + O", desc: "View Held Orders", detail: "Opens the list of Draft/Held orders to resume." },
+      { key: "F1 / F2 / F3", desc: "Fast Food / Restaurant / Deals", detail: "Switch the menu section." },
+      { key: "F5", desc: "Focus Product Search", detail: "Jump to the search box." },
+      { key: "Ctrl + ↑/↓", desc: "Cycle Categories", detail: "Move between categories in the current section." },
+      { key: "Ctrl + Shift + Tab", desc: "Cycle Menu Section", detail: "Fast Food → Restaurant → Deals." },
+      { key: "Arrow Keys", desc: "Move on the Product Grid", detail: "Only when you are not typing in a box." },
+      { key: "Enter", desc: "Add Highlighted Item", detail: "Adds the selected product (or opens size/deal picker)." },
+      { key: "Tab", desc: "Toggle Cart Mode", detail: "Switch keyboard control between menu and cart." },
     ]
   },
   {
-    category: "Point of Sale (POS) - Cart & Items",
+    category: "POS — Order & Pay",
     shortcuts: [
-      { key: "Delete / Backspace", desc: "Remove Item", detail: "Removes the currently highlighted item from the cart." },
-      { key: "+ / -", desc: "Adjust Quantity", detail: "Increases or decreases the quantity of the selected cart item." },
-      { key: "Ctrl + D", desc: "Apply Discount", detail: "Opens the discount modal for the current order." },
-      { key: "Ctrl + N", desc: "Add Order Note", detail: "Attach a special instruction or note to the entire order." },
-      { key: "Ctrl + K", desc: "Toggle Kitchen Print", detail: "Toggle whether the order should be sent to the kitchen." },
-      { key: "Ctrl + C", desc: "Select Customer", detail: "Opens the customer database to attach a customer to the order." },
-      { key: "Ctrl + W", desc: "Select Waiter / Rider", detail: "Opens the waiter or rider selection panel depending on the order type." },
+      { key: "F6 or Ctrl + Enter", desc: "Proceed to Pay", detail: "Opens checkout. Ctrl+Enter in checkout confirms." },
+      { key: "F7 / F8 / F9", desc: "Dine In / Takeaway / Delivery", detail: "Set order type." },
+      { key: "Ctrl + Tab", desc: "Cycle Order Type", detail: "Dine In → Takeaway → Delivery." },
+      { key: "Ctrl + K", desc: "Send Kitchen Ticket (KOT)", detail: "Print kitchen ticket for the current cart." },
+      { key: "Ctrl + P", desc: "Paid Stamp On Receipt", detail: "Toggle Paid/Unpaid on the next receipt print." },
+      { key: "Ctrl + S", desc: "Toggle Service Charge", detail: "Dine-in service charge on/off." },
+      { key: "Ctrl + D", desc: "Jump to Delivery", detail: "Sets Delivery and focuses delivery charges." },
+      { key: "Ctrl + N", desc: "Order Notes", detail: "Focus the order notes box." },
+      { key: "Ctrl + C", desc: "Customer", detail: "Open customer panel (not used while you are typing)." },
+      { key: "Ctrl + W", desc: "Waiter / Rider", detail: "Waiter for dine-in, rider for delivery." },
+      { key: "Ctrl + E or F4", desc: "Recent / Active Orders", detail: "Open the active orders sidebar." },
+      { key: "Ctrl + V", desc: "VIP Order", detail: "Toggle VIP — disabled while typing so paste still works." },
     ]
   },
   {
-    category: "Cashier & Shift Management",
+    category: "POS — Cart",
     shortcuts: [
-      { key: "F2", desc: "Search Transactions", detail: "Focuses the search bar to find past orders or shift logs." },
-      { key: "F4", desc: "Cash Drop", detail: "Opens the cash drop modal to transfer cash to the safe." },
-      { key: "F5", desc: "Refresh Data", detail: "Forces a refresh of shift data and transaction logs." },
-      { key: "F6", desc: "Print Shift Report", detail: "Prints the current mid-shift (Z/X) report." },
-      { key: "F8", desc: "Close Shift", detail: "Initiates the End of Shift / Drawer Close sequence." },
+      { key: "Backspace / −", desc: "Reduce Top Item", detail: "In menu mode, lowers qty of the last item. Not used while typing." },
+      { key: "Delete", desc: "Clear Cart", detail: "Only when you are not in a text field." },
+      { key: "← / → in Cart Mode", desc: "Change Quantity", detail: "Tab into cart first, then arrows change qty." },
     ]
   },
   {
-    category: "Customer Directory",
+    category: "Cashier & History",
     shortcuts: [
-      { key: "Ctrl + V", desc: "Toggle VIP Status", detail: "Marks the selected customer as a VIP." },
-      { key: "Ctrl + N", desc: "Add Customer Note", detail: "Opens the customer note editor." },
+      { key: "F2", desc: "Focus Search", detail: "History and Cashier pages — jump to the search box." },
+      { key: "F4", desc: "Cash Drop", detail: "Cashier page only." },
+      { key: "F5", desc: "Refresh", detail: "Cashier page refresh." },
+      { key: "F6", desc: "Print Shift Report", detail: "Cashier page only." },
+      { key: "F8", desc: "Close Shift", detail: "Cashier page only." },
     ]
   }
 ];
@@ -91,7 +95,7 @@ export function KeyboardShortcutsModal({ isOpen, onClose }: Props) {
                 </div>
                 <div>
                   <h2 className="text-xl font-black text-foreground">Global Keyboard Shortcuts</h2>
-                  <p className="text-xs text-muted-foreground font-bold">Universal Keyboard Mode Active</p>
+                  <p className="text-xs text-muted-foreground font-bold">Typing in a box is never blocked — copy, paste, and backspace always work</p>
                 </div>
               </div>
               <button onClick={onClose} className="p-2 hover:bg-secondary rounded-xl transition-colors">

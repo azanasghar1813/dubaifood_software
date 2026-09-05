@@ -6,6 +6,7 @@ import { authorize } from '../middleware/authorize.js';
 const router = express.Router();
 
 router.use(authenticate);
+router.use(authorize('VIEW_REPORTS'));
 
 router.get('/summary', reportController.getSummary);
 router.get('/detailed-sales', reportController.getDetailedSales);

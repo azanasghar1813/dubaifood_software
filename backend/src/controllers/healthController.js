@@ -41,8 +41,8 @@ export const claimDeviceId = (req, res) => {
     const alreadyAssigned = isAssignedTillPrefix(current);
     const pin = String(req.body?.pin || '').trim();
     if (alreadyAssigned) {
-      if (pin !== '748810' && !authService.verifyManagerPin(pin)) {
-        return res.status(403).json({ success: false, message: 'Unauthorized. Enter the owner PIN.' });
+      if (!authService.verifyManagerPin(pin)) {
+        return res.status(403).json({ success: false, message: 'Unauthorized. Enter a manager PIN.' });
       }
     }
     const prefix = configService.claimOrderPrefix(req.body?.order_prefix || req.body?.device_id);

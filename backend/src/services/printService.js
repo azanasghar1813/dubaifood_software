@@ -108,9 +108,12 @@ class PrintService {
       }
     );
 
-    await printEngineService.processPendingJobs();
+    setImmediate(() => {
+      printEngineService.processPendingJobs().catch(() => {});
+    });
 
-    return { job_id: jobId, status: 'PRINTED' };
+    const queued = printQueueService.findById(jobId);
+    return { job_id: jobId, status: queued?.status || 'PENDING' };
   }
 
   /**
@@ -187,6 +190,13 @@ class PrintService {
     for (const ticket of tickets) {
       const stationType = ticket.station?.station_type || 'GENERAL';
       const printer = this._resolveKitchenPrinter(stationType);
+      if (!options.force) {
+        const existing = printQueueService.findActiveKitchenJobs(orderId, printer?.id || null);
+        if (existing.length > 0) {
+          jobIds.push(existing[0].id);
+          continue;
+        }
+      }
 
       const jobId = printQueueService.enqueue(
         PrintJobType.KITCHEN_TICKET,
@@ -204,9 +214,11 @@ class PrintService {
       jobIds.push(jobId);
     }
 
-    await printEngineService.processPendingJobs();
+    setImmediate(() => {
+      printEngineService.processPendingJobs().catch(() => {});
+    });
 
-    return { job_ids: jobIds, count: jobIds.length, status: 'PRINTED' };
+    return { job_ids: jobIds, count: jobIds.length, status: 'ENQUEUED' };
   }
 
   /**

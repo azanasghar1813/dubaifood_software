@@ -30,6 +30,9 @@ jobs:
       - name: Install Backend Dependencies
         run: npm install --prefix backend
 
+      - name: Run backend tests
+        run: npm test --prefix backend
+
       - name: Build the EXE
         run: npm run build:exe
         env:

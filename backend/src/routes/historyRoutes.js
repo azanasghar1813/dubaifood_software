@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
+import { authorize } from '../middleware/authorize.js';
 import {
   getOrderList,
   getOrderDetail,
@@ -39,6 +40,6 @@ router.get('/orders/:orderId/sync-status',      getSyncStatus);
 router.post('/orders/:orderId/invalidate-cache', invalidateOrder);
 
 // ─── Data Management ──────────────────────────────────────────────────────────
-router.post('/wipe-out', wipeOutHistory);
+router.post('/wipe-out', authorize(['MANAGE_SETTINGS', 'VIEW_ORDERS']), wipeOutHistory);
 
 export default router;

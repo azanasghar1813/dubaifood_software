@@ -96,6 +96,45 @@ class PrintQueueService {
   }
 
   /**
+   * Jobs left in PROCESSING after a crash never print again. Put them back.
+   */
+  reclaimStuckProcessing(maxAgeSeconds = 120) {
+    const age = Math.max(Number(maxAgeSeconds) || 120, 15);
+    return dbEngine.prepare(`
+      UPDATE print_jobs
+      SET status = 'PENDING',
+          last_error = 'Reclaimed stuck PROCESSING job',
+          next_retry_at = CURRENT_TIMESTAMP
+      WHERE status = 'PROCESSING'
+        AND (
+          processing_at IS NULL
+          OR datetime(processing_at) <= datetime('now', '-' || ? || ' seconds')
+        )
+    `).run(age).changes;
+  }
+
+  findActiveKitchenJobs(orderId, printerId = null) {
+    if (printerId) {
+      return dbEngine.prepare(`
+        SELECT id, status FROM print_jobs
+        WHERE order_id = ?
+          AND job_type = 'KITCHEN_TICKET'
+          AND printer_id = ?
+          AND status IN ('PENDING', 'PROCESSING', 'COMPLETED')
+        ORDER BY created_at DESC
+      `).all(orderId, printerId);
+    }
+    return dbEngine.prepare(`
+      SELECT id, status FROM print_jobs
+      WHERE order_id = ?
+        AND job_type = 'KITCHEN_TICKET'
+        AND printer_id IS NULL
+        AND status IN ('PENDING', 'PROCESSING', 'COMPLETED')
+      ORDER BY created_at DESC
+    `).all(orderId);
+  }
+
+  /**
    * Mark a job as currently being processed (prevents duplicate processing).
    */
   markProcessing(jobId) {

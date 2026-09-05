@@ -44,8 +44,19 @@ export const OrderType = Object.freeze({
   TAKEAWAY: 'TAKEAWAY',
   DELIVERY: 'DELIVERY',
   DRIVE_THRU: 'DRIVE_THRU',
+  DRIVE_THROUGH: 'DRIVE_THROUGH',
   ONLINE: 'ONLINE'
 });
+
+export function normalizeOrderType(value) {
+  const raw = String(value || 'DINE_IN').toUpperCase().replace(/[\s-]+/g, '_');
+  if (raw === 'DRIVE_THRU' || raw === 'DRIVE_THROUGH') return OrderType.DRIVE_THROUGH;
+  if (raw === 'TAKEAWAY' || raw === 'TAKE_AWAY') return OrderType.TAKEAWAY;
+  if (raw === 'DELIVERY') return OrderType.DELIVERY;
+  if (raw === 'ONLINE') return OrderType.ONLINE;
+  if (raw === 'DINE_IN' || raw === 'DINEIN') return OrderType.DINE_IN;
+  return OrderType.DINE_IN;
+}
 
 export const AllowedLifecycleTransitions = Object.freeze({
   [OrderLifecycleState.DRAFT]: [
@@ -64,7 +75,8 @@ export const AllowedLifecycleTransitions = Object.freeze({
     OrderLifecycleState.DRAFT,
     OrderLifecycleState.HELD,
     OrderLifecycleState.COMPLETED,
-    OrderLifecycleState.CANCELLED
+    OrderLifecycleState.CANCELLED,
+    OrderLifecycleState.REFUNDED
   ],
   [OrderLifecycleState.COMPLETED]: [
     OrderLifecycleState.ACTIVE,

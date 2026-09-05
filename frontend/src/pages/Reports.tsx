@@ -19,7 +19,7 @@ export const mapCategory = (cat: string | null | undefined) => {
   if (lower === 'fast food' || lower.includes('fast food')) return "Fast Food"
   if (lower === 'restaurant' || lower.includes('restaurant')) return "Restaurant"
   if (lower === 'deals' || lower.includes('deal') || lower.includes('combo')) return "Deals"
-  if (lower === 'soda bar') return "Soda Bar"
+  if (lower === 'soda bar' || lower.includes('soda bar') || lower === 'special drinks' || lower.includes('special drink')) return "Soda Bar"
   if (lower === 'drinks' || lower === 'cold drinks' || lower.includes('cold drink')) return "Drinks"
   if (lower === 'fries' || lower === 'potato chips' || lower === 'shani fries') return "Fries Corner"
   return "Other"

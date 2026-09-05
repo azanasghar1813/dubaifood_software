@@ -11,7 +11,11 @@ const SYNC_TABLES = [
   { table: 'order_payments', type: 'ORDER_PAYMENT' },
   { table: 'dining_tables', type: 'DINING_TABLE' },
   { table: 'tables', type: 'DINING_TABLE' },
-  { table: 'product_variants', type: 'VARIANT' }
+  { table: 'product_variants', type: 'VARIANT' },
+  { table: 'deal_components', type: 'DEAL_COMPONENT' },
+  { table: 'product_images', type: 'PRODUCT_IMAGE' },
+  { table: 'modifiers', type: 'MODIFIER' },
+  { table: 'modifier_groups', type: 'MODIFIER_GROUP' }
 ];
 
 function tableExists(name) {

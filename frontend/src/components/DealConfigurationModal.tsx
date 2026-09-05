@@ -198,6 +198,9 @@ export function DealConfigurationModal({ isOpen, onClose, deal, onConfirm, avail
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement
+      const typing = t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.tagName === 'SELECT' || !!t?.isContentEditable
+      if (typing && e.key !== 'Escape') return
       if (e.key === 'Escape') {
         e.stopPropagation();
         onClose();

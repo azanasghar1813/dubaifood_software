@@ -1,5 +1,6 @@
 import { userService } from '../services/userService.js';
 import { z } from 'zod';
+import { zodFirstMessage } from '../utils/zodErrors.js';
 
 const userCreateSchema = z.object({
   username: z.string().min(3),
@@ -79,7 +80,7 @@ export const userController = {
       const userId = userService.createUser(req.user.userId, parsed);
       res.status(201).json({ message: 'User created successfully', data: { id: userId } });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors[0].message });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodFirstMessage(error) });
       res.status(400).json({ error: error.message });
     }
   },
@@ -90,7 +91,7 @@ export const userController = {
       userService.updateUserProfile(req.user.userId, req.params.id, parsed);
       res.status(200).json({ message: 'User updated successfully' });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors[0].message });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodFirstMessage(error) });
       res.status(400).json({ error: error.message });
     }
   },
@@ -101,7 +102,7 @@ export const userController = {
       userService.updateUserStatus(req.user.userId, req.params.id, parsed.isActive);
       res.status(200).json({ message: 'User status updated' });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors[0].message });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodFirstMessage(error) });
       res.status(400).json({ error: error.message });
     }
   },
@@ -112,7 +113,7 @@ export const userController = {
       userService.resetUserPin(req.user.userId, req.params.id, parsed.newPin);
       res.status(200).json({ message: 'User PIN reset successfully' });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors[0].message });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodFirstMessage(error) });
       res.status(400).json({ error: error.message });
     }
   },
@@ -123,7 +124,7 @@ export const userController = {
       userService.changeMyPin(req.user.userId, parsed.oldPin, parsed.newPin);
       res.status(200).json({ message: 'PIN changed successfully' });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors[0].message });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodFirstMessage(error) });
       res.status(400).json({ error: error.message });
     }
   },

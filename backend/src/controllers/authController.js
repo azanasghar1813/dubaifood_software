@@ -1,6 +1,7 @@
 import { authService } from '../services/authService.js';
 import { z } from 'zod';
 import { sendSuccess, sendError } from '../utils/responseHandler.js';
+import { zodFirstMessage } from '../utils/zodErrors.js';
 import { userRepository } from '../repositories/userRepository.js';
 import { cashierSessionRepository } from '../repositories/cashierSessionRepository.js';
 
@@ -19,7 +20,7 @@ export const authController = {
       return sendSuccess(res, { token, user, cashierSessionId }, 'Login successful');
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return sendError(res, 400, error.errors[0].message);
+        return sendError(res, 400, zodFirstMessage(error));
       }
       return sendError(res, 401, error.message);
     }

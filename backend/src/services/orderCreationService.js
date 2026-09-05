@@ -20,7 +20,7 @@ import { modifierRepository } from '../repositories/modifierRepository.js';
 import { printerRepository } from '../repositories/printerRepository.js';
 import { availabilityService } from './availabilityService.js';
 import { kitchenQueueService } from './kitchenQueueService.js';
-import { OrderLifecycleState } from '../constants/orderStates.js';
+import { OrderLifecycleState, normalizeOrderType } from '../constants/orderStates.js';
 import { customerRepository } from '../repositories/customerRepository.js';
 import crypto from 'crypto';
 import { dateUtils } from '../utils/dateUtils.js';
@@ -218,7 +218,7 @@ class OrderCreationService {
       }
 
       const businessDate = requestedBusinessDate;
-      const orderType = options.order_type || cart.order_type || 'DINE_IN';
+      const orderType = normalizeOrderType(options.order_type || cart.order_type || 'DINE_IN');
       
       const resolveId = (val, cartVal) => {
         const v = val !== undefined ? val : cartVal;
@@ -326,7 +326,9 @@ class OrderCreationService {
         // Refresh product snapshot names at the moment of order creation
         let product = productRepository.findById(cartItem.product_id);
         if (!product) product = dealRepository.findById(cartItem.product_id);
-        if (!product) continue; // Already validated; safeguard only
+        if (!product) {
+          throw new Error(`Cart item ${cartItem.product_id} is no longer in the catalog. Remove it and try again.`);
+        }
 
         const productNameSnapshot = product.display_name || product.name || 'Item';
         const productCodeSnapshot = product.product_code || product.sku || product.code || null;

@@ -36,6 +36,7 @@ class PrintEngineService {
     if (this._isRunning) return;
     this._isRunning  = true;
     this._intervalId = setInterval(() => this._processCycle(), this._processIntervalMs);
+    try { printQueueService.reclaimStuckProcessing(120); } catch { /* queue table may not exist yet */ }
     console.log('[PrintEngine] ✅ Background print processor started (interval: 2s)');
   }
 
@@ -69,6 +70,7 @@ class PrintEngineService {
     this._isProcessing = true;
 
     try {
+      try { printQueueService.reclaimStuckProcessing(120); } catch { /* ignore */ }
       const jobs = printQueueService.dequeuePending(this._maxJobsPerCycle);
       if (jobs.length === 0) return;
 

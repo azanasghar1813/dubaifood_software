@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { buildReceiptOrderNumber, parseTicketSeq, SHARED_TICKET_PREFIX } from '../utils/receiptOrderNumber.js';
 import { dateUtils } from '../utils/dateUtils.js';
 import config from '../config/index.js';
+import { getSyncCloudClient } from '../sync/syncCloudClient.js';
 
 class OrderNumberService {
   _dateKey(resetDaily, businessDate) {
@@ -103,52 +104,40 @@ class OrderNumberService {
 
   async _cloudAllocate(branchId, businessDate, minSequence) {
     if (process.env.NODE_ENV === 'test' || !config.sync?.apiUrl) return null;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1500);
     try {
-      const response = await fetch(`${config.sync.apiUrl}/sync/allocate-number`, {
+      const result = await getSyncCloudClient(config).request('/sync/allocate-number', {
         method: 'POST',
         headers: this._syncHeaders(),
         body: JSON.stringify({
           branch_id: branchId,
           business_date: businessDate,
           min_sequence: minSequence
-        }),
-        signal: controller.signal
-      });
-      if (!response.ok) return null;
-      const body = await response.json();
+        })
+      }, { mode: 'fast', timeoutMs: 1500 });
+      const body = result.json || {};
       const seq = Number(body?.data?.sequence ?? body?.sequence);
       return Number.isFinite(seq) && seq > 0 ? seq : null;
     } catch {
       return null;
-    } finally {
-      clearTimeout(timer);
     }
   }
 
   async _cloudPeek(branchId, businessDate, minSequence) {
     if (process.env.NODE_ENV === 'test' || !config.sync?.apiUrl) return null;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1200);
     try {
       const qs = new URLSearchParams({
         branch_id: branchId,
         business_date: businessDate,
         min_sequence: String(minSequence || 0)
       });
-      const response = await fetch(`${config.sync.apiUrl}/sync/peek-number?${qs}`, {
-        headers: this._syncHeaders(),
-        signal: controller.signal
-      });
-      if (!response.ok) return null;
-      const body = await response.json();
+      const result = await getSyncCloudClient(config).request(`/sync/peek-number?${qs}`, {
+        headers: this._syncHeaders()
+      }, { mode: 'fast', timeoutMs: 1200 });
+      const body = result.json || {};
       const seq = Number(body?.data?.next_sequence ?? body?.next_sequence);
       return Number.isFinite(seq) && seq > 0 ? seq : null;
     } catch {
       return null;
-    } finally {
-      clearTimeout(timer);
     }
   }
 

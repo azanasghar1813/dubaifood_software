@@ -1,6 +1,7 @@
 import { inventoryService } from '../services/inventoryService.js';
 import { activityLogService } from '../services/activityLogService.js';
 import { z } from 'zod';
+import { zodIssueList } from '../utils/zodErrors.js';
 
 const itemSchema = z.object({
   name: z.string().min(1),
@@ -58,7 +59,7 @@ export const inventoryController = {
       
       res.status(201).json(item);
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodIssueList(error) });
       res.status(400).json({ error: error.message });
     }
   },
@@ -72,7 +73,7 @@ export const inventoryController = {
       
       res.json(item);
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodIssueList(error) });
       if (error.message === 'Inventory item not found') return res.status(404).json({ error: error.message });
       res.status(400).json({ error: error.message });
     }
@@ -94,7 +95,7 @@ export const inventoryController = {
       
       res.json(item);
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodIssueList(error) });
       if (error.message === 'Inventory item not found') return res.status(404).json({ error: error.message });
       res.status(400).json({ error: error.message });
     }

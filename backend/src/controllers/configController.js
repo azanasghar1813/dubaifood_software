@@ -1,5 +1,6 @@
 import { configService } from '../services/configService.js';
 import { z } from 'zod';
+import { zodFirstMessage } from '../utils/zodErrors.js';
 
 const kvSchema = z.record(z.string(), z.string());
 
@@ -59,7 +60,7 @@ export const configController = {
       configService.updateBusinessCategory(req.user.userId, category, parsed);
       res.status(200).json({ message: `${category} settings updated successfully` });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors[0].message });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodFirstMessage(error) });
       res.status(400).json({ error: error.message });
     }
   },
@@ -73,7 +74,7 @@ export const configController = {
       configService.updateApplicationCategory(req.user.userId, category, parsed);
       res.status(200).json({ message: `${category} settings updated successfully` });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors[0].message });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodFirstMessage(error) });
       res.status(400).json({ error: error.message });
     }
   },
@@ -103,7 +104,7 @@ export const configController = {
       const id = configService.createPrinter(req.user.userId, parsed);
       res.status(201).json({ message: 'Printer created', data: { id } });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors[0].message });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodFirstMessage(error) });
       res.status(400).json({ error: error.message });
     }
   },
@@ -114,7 +115,7 @@ export const configController = {
       configService.updatePrinter(req.user.userId, req.params.id, parsed);
       res.status(200).json({ message: 'Printer updated' });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors[0].message });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodFirstMessage(error) });
       res.status(400).json({ error: error.message });
     }
   },
@@ -144,7 +145,7 @@ export const configController = {
       const code = configService.createPaymentMethod(req.user.userId, parsed);
       res.status(201).json({ message: 'Payment method created', data: { code } });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors[0].message });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodFirstMessage(error) });
       res.status(400).json({ error: error.message });
     }
   },
@@ -155,7 +156,7 @@ export const configController = {
       configService.updatePaymentMethod(req.user.userId, req.params.code, parsed);
       res.status(200).json({ message: 'Payment method updated' });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors[0].message });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: zodFirstMessage(error) });
       res.status(400).json({ error: error.message });
     }
   },

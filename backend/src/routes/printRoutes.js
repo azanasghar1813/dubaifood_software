@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
+import { authorize } from '../middleware/authorize.js';
 import {
   getQueue,
   getJobById,
@@ -26,7 +27,7 @@ router.use(authenticate);
 router.get('/queue',                     getQueue);
 router.get('/queue/stats',               getQueueStats);
 router.get('/queue/order/:orderId',      getJobsByOrder);
-router.post('/queue/clear',              clearQueue);
+router.post('/queue/clear',              authorize('MANAGE_SETTINGS'), clearQueue);
 router.get('/queue/:jobId',              getJobById);
 router.delete('/queue/:jobId',           cancelJob);
 router.post('/receipt/:orderId',         printReceipt);

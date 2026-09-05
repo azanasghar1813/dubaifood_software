@@ -42,6 +42,9 @@ export default function Backup() {
   // Keyboard Shortcuts Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement
+      const typing = t?.tagName === "INPUT" || t?.tagName === "TEXTAREA" || t?.tagName === "SELECT" || !!t?.isContentEditable
+      if (typing) return
       // Ctrl + B: Create Backup
       if (e.ctrlKey && e.key === "b") {
         e.preventDefault()

@@ -14,6 +14,11 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement
+      const typing = t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.tagName === 'SELECT' || !!t?.isContentEditable
+      if (typing && e.key !== 'Escape' && e.key !== 'F12' && !(e.ctrlKey && (e.key === '\\' || (e.shiftKey && e.key.toLowerCase() === 'p')))) {
+        return
+      }
       // Ctrl+\ -> Global Shortcuts Map
       if (e.ctrlKey && e.key === '\\') {
         e.preventDefault()
