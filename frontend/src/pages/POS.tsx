@@ -557,11 +557,44 @@ export default function POS() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
+  // Latest POS keyboard context. The window listener is registered once so
+  // adding to the cart / moving the highlight cannot tear it down mid-keypress.
+  const keyCtxRef = useRef<Record<string, any>>({})
+  keyCtxRef.current = {
+    cart, checkoutModalOpen, customizeModalOpen, sizeModalOpen,
+    customerModalOpen, tableModalOpen, waiterModalOpen, riderModalOpen, recentOrdersModalOpen,
+    waiterId, waiterName, riderId, riderName, tableNumber, customer, isVipOrder, deliveryCharges,
+    activeProductForSize, editingOrderId, sizeSelectedIndex, gridSelectedIndex,
+    isCartMode, cartSelectedIndex, gridDensity, checkoutFocusZone, checkoutMethodIndex,
+    checkoutQuickCashIndex, checkoutDiscountPctIndex, selectedPaymentMethod, discountAmount,
+    orderType, categories, activeCategory, products, dealModalOpen, searchQuery,
+    handleSendKot, handleProceedToPay, getNetTotal, addToCart, removeFromCart,
+    updateQuantity, clearCart, duplicateItem, clearEditMode, setWaiterId, setRiderId,
+    setTableNumber, setCustomer, setDeliveryCharges, toggleTax, setOrderType,
+  }
 
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const {
+        cart, checkoutModalOpen, customizeModalOpen, sizeModalOpen,
+        customerModalOpen, tableModalOpen, waiterModalOpen, riderModalOpen, recentOrdersModalOpen,
+        waiterId, waiterName, riderId, riderName, tableNumber, customer, isVipOrder, deliveryCharges,
+        activeProductForSize, editingOrderId, sizeSelectedIndex, gridSelectedIndex,
+        isCartMode, cartSelectedIndex, gridDensity, checkoutFocusZone, checkoutMethodIndex,
+        checkoutQuickCashIndex, checkoutDiscountPctIndex, selectedPaymentMethod,
+        orderType, categories, activeCategory, products, dealModalOpen, searchQuery,
+        handleSendKot, handleProceedToPay, getNetTotal, addToCart, removeFromCart,
+        updateQuantity, clearCart, clearEditMode, setWaiterId, setRiderId,
+        setTableNumber, setCustomer, setDeliveryCharges, toggleTax,
+      } = keyCtxRef.current
+
       const isTyping = isTypingInField(e)
+      const searchEl = searchInputRef.current
+      const inSearch = !!(searchEl && (e.target === searchEl || document.activeElement === searchEl))
+      const searchEmpty = !String(searchQuery || '').trim()
+      const isArrow = e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight'
+      const gridKeysFromEmptySearch = inSearch && searchEmpty && (isArrow || (e.key === 'Enter' && !e.ctrlKey))
 
       // Customer panel owns the keyboard — never steal type/paste/copy
       if (customerModalOpen) return
@@ -572,7 +605,7 @@ export default function POS() {
       if (sizeModalOpen && activeProductForSize) {
         if (e.key === "Escape") {
           setSizeModalOpen(false)
-          setTimeout(() => searchInputRef.current?.focus(), 100)
+          searchInputRef.current?.blur()
           return
         }
         if (e.key === "ArrowDown") {
@@ -593,8 +626,8 @@ export default function POS() {
             setSizeModalOpen(false);
             setActiveProductForSize(null);
             setSearchQuery("");
-            searchInputRef.current?.focus();
-            scrollToTop();
+            searchInputRef.current?.blur();
+            setTimeout(() => cartTopRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
           }
           return
         }
@@ -606,8 +639,8 @@ export default function POS() {
           setSizeModalOpen(false);
           setActiveProductForSize(null);
           setSearchQuery("");
-          searchInputRef.current?.focus();
-          scrollToTop();
+          searchInputRef.current?.blur();
+          setTimeout(() => cartTopRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
         }
         return
       }
@@ -615,12 +648,12 @@ export default function POS() {
       if (customizeModalOpen) {
         if (e.key === "Escape") {
           setCustomizeModalOpen(false)
-          setTimeout(() => searchInputRef.current?.focus(), 100)
+          searchInputRef.current?.blur()
         }
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
           e.preventDefault()
           setCustomizeModalOpen(false)
-          setTimeout(() => searchInputRef.current?.focus(), 100)
+          searchInputRef.current?.blur()
         }
         return
       }
@@ -634,7 +667,7 @@ export default function POS() {
         if (e.key === "Escape" || e.key === "F6") {
           e.preventDefault()
           setCheckoutModalOpen(false)
-          setTimeout(() => searchInputRef.current?.focus(), 100)
+          searchInputRef.current?.blur()
           return
         }
         if (e.key === "Enter" || (e.ctrlKey && e.key === 'Enter')) {
@@ -740,8 +773,9 @@ export default function POS() {
         return
       }
 
-      // 2. Global Shortcuts — never steal keys while the cashier is typing
-      if (shouldIgnoreShortcutWhileTyping(e)) return
+      // 2. Global Shortcuts — never steal keys while the cashier is typing.
+      // Empty product search is an exception: arrows/Enter still drive the grid.
+      if (shouldIgnoreShortcutWhileTyping(e) && !gridKeysFromEmptySearch) return
 
       // CTRL + ArrowUp/ArrowDown: Cycle Categories
       if (e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
@@ -963,7 +997,7 @@ export default function POS() {
       }
 
       // 3. Shortcuts that should ONLY run if NOT typing
-      if (isTyping) return
+      if (isTyping && !gridKeysFromEmptySearch) return
 
       if (dealModalOpen) return
 
@@ -1104,28 +1138,27 @@ export default function POS() {
           e.preventDefault()
           const cols = getGridColumns()
           const total = gridProductsRef.current.length
-          setGridSelectedIndex(s => Math.min(s + cols, total - 1))
+          if (total <= 0) return
+          setGridSelectedIndex(s => Math.max(0, Math.min(s + cols, total - 1)))
         } else if (e.key === "ArrowUp") {
           e.preventDefault()
           const cols = getGridColumns()
-          setGridSelectedIndex(s => Math.max(s - cols, 0))
+          const total = gridProductsRef.current.length
+          if (total <= 0) return
+          setGridSelectedIndex(s => Math.max(0, Math.min(s - cols, total - 1)))
         } else if (e.key === "ArrowRight") {
           e.preventDefault()
           const total = gridProductsRef.current.length
-          const nextIndex = gridSelectedIndex + 1
-          // Wrap to next row if at end of current row
-          if (nextIndex < total) {
-            setGridSelectedIndex(nextIndex)
-          }
+          if (total <= 0) return
+          setGridSelectedIndex(s => Math.min(s + 1, total - 1))
         } else if (e.key === "ArrowLeft") {
           e.preventDefault()
-          const prevIndex = gridSelectedIndex - 1
-          // Wrap to previous row if at start of current row
-          if (prevIndex >= 0) {
-            setGridSelectedIndex(prevIndex)
-          }
+          const total = gridProductsRef.current.length
+          if (total <= 0) return
+          setGridSelectedIndex(s => Math.max(s - 1, 0))
         } else if (e.key === "Enter" && !e.ctrlKey) {
           e.preventDefault()
+          searchInputRef.current?.blur()
           const selectedProduct = gridProductsRef.current[gridSelectedIndex]
           if (selectedProduct) {
             if (selectedProduct.isDeal && selectedProduct.components && selectedProduct.components.length > 0) {
@@ -1191,6 +1224,7 @@ export default function POS() {
               setActiveProductForSize(selectedProduct)
               setSizeSelectedIndex(0)
               setSizeModalOpen(true)
+              searchInputRef.current?.blur()
             } else {
               addToCart(selectedProduct)
               setTimeout(() => cartTopRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
@@ -1202,20 +1236,7 @@ export default function POS() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [
-    cart, checkoutModalOpen, customizeModalOpen, sizeModalOpen,
-    customerModalOpen, tableModalOpen, waiterModalOpen, riderModalOpen, recentOrdersModalOpen,
-    waiterId, waiterName, riderId, riderName, tableNumber, customer, isVipOrder, deliveryCharges,
-    setWaiterId, setRiderId, setTableNumber, setDeliveryCharges, handleSendKot,
-    activeProductForSize, clearCart, setCustomer, updateQuantity,
-    removeFromCart, editingOrderId, clearEditMode, duplicateItem,
-    sizeSelectedIndex, gridSelectedIndex,
-    isCartMode, cartSelectedIndex, gridDensity,
-    checkoutModalOpen, checkoutFocusZone, checkoutMethodIndex,
-    checkoutQuickCashIndex, checkoutDiscountPctIndex,
-    selectedPaymentMethod, discountAmount, orderType,
-    categories, activeCategory, products, dealModalOpen
-  ])
+  }, [])
 
   // Keep cartSelectedIndex in bounds if cart shrinks
   useEffect(() => {
@@ -1248,23 +1269,10 @@ export default function POS() {
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    searchInputRef.current?.focus()
     return () => clearInterval(timer)
   }, [])
 
-  // Refocus search if clicking outside inputs
-  useEffect(() => {
-    const handleGlobalClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (!checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen && !tableModalOpen && !recentOrdersModalOpen) {
-        if (target.tagName !== "BUTTON" && target.tagName !== "INPUT" && target.tagName !== "TEXTAREA" && target.tagName !== "SELECT" && !target.closest('.panel-handle')) {
-          searchInputRef.current?.focus()
-        }
-      }
-    }
-    window.addEventListener("click", handleGlobalClick)
-    return () => window.removeEventListener("click", handleGlobalClick)
-  }, [checkoutModalOpen, customizeModalOpen, sizeModalOpen, customerModalOpen, tableModalOpen, recentOrdersModalOpen])
+
 
   // Keep the selected category visible in the left list
   useEffect(() => {
@@ -1476,7 +1484,7 @@ export default function POS() {
       if (!needsConfiguration) {
         addToCart({ ...product, combo_components: autoComboComponents });
         setSearchQuery("");
-        searchInputRef.current?.focus();
+        searchInputRef.current?.blur();
         scrollToTop();
         return;
       }
@@ -1502,7 +1510,7 @@ export default function POS() {
           variant_name: variant.name
         });
         setSearchQuery("");
-        searchInputRef.current?.focus();
+        searchInputRef.current?.blur();
         scrollToTop();
         return;
       }
@@ -1513,12 +1521,13 @@ export default function POS() {
       setActiveProductForSize(product)
       setSizeModalOpen(true)
       setSizeSelectedIndex(0)
+      searchInputRef.current?.blur()
       return
     }
 
     addToCart(product)
-    setSearchQuery("") // Auto clear search
-    searchInputRef.current?.focus()
+    setSearchQuery("")
+    searchInputRef.current?.blur()
     scrollToTop()
   }
 
@@ -1535,7 +1544,7 @@ export default function POS() {
       updateItemNotes(activeCartItem.cartItemId, tempNotes)
     }
     setCustomizeModalOpen(false)
-    setTimeout(() => searchInputRef.current?.focus(), 100)
+    searchInputRef.current?.blur()
   }
 
   const toggleTempModifier = (mod: Modifier) => {
@@ -1571,21 +1580,20 @@ export default function POS() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
+                  const dropdownOpen = !!searchQuery.trim() && searchResults.length > 0
                   if (e.key === "Escape") {
                     if (searchQuery) {
                       e.preventDefault(); e.stopPropagation(); setSearchQuery("");
                     }
-                  } else if (e.key === "ArrowDown") {
+                  } else if (dropdownOpen && e.key === "ArrowDown") {
                     e.preventDefault(); setSearchSelectedIndex(s => Math.min(s + 1, Math.max(0, searchResults.length - 1)));
-                  } else if (e.key === "ArrowUp") {
+                  } else if (dropdownOpen && e.key === "ArrowUp") {
                     e.preventDefault(); setSearchSelectedIndex(s => Math.max(s - 1, 0));
-                  } else if (e.key === "Enter" || e.key === "Tab") {
+                  } else if (dropdownOpen && (e.key === "Enter" || e.key === "Tab")) {
                     if (sizeModalOpen) return; // let global listener handle size selection
-                    if (searchQuery) {
-                      e.preventDefault(); e.stopPropagation();
-                      if (searchResults[searchSelectedIndex]) {
-                        handleProductClick(searchResults[searchSelectedIndex])
-                      }
+                    e.preventDefault(); e.stopPropagation();
+                    if (searchResults[searchSelectedIndex]) {
+                      handleProductClick(searchResults[searchSelectedIndex])
                     }
                   } else if (e.key === "Backspace" && e.ctrlKey) {
                     setSearchQuery("")
@@ -1877,7 +1885,7 @@ export default function POS() {
               </button>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col h-full overflow-hidden">
+            <div className="flex-1 flex flex-col h-full overflow-hidden" data-pos-cart>
               {/* Cart Mode Indicator */}
               {isCartMode && (
                 <div className="px-3 py-1.5 bg-orange-500/10 border-b border-orange-500/30 flex items-center justify-between">
