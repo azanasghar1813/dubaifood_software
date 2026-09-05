@@ -5,8 +5,9 @@ import { startCronJobs } from './tasks/purgeOldOrders.js';
 
 const startServer = async () => {
   try {
-    app.listen(config.port, () => {
-      console.log(`[Sync API] Server is running on port ${config.port}`);
+    const port = Number(process.env.PORT) || config.port || 3000;
+    app.listen(port, '0.0.0.0', () => {
+      console.log(`[Sync API] Server is running on 0.0.0.0:${port}`);
       console.log(`[Sync API] Environment: ${config.env}`);
     });
     

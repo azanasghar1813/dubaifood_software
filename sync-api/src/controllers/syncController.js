@@ -69,7 +69,11 @@ export const pushSyncEvents = async (req, res) => {
         'PAYMENT': 'order_payments',
         'DINING_TABLE': 'dining_tables',
         'SETTING': 'application_settings',
-        'VARIANT': 'product_variants'
+        'VARIANT': 'product_variants',
+        'DEAL_COMPONENT': 'deal_components',
+        'PRODUCT_IMAGE': 'product_images',
+        'MODIFIER': 'modifiers',
+        'MODIFIER_GROUP': 'modifier_groups'
       };
 
       const tableName = tableMap[entity_type.toUpperCase()];
@@ -385,28 +389,48 @@ export const pushSyncEvents = async (req, res) => {
   }
 };
 
+const PULL_TABLES = [
+  'products',
+  'categories',
+  'orders',
+  'order_items',
+  'customers',
+  'users',
+  'deals',
+  'deal_components',
+  'order_payments',
+  'dining_tables',
+  'application_settings',
+  'product_variants',
+  'product_images',
+  'modifiers',
+  'modifier_groups'
+];
+
 export const pullSyncEvents = async (req, res) => {
   try {
-    const { last_sync_timestamp, limit = 50, offset = 0 } = req.query;
-    const since = last_sync_timestamp ? new Date(parseInt(last_sync_timestamp)).toISOString() : new Date(0).toISOString();
-    
-    const parsedLimit = parseInt(limit, 10) || 50;
-    const parsedOffset = parseInt(offset, 10) || 0;
+    const { last_sync_timestamp, limit = 50, offset = 0, table } = req.query;
+    const sinceMs = parseInt(last_sync_timestamp, 10);
+    const since = Number.isFinite(sinceMs) && sinceMs > 0
+      ? new Date(sinceMs).toISOString()
+      : new Date(0).toISOString();
 
-    // Helper to fetch paginated data
+    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+    const parsedOffset = Math.max(parseInt(offset, 10) || 0, 0);
+
+    // gte (not gt) so rows that share the watermark timestamp are not skipped.
     const fetchTable = async (tableName) => {
       const { data, error } = await supabase
         .from(tableName)
         .select('*')
-        .gt('updated_at', since)
+        .gte('updated_at', since)
         .order('updated_at', { ascending: true })
         .range(parsedOffset, parsedOffset + parsedLimit - 1);
-      
+
       if (error) throw error;
-      return data;
+      return data || [];
     };
 
-    // Pull all updated data for all relevant tables
     const fetchTableSafe = async (tableName) => {
       try {
         return await fetchTable(tableName);
@@ -416,48 +440,20 @@ export const pullSyncEvents = async (req, res) => {
       }
     };
 
-    const [
-      products,
-      categories,
-      orders,
-      order_items,
-      customers,
-      users,
-      deals,
-      order_payments,
-      dining_tables,
-      application_settings,
-      product_variants
-    ] = await Promise.all([
-      fetchTableSafe('products'),
-      fetchTableSafe('categories'),
-      fetchTableSafe('orders'),
-      fetchTableSafe('order_items'),
-      fetchTableSafe('customers'),
-      fetchTableSafe('users'),
-      fetchTableSafe('deals'),
-      fetchTableSafe('order_payments'),
-      fetchTableSafe('dining_tables'),
-      fetchTableSafe('application_settings'),
-      fetchTableSafe('product_variants')
-    ]);
+    const requested = String(table || '').trim();
+    const tablesToFetch = requested
+      ? PULL_TABLES.filter((name) => name === requested)
+      : PULL_TABLES;
 
-    // Return the batched updates
+    const data = {};
+    for (const name of PULL_TABLES) data[name] = [];
+    await Promise.all(tablesToFetch.map(async (name) => {
+      data[name] = await fetchTableSafe(name);
+    }));
+
     return res.status(200).json({
       timestamp: Date.now(),
-      data: {
-        products,
-        categories,
-        orders,
-        order_items,
-        customers,
-        users,
-        deals,
-        order_payments,
-        dining_tables,
-        application_settings,
-        product_variants
-      }
+      data
     });
   } catch (error) {
     console.error('[SyncController] Pull error:', error);
@@ -551,10 +547,14 @@ const HEARTBEAT_TABLES = [
   'customers',
   'users',
   'deals',
+  'deal_components',
   'order_payments',
   'dining_tables',
   'application_settings',
-  'product_variants'
+  'product_variants',
+  'product_images',
+  'modifiers',
+  'modifier_groups'
 ];
 
 /**

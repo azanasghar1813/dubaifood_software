@@ -1,7 +1,11 @@
 import fs from 'fs';
 import pg from 'pg';
 
-const connectionString = 'postgresql://postgres:Azan@181314@db.rogswfiwwmzgezdueoht.supabase.co:5432/postgres';
+const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
+if (!connectionString) {
+  console.error('Set DATABASE_URL or SUPABASE_DB_URL before running this migration.');
+  process.exit(1);
+}
 
 const pool = new pg.Pool({
   connectionString,
