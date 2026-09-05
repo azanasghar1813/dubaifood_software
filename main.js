@@ -70,12 +70,17 @@ if (app.isPackaged) {
 const isProdMode = app.isPackaged || process.env.TEST_BUILD === 'true';
 process.env.NODE_ENV = isProdMode ? 'production' : 'development';
 
-const envPath = app.isPackaged
-  ? path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', '.env')
-  : path.join(__dirname, 'backend', '.env');
-
-if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath });
+const envCandidates = app.isPackaged
+  ? [
+      path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', '.env'),
+      path.join(__dirname, 'backend', '.env'),
+    ]
+  : [path.join(__dirname, 'backend', '.env')];
+for (const envPath of envCandidates) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    break;
+  }
 }
 
 const ensureSecrets = () => {

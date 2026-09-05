@@ -47,6 +47,7 @@
     "productName": "Restaurant POS",
     "asarUnpack": [
       "backend/**/*",
+      "backend/.env",
       "frontend/dist/**/*",
       "node_modules/**/*"
     ],
@@ -60,8 +61,8 @@
       "splash.html",
       "splash-logo.png",
       "backend/**/*",
-      "!backend/**/.env",
-      "!backend/**/*.env",
+      "backend/.env",
+      "!backend/.env.example",
       "!backend/**/*.db",
       "!backend/**/*.db-shm",
       "!backend/**/*.db-wal",
