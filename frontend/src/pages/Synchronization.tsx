@@ -3,16 +3,45 @@ import {
   RefreshCw, AlertTriangle, History, Trash2, Plus, MonitorSmartphone, Wifi, Database, Clock, Server, Save
 } from "lucide-react"
 import { syncApi, type SyncStatus, type ActiveDevice, type SyncQueueItem } from "../api/syncApi"
+import { configApi } from "../api/configApi"
 import { toast } from "../store/toastStore"
 import { AnimatePresence, motion } from "framer-motion"
 
 export default function Synchronization() {
   const [isSyncing, setIsSyncing] = useState(false)
   const [autoSync, setAutoSync] = useState(true)
+  const [syncConfig, setSyncConfig] = useState<any>({})
   const [syncInterval, setSyncInterval] = useState("30 Seconds")
   const [isLoading, setIsLoading] = useState(true)
+  const [isSavingConfig, setIsSavingConfig] = useState(false)
   
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  const fetchSettingsConfig = async () => {
+    try {
+      const res: any = await configApi.getAllConfig()
+      const data = res?.data?.data || res?.data || res
+      if (data?.application?.sync) {
+        setSyncConfig(data.application.sync)
+      }
+    } catch (e) {
+      console.error("Failed to load sync config", e)
+    }
+  }
+
+  const handleToggleCloudSync = async () => {
+    setIsSavingConfig(true)
+    try {
+      const updatedConfig = { ...syncConfig, cloud_sync_enabled: syncConfig.cloud_sync_enabled === true ? false : true }
+      setSyncConfig(updatedConfig)
+      await configApi.updateSyncConfig(updatedConfig)
+      toast.success(updatedConfig.cloud_sync_enabled ? "Cloud Sync enabled!" : "Cloud Sync disabled!")
+    } catch (e) {
+      toast.error("Failed to update cloud sync settings")
+    } finally {
+      setIsSavingConfig(false)
+    }
+  }
 
   const formatTime = (timeStr: string) => {
     if (!timeStr) return "";
@@ -100,6 +129,7 @@ export default function Synchronization() {
 
   useEffect(() => {
     fetchSyncData();
+    fetchSettingsConfig();
     // Poll fast for live sequence
     const fastInterval = setInterval(fetchStatusOnly, 1500);
     // Poll queues and devices every 5 seconds
@@ -234,6 +264,23 @@ export default function Synchronization() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap relative z-10">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-secondary/80 border border-border rounded-xl mr-2">
+            <span className="text-xs font-bold text-foreground">Cloud Sync</span>
+            <button
+              type="button"
+              onClick={handleToggleCloudSync}
+              disabled={isSavingConfig}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
+                syncConfig.cloud_sync_enabled === true ? 'bg-primary' : 'bg-secondary-foreground/20'
+              }`}
+            >
+              <span
+                className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                  syncConfig.cloud_sync_enabled === true ? 'translate-x-5' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
           <button 
             onClick={handleClearQueue}
             className="flex items-center gap-1.5 px-4 py-2 bg-red-500 text-white rounded-xl text-xs font-black hover:bg-red-600 shadow-md shadow-red-500/20 transition-all active:scale-95"

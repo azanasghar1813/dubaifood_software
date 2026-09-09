@@ -899,6 +899,9 @@ export default function POS() {
       if (e.ctrlKey && e.key.toLowerCase() === 'z' && editingOrderId) {
         e.preventDefault()
         if (confirm("Cancel editing and discard changes?")) {
+          if (usePosStore.getState().cart.length === 0) {
+            alert("This order is completely empty. Canceling edit will leave the order empty.");
+          }
           clearEditMode()
         }
       }
@@ -1975,7 +1978,12 @@ export default function POS() {
                     <Edit className="w-4 h-4 text-orange-500" />
                     <span className="text-[10px] font-bold text-orange-500 uppercase tracking-widest">Editing Order</span>
                   </div>
-                  <button onClick={clearEditMode} className="text-[10px] font-bold bg-orange-500/20 text-orange-600 px-2 py-1 rounded hover:bg-orange-500 hover:text-white transition-colors">
+                  <button onClick={() => {
+                    if (usePosStore.getState().cart.length === 0) {
+                      alert("This order is completely empty. Canceling edit will leave the order empty.");
+                    }
+                    clearEditMode();
+                  }} className="text-[10px] font-bold bg-orange-500/20 text-orange-600 px-2 py-1 rounded hover:bg-orange-500 hover:text-white transition-colors">
                     Cancel Edit
                   </button>
                 </div>

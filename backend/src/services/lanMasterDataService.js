@@ -32,6 +32,15 @@ class LanMasterDataService {
 
   async processPendingSync(isHub, terminalId, hubUrl) {
     if (this.isPolling) return;
+    
+    // Lazy load configService to prevent circular dependency issues
+    let syncConfig = null;
+    try {
+       const { configService } = await import('./configService.js');
+       syncConfig = configService.getSyncConfig();
+       if (syncConfig.lan_sync_enabled === false) return;
+    } catch(e) {}
+
     this.isPolling = true;
 
     try {

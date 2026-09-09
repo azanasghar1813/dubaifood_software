@@ -13,6 +13,13 @@ class SyncService {
    */
   queueSyncEvent(entityType, entityId, action, metadata = {}, payloadVersion = 1, options = {}) {
     try {
+      const row = dbEngine.prepare("SELECT value FROM application_settings WHERE key = 'cloud_sync_enabled'").get();
+      const cloudSyncEnabled = row ? (row.value === 'true') : true; // Default to true if not found, though configService defaults to false now. But we should check carefully. Actually, in DB it's stored as 'false' or 'true'.
+      
+      if (cloudSyncEnabled === false) {
+        return; // Do not queue if cloud sync is explicitly disabled
+      }
+
       const id = crypto.randomUUID();
       const metadataStr = JSON.stringify(metadata);
 

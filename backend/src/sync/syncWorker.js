@@ -585,6 +585,12 @@ class SyncWorker {
       return { success: false, error: 'Sync already running' };
     }
 
+    const syncConfig = configService.getSyncConfig();
+    if (syncConfig.cloud_sync_enabled === false) {
+      this.scheduleNextRun(this.idleDelayMs);
+      return { success: false, error: 'Cloud sync is disabled' };
+    }
+
     this.isRunning = true;
     let pushed = 0;
     let pulled = 0;

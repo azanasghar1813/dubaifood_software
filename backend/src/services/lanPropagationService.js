@@ -10,6 +10,7 @@ class LanPropagationService {
   async propagate(orderId) {
     try {
       const syncConfig = configService.getSyncConfig();
+      if (syncConfig.lan_sync_enabled === false) return;
 
       if (syncConfig.device_role === 'HUB') {
         const { socketService } = await import('./socketService.js');
@@ -35,6 +36,8 @@ class LanPropagationService {
   async propagateDelete(orderId) {
     try {
       const syncConfig = configService.getSyncConfig();
+      if (syncConfig.lan_sync_enabled === false) return;
+
       if (syncConfig.device_role === 'HUB') {
         const { socketService } = await import('./socketService.js');
         const { lanSyncService } = await import('./lanSyncService.js');

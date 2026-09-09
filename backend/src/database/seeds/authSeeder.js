@@ -34,7 +34,22 @@ export const runAuthSeeder = (db) => {
     { id: crypto.randomUUID(), code: 'MANAGE_USERS', module: 'IAM', desc: 'Manage users' },
     { id: crypto.randomUUID(), code: 'MANAGE_ROLES', module: 'IAM', desc: 'Manage roles and permissions' },
     { id: crypto.randomUUID(), code: 'MANAGE_SETTINGS', module: 'CONFIG', desc: 'Manage system settings' },
-    { id: crypto.randomUUID(), code: 'MANAGE_PRODUCTS', module: 'CATALOG', desc: 'Manage products and categories' }
+    { id: crypto.randomUUID(), code: 'MANAGE_PRODUCTS', module: 'CATALOG', desc: 'Manage products and categories' },
+    { id: crypto.randomUUID(), code: 'VIEW_DASHBOARD', module: 'SCREENS', desc: 'Access to Dashboard' },
+    { id: crypto.randomUUID(), code: 'VIEW_POS', module: 'SCREENS', desc: 'Access to POS' },
+    { id: crypto.randomUUID(), code: 'VIEW_ORDERS', module: 'SCREENS', desc: 'Access to Orders' },
+    { id: crypto.randomUUID(), code: 'VIEW_REPORTS', module: 'SCREENS', desc: 'Access to Reports' },
+    { id: crypto.randomUUID(), code: 'VIEW_KITCHEN', module: 'SCREENS', desc: 'Access to Kitchen Display' },
+    { id: crypto.randomUUID(), code: 'VIEW_PRODUCTS', module: 'SCREENS', desc: 'Access to Products' },
+    { id: crypto.randomUUID(), code: 'VIEW_CATEGORIES', module: 'SCREENS', desc: 'Access to Categories' },
+    { id: crypto.randomUUID(), code: 'VIEW_CUSTOMERS', module: 'SCREENS', desc: 'Access to Customers' },
+    { id: crypto.randomUUID(), code: 'VIEW_TABLES', module: 'SCREENS', desc: 'Access to Tables Management' },
+    { id: crypto.randomUUID(), code: 'VIEW_CASHIERS', module: 'SCREENS', desc: 'Access to Cashier Management' },
+    { id: crypto.randomUUID(), code: 'VIEW_SETTINGS', module: 'SCREENS', desc: 'Access to Settings' },
+    { id: crypto.randomUUID(), code: 'VIEW_BACKUP', module: 'SCREENS', desc: 'Access to Backup' },
+    { id: crypto.randomUUID(), code: 'VIEW_SYNC', module: 'SCREENS', desc: 'Access to Synchronization' },
+    { id: crypto.randomUUID(), code: 'VIEW_USERS', module: 'SCREENS', desc: 'Access to Users & Permissions' },
+    { id: crypto.randomUUID(), code: 'VIEW_ACTIVITY_LOGS', module: 'SCREENS', desc: 'Access to Activity Logs' }
   ];
 
   for (const perm of permissions) {

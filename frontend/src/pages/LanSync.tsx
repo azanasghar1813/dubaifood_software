@@ -106,6 +106,28 @@ export default function LanSync() {
                   <option value="TERMINAL">TERMINAL (Client Device)</option>
                 </select>
               </div>
+
+              <div className="space-y-1.5 flex flex-col justify-end">
+                <div className="flex items-center justify-between p-3 bg-secondary border border-border rounded-xl">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-foreground">LAN Sync</span>
+                    <span className="text-[10px] text-muted-foreground">Enable or disable local network syncing</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSyncConfig({...syncConfig, lan_sync_enabled: syncConfig.lan_sync_enabled === true ? false : true})}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background ${
+                      syncConfig.lan_sync_enabled === true ? 'bg-primary' : 'bg-secondary-foreground/20'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        syncConfig.lan_sync_enabled === true ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
               
               {syncConfig.device_role === "TERMINAL" && (
                 <>

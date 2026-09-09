@@ -206,6 +206,8 @@ class ConfigService {
       lease_block_size: Number(config.lease_block_size) || 500,
       lease_low_water_mark: Number(config.lease_low_water_mark) || 20,
       lease_refill_batch: Number(config.lease_refill_batch) || 200,
+      lan_sync_enabled: config.lan_sync_enabled === 'true' || config.lan_sync_enabled === true,
+      cloud_sync_enabled: config.cloud_sync_enabled === 'true' || config.cloud_sync_enabled === true,
     };
   }
 

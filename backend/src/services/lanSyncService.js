@@ -17,7 +17,7 @@ class LanSyncService {
     const timestamp = new Date().toISOString();
     this.activityLogs.unshift({ timestamp, message, level });
     if (this.activityLogs.length > 100) this.activityLogs.pop();
-    
+
     if (level === 'error') console.error(message);
     else if (level === 'warn') console.warn(message);
     else console.log(message);
@@ -41,10 +41,14 @@ class LanSyncService {
 
   startBackgroundRetries() {
     if (this.retryInterval) return;
+    const syncConfig = configService.getSyncConfig();
+    if (syncConfig.lan_sync_enabled === false) return;
+
     this.retryInterval = setInterval(() => {
+      if (configService.getSyncConfig().lan_sync_enabled === false) return;
       this._processRetries().catch(err => this._log(`[LanSync] Retry error: ${err.message}`, 'error'));
     }, 5000);
-    
+
     // Also initialize the terminal socket listener
     this._initTerminalSocket();
 
@@ -59,6 +63,7 @@ class LanSyncService {
 
   _initTerminalSocket() {
     const syncConfig = configService.getSyncConfig();
+    if (syncConfig.lan_sync_enabled === false) return;
     if (syncConfig.device_role !== 'TERMINAL' || !syncConfig.hub_ip) return;
     if (this.socket) return; // already initialized
 
@@ -91,9 +96,9 @@ class LanSyncService {
       try {
         this._log(`[LanSync] Received order:upserted from Hub for order ${order.order_number}`);
         // Ensure it has synced_to_hub = 1 since it comes from the Hub
-        order.synced_to_hub = 1; 
+        order.synced_to_hub = 1;
         const res = orderUpsertService.upsertHydratedOrder(order);
-        
+
         if (!res.stale) {
           // Tell the local Terminal UI that an order was updated by the Hub
           import('./socketService.js').then(({ socketService }) => {
@@ -142,7 +147,7 @@ class LanSyncService {
     try {
       const syncConfig = configService.getSyncConfig();
       if (syncConfig.device_role !== 'TERMINAL' || !syncConfig.hub_ip) return;
-      
+
       const hubPort = syncConfig.hub_port || 5000;
       const baseUrl = `http://${syncConfig.hub_ip}:${hubPort}/api/v1/internal`;
       const headers = {
@@ -154,7 +159,7 @@ class LanSyncService {
       // Default since to 24 hours ago if we have no history, to avoid syncing the whole DB initially
       let since = syncConfig.last_catchup_time;
       if (!since) {
-         since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       }
 
       let hasMore = true;
@@ -174,7 +179,7 @@ class LanSyncService {
         }
 
         const data = await res.json();
-        
+
         // 1. Process Master Data
         if (data.masterData && Object.keys(data.masterData).length > 0) {
           const { lanMasterDataService } = await import('./lanMasterDataService.js');
@@ -185,29 +190,29 @@ class LanSyncService {
         // 2. Process Orders
         if (data.orders && data.orders.length > 0) {
           for (const order of data.orders) {
-             if (order._deleted) {
-               dbEngine.prepare(`DELETE FROM orders WHERE id = ?`).run(order.id);
-               import('./socketService.js').then(({ socketService }) => {
-                 socketService.emitOrderDeleted(order.id);
-               });
-             } else {
-               order.synced_to_hub = 1;
-               orderUpsertService.upsertHydratedOrder(order);
-             }
+            if (order._deleted) {
+              dbEngine.prepare(`DELETE FROM orders WHERE id = ?`).run(order.id);
+              import('./socketService.js').then(({ socketService }) => {
+                socketService.emitOrderDeleted(order.id);
+              });
+            } else {
+              order.synced_to_hub = 1;
+              orderUpsertService.upsertHydratedOrder(order);
+            }
           }
           this._log(`[LanSync] Applied ${data.orders.length} Catch-Up Orders`);
           import('./socketService.js').then(({ socketService }) => {
-             // Let frontend know to refresh its order list if needed
-             socketService.emitOrderUpserted(data.orders[data.orders.length - 1]); 
+            // Let frontend know to refresh its order list if needed
+            socketService.emitOrderUpserted(data.orders[data.orders.length - 1]);
           });
         }
 
         // 3. Update 'since' for the next batch or save it locally
         if (data.hub_time) {
-           since = data.hub_time;
-           configService.updateApplicationCategory('SYSTEM', 'SYNC', { last_catchup_time: since });
+          since = data.hub_time;
+          configService.updateApplicationCategory('SYSTEM', 'SYNC', { last_catchup_time: since });
         }
-        
+
         hasMore = data.hasMore === true;
       }
       this._log(`[LanSync] Catch-Up Sync completed successfully.`);
@@ -300,7 +305,11 @@ class LanSyncService {
   async broadcastOrder(orderId) {
     try {
       const syncConfig = configService.getSyncConfig();
-      
+
+      if (syncConfig.lan_sync_enabled === false) {
+        return;
+      }
+
       // Only Terminals broadcast to the Hub
       if (syncConfig.device_role !== 'TERMINAL') {
         return;
@@ -321,7 +330,7 @@ class LanSyncService {
 
       fetch(url, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'x-device-secret': LAN_SHARED_SECRET,
           'x-terminal-id': syncConfig.device_id || 'unknown'
@@ -329,31 +338,31 @@ class LanSyncService {
         body: JSON.stringify(order),
         signal: controller.signal
       })
-      .then(async res => {
-        if (!res.ok) {
-          const body = await res.text().catch(() => '');
-          this._log(`[LanSync] Hub rejected broadcast for order ${order.order_number}: HTTP ${res.status} — ${body}`, 'warn');
-        } else {
-          const json = await res.json();
-          if (json.final_order_number && json.final_order_number !== order.order_number) {
-            dbEngine.prepare(`UPDATE orders SET order_number = ? WHERE id = ?`).run(json.final_order_number, order.id);
-            this._log(`[LanSync] Successfully broadcasted order to Hub. Reassigned TEMP order ${order.order_number} to ${json.final_order_number}`);
+        .then(async res => {
+          if (!res.ok) {
+            const body = await res.text().catch(() => '');
+            this._log(`[LanSync] Hub rejected broadcast for order ${order.order_number}: HTTP ${res.status} — ${body}`, 'warn');
           } else {
-            this._log(`[LanSync] Successfully broadcasted order ${order.order_number} to Hub`);
+            const json = await res.json();
+            if (json.final_order_number && json.final_order_number !== order.order_number) {
+              dbEngine.prepare(`UPDATE orders SET order_number = ? WHERE id = ?`).run(json.final_order_number, order.id);
+              this._log(`[LanSync] Successfully broadcasted order to Hub. Reassigned TEMP order ${order.order_number} to ${json.final_order_number}`);
+            } else {
+              this._log(`[LanSync] Successfully broadcasted order ${order.order_number} to Hub`);
+            }
+            dbEngine.prepare(`UPDATE orders SET synced_to_hub = 1 WHERE id = ?`).run(order.id);
           }
-          dbEngine.prepare(`UPDATE orders SET synced_to_hub = 1 WHERE id = ?`).run(order.id);
-        }
-      })
-      .catch(err => {
-        if (err.name === 'AbortError') {
-          this._log(`[LanSync] Broadcast for order ${order.order_number} timed out. Hub might be offline.`, 'warn');
-        } else {
-          this._log(`[LanSync] Broadcast for order ${order.order_number} failed: ${err.message}`, 'warn');
-        }
-      })
-      .finally(() => {
-        clearTimeout(timeoutId);
-      });
+        })
+        .catch(err => {
+          if (err.name === 'AbortError') {
+            this._log(`[LanSync] Broadcast for order ${order.order_number} timed out. Hub might be offline.`, 'warn');
+          } else {
+            this._log(`[LanSync] Broadcast for order ${order.order_number} failed: ${err.message}`, 'warn');
+          }
+        })
+        .finally(() => {
+          clearTimeout(timeoutId);
+        });
 
     } catch (err) {
       this._log(`[LanSync] Error preparing order broadcast: ${err.message}`, 'error');

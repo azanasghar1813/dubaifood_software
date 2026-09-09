@@ -46,6 +46,8 @@ export interface SyncConfig {
   lease_low_water_mark?: number;
   lease_refill_batch?: number;
   device_secret?: string;
+  lan_sync_enabled?: boolean;
+  cloud_sync_enabled?: boolean;
 }
 
 export const configApi = {
