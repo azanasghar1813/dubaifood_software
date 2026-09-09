@@ -22,10 +22,16 @@ import shiftRoutes from './shiftRoutes.js';
 import tableRoutes from './tableRoutes.js';
 import backupRoutes from './backupRoutes.js';
 import syncRoutes from './syncRoutes.js';
+import lanHubRouter from './lanHubRouter.js';
+import lanCatalogRouter from './lanCatalogRouter.js';
+import lanRoutes from './lanRoutes.js';
 
 const router = Router();
 
 // Mount all routes here
+router.use('/internal', lanHubRouter);
+router.use('/internal/lan-catalog', lanCatalogRouter);
+router.use('/lan', lanRoutes);
 router.use('/health', healthRoutes);
 router.use('/tables', tableRoutes);
 router.use('/auth', authRoutes);

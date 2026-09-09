@@ -21,6 +21,7 @@ const Reports = lazy(() => import('./pages/Reports.tsx'))
 const CashierManagement = lazy(() => import('./pages/CashierManagement.tsx'))
 const Settings = lazy(() => import('./pages/Settings.tsx'))
 const Synchronization = lazy(() => import('./pages/Synchronization.tsx'))
+const LanSync = lazy(() => import('./pages/LanSync.tsx'))
 const NotificationCenter = lazy(() => import('./pages/NotificationCenter.tsx'))
 const ReceiptPreview = lazy(() => import('./pages/ReceiptPreview.tsx'))
 const KDS = lazy(() => import('./pages/KDS.tsx').then(m => ({ default: m.KDS })))
@@ -70,6 +71,7 @@ const router = createBrowserRouter([
           { path: "/cashier", element: <SuspenseWrapper><CashierManagement /></SuspenseWrapper> },
           { path: "/settings", element: <SuspenseWrapper><Settings /></SuspenseWrapper> },
           { path: "/sync", element: <SuspenseWrapper><Synchronization /></SuspenseWrapper> },
+          { path: "/lan-sync", element: <SuspenseWrapper><LanSync /></SuspenseWrapper> },
           { path: "/notifications", element: <SuspenseWrapper><NotificationCenter /></SuspenseWrapper> },
           { path: "/receipt", element: <SuspenseWrapper><ReceiptPreview /></SuspenseWrapper> },
           { path: "/tables", element: <SuspenseWrapper><TablesManagement /></SuspenseWrapper> },

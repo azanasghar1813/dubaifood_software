@@ -2,7 +2,7 @@ import { configService } from '../services/configService.js';
 import { z } from 'zod';
 import { zodFirstMessage } from '../utils/zodErrors.js';
 
-const kvSchema = z.record(z.string(), z.string());
+const kvSchema = z.record(z.string(), z.coerce.string());
 
 const printerSchema = z.object({
   name: z.string().min(1),

@@ -92,7 +92,7 @@ class OrderRepository {
       // CRITICAL FIX: Automatically bump sync_version on every local mutation
       // so the cloud sees this as a newer payload and conflict resolution works correctly.
       if (!params.sync_version) {
-        fields.push('sync_version = sync_version + 1');
+        fields.push('sync_version = COALESCE(sync_version, 0) + 1');
       }
       if (!params.payload_version) {
         try {

@@ -37,6 +37,17 @@ export interface Printer {
   isActive: boolean;
 }
 
+export interface SyncConfig {
+  device_role?: string;
+  hub_ip?: string;
+  hub_port?: number;
+  hub_timeout_ms?: number;
+  lease_block_size?: number;
+  lease_low_water_mark?: number;
+  lease_refill_batch?: number;
+  device_secret?: string;
+}
+
 export const configApi = {
   // Fetch all config (Business profile, Finance, Printers, etc.)
   getAllConfig: async () => {
@@ -77,5 +88,10 @@ export const configApi = {
   // Update order config
   updateOrderConfig: async (data: OrderConfig) => {
     return apiClient.put('/config/business/order', data)
+  },
+
+  // Update sync config
+  updateSyncConfig: async (data: SyncConfig) => {
+    return apiClient.put('/config/application/SYNC', data)
   }
 }

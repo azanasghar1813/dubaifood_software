@@ -15,14 +15,14 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
   const settings = useSettingsStore()
 
   // â”€â”€ data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const orderNumber  = formatReceiptOrderNumber(order?.orderNumber || order?.id)
-  const orderType    = order?.orderType    ?? "Dine In"
-  const tableNumber  = order?.tableNumber  ?? null
-  const cashier      = order?.cashierName  ?? "Cashier"
+  const orderNumber = formatReceiptOrderNumber(order?.orderNumber || order?.id)
+  const orderType = order?.orderType ?? "Dine In"
+  const tableNumber = order?.tableNumber ?? null
+  const cashier = order?.cashierName ?? "Cashier"
   const customerName = order?.customerName || 'Guest'
   const customerPhone = order?.customerPhone ?? null
   const customerAddress = order?.customerAddress ?? null
-  const isVip        = !!(
+  const isVip = !!(
     (order as any)?.customer?.is_vip ||
     (order as any)?.customer?.isVip ||
     (order as any)?.isVip ||
@@ -33,18 +33,18 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
   )
   const receiptAddress = (settings.address || 'Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)').replace(/\n/g, '<br>')
   const receiptPhone = settings.phoneNumber || '0308-8020784, 0345-6420784'
-  const notes        = order?.notes        ?? null
+  const notes = order?.notes ?? null
   const paymentStatus = order?.paymentStatus ?? "Unpaid"
   const paymentMethod = (order as any)?.paymentMethod || (order as any)?.payments?.[0]?.method || null
-  const timestamp    = order ? new Date(order.timestamp) : new Date()
-  const dateStr      = timestamp.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-  const timeStr      = timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  const items        = order?.items ?? [] as any[]
-  const subtotal     = order?.subtotal  ?? 0
+  const timestamp = order ? new Date(order.timestamp) : new Date()
+  const dateStr = timestamp.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  const timeStr = timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const items = order?.items ?? [] as any[]
+  const subtotal = order?.subtotal ?? 0
   const serviceCharge = Number(order?.serviceCharge ?? (order as any)?.service_charge ?? 0) || 0
   const deliveryCharge = order?.deliveryCharge ?? 0
-  const discount     = order?.discount  ?? 0
-  const total        = order?.total     ?? 0
+  const discount = order?.discount ?? 0
+  const total = order?.total ?? 0
 
   const isDelivery = String(orderType).toLowerCase().includes('delivery')
   const isDineIn = String(orderType).toLowerCase().includes('dine')
@@ -57,7 +57,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
         const modTotal = item.selectedModifiers.reduce((s: number, m: any) => s + (m.price || 0), 0)
         itemTotal = (item.price + modTotal) * item.quantity
       }
-      
+
       const isDeal = item.category?.toLowerCase().includes('deal') || (item.name || '').toLowerCase().includes('deal')
       const itemNameClass = isDeal ? `font-weight:900;` : `font-weight:500;`
 
@@ -136,7 +136,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     <!-- Order Details -->
     <div style="font-size:11px;display:flex;flex-direction:column;gap:3px;margin-bottom:12px">
       <div style="font-size:15px;font-weight:900;line-height:1.2;">${orderNumber}</div>
-      <div style="display:flex"><span style="margin-right:4px;font-weight:900;">Customer:</span><span>${customerName}${customerPhone ? ' - <b style="font-size:14px">'+customerPhone+'</b>' : ''}${customerAddress ? ' - '+customerAddress : ''}</span></div>
+      <div style="display:flex"><span style="margin-right:4px;font-weight:900;">Customer:</span><span>${customerName}${customerPhone ? ' - <b style="font-size:14px">' + customerPhone + '</b>' : ''}${customerAddress ? ' - ' + customerAddress : ''}</span></div>
       ${isDineIn && tableNumber && tableNumber !== 'N/A' ? `<div><span style="margin-right:4px;font-weight:900;">Table No:</span>${tableNumber}</div>` : ''}
       <div><span style="margin-right:4px;font-weight:900;">Order Type:</span>${orderType}</div>
       <div><span style="margin-right:4px;font-weight:900;">Cashier:</span>${cashier}</div>
@@ -166,6 +166,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
         <img src="/receipt_qr.jpg" style="width:160px;height:160px;object-fit:contain" onerror="this.style.display='none'" />
       </div>
       <div style="font-size:12px;font-weight:800;margin-top:2px;">Scan to Pay</div>
+      <div style="font-size:11px;font-weight:600;margin-top:8px;">Powered By : corevex.tech (-_-)</div>
     </div>
   </div>
 </body>
@@ -195,19 +196,19 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     <div className="bg-white text-black font-sans p-4 rounded-lg w-full max-w-sm mx-auto shadow-sm" style={{ width: '320px' }}>
       {/* Header */}
       <div className="flex flex-col items-center justify-center mb-6">
-        <img src="/receipt_logo.png" className="w-[140px] object-contain mb-2" onError={(e: any) => e.target.style.display='none'} />
+        <img src="/receipt_logo.png" className="w-[140px] object-contain mb-2" onError={(e: any) => e.target.style.display = 'none'} />
         <div className="text-[9.5px] text-center mt-1 font-semibold leading-[1.35] w-full whitespace-pre-line">
           {settings.address || 'Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)'}
           {'\n'}Contact: <span className="font-black">{settings.phoneNumber || '0308-8020784, 0345-6420784'}</span>
         </div>
       </div>
-      
+
       {/* Order Details */}
       <div className="text-[11px] flex flex-col gap-0.5 text-black mb-4">
         <div className="text-[15px] font-black leading-tight">{orderNumber}</div>
         <div className="flex gap-1">
-             <span className="shrink-0 font-black">Customer:</span>
-             <span className="break-words">{customerName}{customerPhone ? <> - <span className="font-black text-[14px]">{customerPhone}</span></> : ''}{customerAddress ? ' - '+customerAddress : ''}</span>
+          <span className="shrink-0 font-black">Customer:</span>
+          <span className="break-words">{customerName}{customerPhone ? <> - <span className="font-black text-[14px]">{customerPhone}</span></> : ''}{customerAddress ? ' - ' + customerAddress : ''}</span>
         </div>
         {isDineIn && tableNumber && tableNumber !== 'N/A' && (
           <div><span className="mr-1 font-black">Table No:</span>{tableNumber}</div>
@@ -244,27 +245,27 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
             }
             const isDeal = item.category?.toLowerCase().includes('deal') || (item.name || '').toLowerCase().includes('deal')
             return (
-            <tr key={idx} className="border-b-2 border-black last:border-b-0">
-              <td className={`text-center py-1 px-1 border-r-2 border-black uppercase ${isDeal ? 'font-black' : 'font-medium'}`}>
-                {item.name}
-                {itemVariantName(item) ? (
-                  <div className="text-[10px] font-normal">({itemVariantName(item)})</div>
-                ) : null}
-                {item.selectedModifiers?.map((m: any) => (
-                  <div key={m.name} className="text-[10px] font-normal">+ {m.name || m.modifier_name_snapshot}</div>
-                ))}
-                {(item as any).combo_components?.map((c: any, cidx: number) => (
-                  <div key={cidx} className="text-[10px] font-normal">- {c.quantity > 1 ? `${c.quantity}x ` : ''}{c.product_name_snapshot} {c.variant_snapshot && `(${c.variant_snapshot})`}</div>
-                ))}
-                {item.notes && (
-                  <div className="text-[10px] font-bold">Note: {item.notes}</div>
-                )}
-              </td>
-              <td className="text-center py-1 px-1 border-r-2 border-black font-medium text-xs align-middle">{item.quantity}</td>
-              <td className="text-center py-1 px-1 font-medium whitespace-nowrap align-middle">
-                Rs {itemTotal.toFixed(2)}
-              </td>
-            </tr>
+              <tr key={idx} className="border-b-2 border-black last:border-b-0">
+                <td className={`text-center py-1 px-1 border-r-2 border-black uppercase ${isDeal ? 'font-black' : 'font-medium'}`}>
+                  {item.name}
+                  {itemVariantName(item) ? (
+                    <div className="text-[10px] font-normal">({itemVariantName(item)})</div>
+                  ) : null}
+                  {item.selectedModifiers?.map((m: any) => (
+                    <div key={m.name} className="text-[10px] font-normal">+ {m.name || m.modifier_name_snapshot}</div>
+                  ))}
+                  {(item as any).combo_components?.map((c: any, cidx: number) => (
+                    <div key={cidx} className="text-[10px] font-normal">- {c.quantity > 1 ? `${c.quantity}x ` : ''}{c.product_name_snapshot} {c.variant_snapshot && `(${c.variant_snapshot})`}</div>
+                  ))}
+                  {item.notes && (
+                    <div className="text-[10px] font-bold">Note: {item.notes}</div>
+                  )}
+                </td>
+                <td className="text-center py-1 px-1 border-r-2 border-black font-medium text-xs align-middle">{item.quantity}</td>
+                <td className="text-center py-1 px-1 font-medium whitespace-nowrap align-middle">
+                  Rs {itemTotal.toFixed(2)}
+                </td>
+              </tr>
             )
           })}
         </tbody>
@@ -306,9 +307,10 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
 
       {/* Footer */}
       <div className="text-center mt-2 text-[11px] font-semibold flex flex-col items-center gap-1 mb-4">
-        <p>Thank you for your order!<br/>Please visit again.</p>
-        <img src="/receipt_qr.jpg" className="w-32 h-32 object-contain mt-4" onError={(e: any) => e.target.style.display='none'} />
+        <p>Thank you for your order!<br />Please visit again.</p>
+        <img src="/receipt_qr.jpg" className="w-32 h-32 object-contain mt-4" onError={(e: any) => e.target.style.display = 'none'} />
         <div className="text-[12px] font-black mt-1">Scan to Pay</div>
+        <div className="text-[11px] font-semibold mt-2">Powered By : corevex.tech</div>
       </div>
     </div>
   )

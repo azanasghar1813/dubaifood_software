@@ -20,6 +20,7 @@ import { printService } from './printService.js';
 import { OrderLifecycleState, PaymentState, KitchenState } from '../constants/orderStates.js';
 import { releaseTableIfIdle } from '../controllers/tableController.js';
 import { orderTotalsService } from './orderTotalsService.js';
+import { lanSyncService } from './lanSyncService.js';
 import crypto from 'crypto';
 
 /**
@@ -289,6 +290,9 @@ class PaymentService {
 
     // ── 4. Re-hydrate and return complete result ───────────────────────────
     const finalOrder = this._hydrateOrder(orderId);
+    
+    // Broadcast order state to Hub
+    lanSyncService.broadcastOrder(orderId);
 
     // ── 5. Emit print events (OUTSIDE transaction — never blocks checkout) ─
     // The Print Engine is completely independent. If it fails, the order is

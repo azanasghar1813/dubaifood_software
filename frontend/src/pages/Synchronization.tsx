@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { 
-  RefreshCw, AlertTriangle, History, Trash2, Plus, MonitorSmartphone, Wifi, Database, Clock
+  RefreshCw, AlertTriangle, History, Trash2, Plus, MonitorSmartphone, Wifi, Database, Clock, Server, Save
 } from "lucide-react"
 import { syncApi, type SyncStatus, type ActiveDevice, type SyncQueueItem } from "../api/syncApi"
 import { toast } from "../store/toastStore"
@@ -202,11 +202,11 @@ export default function Synchronization() {
         <div className="absolute top-0 left-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 -translate-x-1/2 pointer-events-none" />
         <div className="relative z-10">
           <h1 className="text-xl md:text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
-            Synchronization Command Center
-            <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">Offline-First</span>
+            Cloud Backup / Synchronization
+            <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">Beta</span>
           </h1>
           <p className="text-xs text-muted-foreground font-bold mt-1">
-            Manage multi-terminal LAN database mesh, offline caching queue, and secure Cloud backup syncing.
+            Manage your offline data syncing with the Cloud.
           </p>
           {status.deviceId && (
             <div className="flex items-center gap-2 mt-2">

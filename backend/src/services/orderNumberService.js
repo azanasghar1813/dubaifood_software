@@ -3,12 +3,15 @@ import { configService } from './configService.js';
 import crypto from 'crypto';
 import { buildReceiptOrderNumber, parseTicketSeq, SHARED_TICKET_PREFIX } from '../utils/receiptOrderNumber.js';
 import { dateUtils } from '../utils/dateUtils.js';
-import config from '../config/index.js';
-import { getSyncCloudClient } from '../sync/syncCloudClient.js';
+import { LAN_SHARED_SECRET } from '../config/lanSecret.js';
 
 class OrderNumberService {
   _dateKey(resetDaily, businessDate) {
     return resetDaily ? businessDate : 'GLOBAL';
+  }
+
+  resolveDateKey(businessDate) {
+    return this._dateKey(this._resetDaily(), businessDate || dateUtils.getBusinessDate());
   }
 
   _resetDaily() {
@@ -25,7 +28,7 @@ class OrderNumberService {
     try {
       const rows = dbEngine.prepare(`
         SELECT last_sequence FROM order_number_sequences
-        WHERE branch_id = ? AND business_date = ?
+        WHERE branch_id = ? AND date_key = ?
       `).all(branchId, dateKey);
       for (const row of rows) max = Math.max(max, Number(row.last_sequence) || 0);
     } catch { /* table may not exist */ }
@@ -40,30 +43,21 @@ class OrderNumberService {
     const prefix = SHARED_TICKET_PREFIX;
     const row = dbEngine.prepare(`
       SELECT last_sequence FROM order_number_sequences
-      WHERE branch_id = ? AND business_date = ? AND prefix = ?
+      WHERE branch_id = ? AND date_key = ? AND prefix = ?
     `).get(branchId, dateKey, prefix);
     if (!row) {
       dbEngine.prepare(`
-        INSERT INTO order_number_sequences (id, branch_id, business_date, prefix, last_sequence)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(crypto.randomUUID(), branchId, dateKey, prefix, seq);
+        INSERT INTO order_number_sequences (branch_id, date_key, prefix, last_sequence)
+        VALUES (?, ?, ?, ?)
+      `).run(branchId, dateKey, prefix, seq);
       return;
     }
     if (Number(row.last_sequence) >= seq) return;
     dbEngine.prepare(`
       UPDATE order_number_sequences
       SET last_sequence = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE branch_id = ? AND business_date = ? AND prefix = ?
+      WHERE branch_id = ? AND date_key = ? AND prefix = ?
     `).run(seq, branchId, dateKey, prefix);
-  }
-
-  absorbPulledNumbers(businessDate = null) {
-    if (!businessDate) businessDate = dateUtils.getBusinessDate();
-    const branchId = 'DEFAULT_BRANCH';
-    const dateKey = this._dateKey(this._resetDaily(), businessDate);
-    const max = this.maxKnownSeq(branchId, businessDate);
-    if (max > 0) this._setLocalSeq(branchId, dateKey, max);
-    return max;
   }
 
   _localNextSeq(branchId, businessDate) {
@@ -74,68 +68,109 @@ class OrderNumberService {
     return dbEngine.transaction(() => {
       let seqRow = dbEngine.prepare(`
         SELECT last_sequence FROM order_number_sequences
-        WHERE branch_id = ? AND business_date = ? AND prefix = ?
+        WHERE branch_id = ? AND date_key = ? AND prefix = ?
       `).get(branchId, dateKey, prefix);
       let nextSeq = Math.max(minKnown, seqRow ? Number(seqRow.last_sequence) : 0) + 1;
       if (seqRow) {
         dbEngine.prepare(`
           UPDATE order_number_sequences
           SET last_sequence = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE branch_id = ? AND business_date = ? AND prefix = ?
+          WHERE branch_id = ? AND date_key = ? AND prefix = ?
         `).run(nextSeq, branchId, dateKey, prefix);
       } else {
         dbEngine.prepare(`
-          INSERT INTO order_number_sequences (id, branch_id, business_date, prefix, last_sequence)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(crypto.randomUUID(), branchId, dateKey, prefix, nextSeq);
+          INSERT INTO order_number_sequences (branch_id, date_key, prefix, last_sequence)
+          VALUES (?, ?, ?, ?)
+        `).run(branchId, dateKey, prefix, nextSeq);
       }
       return nextSeq;
     });
   }
 
-  _syncHeaders() {
-    const terminalId = configService.getSyncConfig()?.device_id || 'POS';
+  _tempNextSeq(deviceId, businessDate) {
+    const dateKey = this._dateKey(this._resetDaily(), businessDate || dateUtils.getBusinessDate());
+    return dbEngine.transaction(() => {
+      const prefix = 'TEMP';
+      const branchId = deviceId;
+      let seqRow = dbEngine.prepare(`
+        SELECT last_sequence FROM order_number_sequences
+        WHERE branch_id = ? AND date_key = ? AND prefix = ?
+      `).get(branchId, dateKey, prefix);
+      let nextSeq = seqRow ? Math.max(2000, Number(seqRow.last_sequence) + 1) : 2000;
+      if (seqRow) {
+        dbEngine.prepare(`
+          UPDATE order_number_sequences
+          SET last_sequence = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE branch_id = ? AND date_key = ? AND prefix = ?
+        `).run(nextSeq, branchId, dateKey, prefix);
+      } else {
+        dbEngine.prepare(`
+          INSERT INTO order_number_sequences (branch_id, date_key, prefix, last_sequence)
+          VALUES (?, ?, ?, ?)
+        `).run(branchId, dateKey, prefix, nextSeq);
+      }
+      return nextSeq;
+    });
+  }
+
+  _allocateBlock(branchId, businessDate, count) {
+    const dateKey = this._dateKey(this._resetDaily(), businessDate);
+    const minKnown = this.maxKnownSeq(branchId, businessDate);
+    const prefix = SHARED_TICKET_PREFIX;
+    return dbEngine.transaction(() => {
+      let seqRow = dbEngine.prepare(`
+        SELECT last_sequence FROM order_number_sequences
+        WHERE branch_id = ? AND date_key = ? AND prefix = ?
+      `).get(branchId, dateKey, prefix);
+      let currentMax = Math.max(minKnown, seqRow ? Number(seqRow.last_sequence) : 0);
+      let rangeStart = currentMax + 1;
+      let rangeEnd = currentMax + count;
+      if (seqRow) {
+        dbEngine.prepare(`
+          UPDATE order_number_sequences
+          SET last_sequence = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE branch_id = ? AND date_key = ? AND prefix = ?
+        `).run(rangeEnd, branchId, dateKey, prefix);
+      } else {
+        dbEngine.prepare(`
+          INSERT INTO order_number_sequences (branch_id, date_key, prefix, last_sequence)
+          VALUES (?, ?, ?, ?)
+        `).run(branchId, dateKey, prefix, rangeEnd);
+      }
+      return { rangeStart, rangeEnd };
+    });
+  }
+
+  _hubHeaders(config) {
+    if (!config) config = configService.getSyncConfig();
     return {
       'Content-Type': 'application/json',
-      'x-device-secret': config.sync.deviceSecret,
-      'x-terminal-id': terminalId
+      'x-device-secret': LAN_SHARED_SECRET,
+      'x-terminal-id': config.device_id || 'POS'
     };
   }
 
-  async _cloudAllocate(branchId, businessDate, minSequence) {
-    if (process.env.NODE_ENV === 'test' || !config.sync?.apiUrl) return null;
-    try {
-      const result = await getSyncCloudClient(config).request('/sync/allocate-number', {
-        method: 'POST',
-        headers: this._syncHeaders(),
-        body: JSON.stringify({
-          branch_id: branchId,
-          business_date: businessDate,
-          min_sequence: minSequence
-        })
-      }, { mode: 'fast', timeoutMs: 1500 });
-      const body = result.json || {};
-      const seq = Number(body?.data?.sequence ?? body?.sequence);
-      return Number.isFinite(seq) && seq > 0 ? seq : null;
-    } catch {
-      return null;
-    }
+  _getHubBaseUrl() {
+    const config = configService.getSyncConfig();
+    if (!config.hub_ip) throw new Error('HUB IP not configured');
+    return `http://${config.hub_ip}:${config.hub_port || 5000}/api/v1/internal`;
   }
 
-  async _cloudPeek(branchId, businessDate, minSequence) {
-    if (process.env.NODE_ENV === 'test' || !config.sync?.apiUrl) return null;
+  async _hubAllocate(branchId, businessDate, minSequence) {
+    const config = configService.getSyncConfig();
+    if (config.device_role !== 'TERMINAL') return null;
     try {
-      const qs = new URLSearchParams({
-        branch_id: branchId,
-        business_date: businessDate,
-        min_sequence: String(minSequence || 0)
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), config.hub_timeout_ms || 400);
+      const res = await fetch(`${this._getHubBaseUrl()}/allocate-number`, {
+        method: 'POST',
+        headers: this._hubHeaders(config),
+        body: JSON.stringify({ branch_id: branchId, business_date: businessDate, min_sequence: minSequence }),
+        signal: controller.signal
       });
-      const result = await getSyncCloudClient(config).request(`/sync/peek-number?${qs}`, {
-        headers: this._syncHeaders()
-      }, { mode: 'fast', timeoutMs: 1200 });
-      const body = result.json || {};
-      const seq = Number(body?.data?.next_sequence ?? body?.next_sequence);
-      return Number.isFinite(seq) && seq > 0 ? seq : null;
+      clearTimeout(timeout);
+      const json = await res.json();
+      return json.success && json.order_number ? json.order_number : null;
     } catch {
       return null;
     }
@@ -158,25 +193,27 @@ class OrderNumberService {
     return orderNumber;
   }
 
-  /**
-   * Shared ticket number. Cloud counter when online; local fallback when offline.
-   */
   async allocateNextNumber(branchId = 'DEFAULT_BRANCH', businessDate = null) {
     if (!businessDate) businessDate = dateUtils.getBusinessDate();
-    const minKnown = this.maxKnownSeq(branchId, businessDate);
-    const cloudSeq = await this._cloudAllocate(branchId, businessDate, minKnown);
-    const dateKey = this._dateKey(this._resetDaily(), businessDate);
-    let seq;
-    if (cloudSeq) {
-      seq = cloudSeq;
-      this._setLocalSeq(branchId, dateKey, seq);
-    } else {
-      seq = this._localNextSeq(branchId, businessDate);
+    const config = configService.getSyncConfig();
+
+    if (config.device_role === 'HUB') {
+      const seq = this._localNextSeq(branchId, businessDate);
+      return this._takeUnused(branchId, businessDate, seq);
     }
-    return this._takeUnused(branchId, businessDate, seq);
+
+    // TERMINAL: ask the Hub live over LAN first
+    const minKnown = this.maxKnownSeq(branchId, businessDate);
+    const hubOrderNumber = await this._hubAllocate(branchId, businessDate, minKnown);
+    if (hubOrderNumber) return hubOrderNumber;
+
+    // Hub unreachable: local TEMP number, will be reassigned by Hub on sync
+    const seq = this._tempNextSeq(config.device_id || 'POS', businessDate);
+    return this._format(seq, businessDate);
   }
 
   generateNextNumber(branchId = 'DEFAULT_BRANCH', businessDate = null) {
+    // Hub-only / synchronous path — used by the LAN sync route when reassigning a TEMP number
     if (!businessDate) businessDate = dateUtils.getBusinessDate();
     const seq = this._localNextSeq(branchId, businessDate);
     return this._takeUnused(branchId, businessDate, seq);
@@ -184,16 +221,29 @@ class OrderNumberService {
 
   async peekNextNumber(branchId = 'DEFAULT_BRANCH', businessDate = null) {
     if (!businessDate) businessDate = dateUtils.getBusinessDate();
-    const minKnown = this.maxKnownSeq(branchId, businessDate);
-    const cloudNext = await this._cloudPeek(branchId, businessDate, minKnown);
-    const nextSeq = Math.max(minKnown + 1, cloudNext || 0);
-    return this._format(nextSeq, businessDate);
+    const config = configService.getSyncConfig();
+    if (config.device_role === 'HUB') {
+      return this._format(this.maxKnownSeq(branchId, businessDate) + 1, businessDate);
+    }
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), config.hub_timeout_ms || 400);
+      const res = await fetch(`${this._getHubBaseUrl()}/allocate-number`, {
+        method: 'POST',
+        headers: this._hubHeaders(config),
+        body: JSON.stringify({ branch_id: branchId, business_date: businessDate, peek: true }),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      const json = await res.json();
+      if (json.success && json.order_number) return json.order_number;
+    } catch { /* fall through */ }
+    return this._format(this.maxKnownSeq(branchId, businessDate) + 1, businessDate);
   }
 
   peekNextNumberSync(branchId = 'DEFAULT_BRANCH', businessDate = null) {
     if (!businessDate) businessDate = dateUtils.getBusinessDate();
-    const nextSeq = this.maxKnownSeq(branchId, businessDate) + 1;
-    return this._format(nextSeq, businessDate);
+    return this._format(this.maxKnownSeq(branchId, businessDate) + 1, businessDate);
   }
 }
 

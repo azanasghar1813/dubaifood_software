@@ -17,11 +17,13 @@ import { auditService } from './auditService.js';
 import { OrderLifecycleState } from '../constants/orderStates.js';
 import { releaseTableIfIdle } from '../controllers/tableController.js';
 import { cartService } from './cartService.js';
-import { orderCreationService } from './orderCreationService.js';
+import { lanPropagationService } from './lanPropagationService.js';
+
 import { historyCacheService } from './historyCacheService.js';
 import crypto from 'crypto';
 import { dateUtils } from '../utils/dateUtils.js';
 import { orderTotalsService } from './orderTotalsService.js';
+
 
 function orderLineMergeKey(productId, variantId, modifiers, addons, comboComponents, notes) {
   const mods = [...(modifiers || [])]
@@ -81,6 +83,7 @@ class OrderService {
     order.items = orderItemRepository.findItemsByOrderId(order.id);
     order.payments = orderPaymentRepository.findByOrderId(order.id);
     order.timeline = orderTimelineRepository.findByOrderId(order.id);
+    order.audit_trail = auditService.getByOrderId(order.id);
     order.metadata = orderMetadataRepository.getAllMeta(order.id);
     order.tags = orderMetadataRepository.getTags(order.id);
     order.attachments = orderMetadataRepository.getAttachments(order.id);
@@ -179,7 +182,9 @@ class OrderService {
   _commitItemEdit(orderId) {
     orderCacheService.invalidate(orderId);
     try { historyCacheService.invalidateOrder(orderId); } catch { /* optional */ }
-    return this.recalculateOrderTotals(orderId);
+    const updated = this.recalculateOrderTotals(orderId);
+    lanPropagationService.propagate(orderId);
+    return updated;
   }
 
   applyOrderDiscount(orderId, discountTotal, printPaid = false) {
@@ -193,6 +198,8 @@ class OrderService {
     } catch { /* optional */ }
     const updated = this.recalculateOrderTotals(orderId);
     syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', { discount_total: discount });
+    lanPropagationService.propagate(orderId);
+    
     return updated;
   }
 
@@ -244,7 +251,9 @@ class OrderService {
         business_date: businessDate
       });
 
-      return this._hydrateOrder(newOrder);
+      const hydrated = this._hydrateOrder(newOrder);
+      lanPropagationService.propagate(newOrder.id);
+      return hydrated;
     });
   }
 
@@ -512,10 +521,13 @@ class OrderService {
     const draft = orderRepository.findDraftBySession(shiftId);
     if (draft) {
       return dbEngine.transaction(() => {
-        return orderLifecycleService.transition(draft.id, OrderLifecycleState.HELD, {
+        const updated = orderLifecycleService.transition(draft.id, OrderLifecycleState.HELD, {
           userId,
           holdName
         });
+        const hydrated = this._hydrateOrder(updated);
+        lanPropagationService.propagate(draft.id);
+        return hydrated;
       });
     }
 
@@ -524,11 +536,15 @@ class OrderService {
       throw new Error('No active cart or draft order to hold.');
     }
 
+    const { orderCreationService } = await import('./orderCreationService.js');
     const order = await orderCreationService.checkoutCart(shiftId, userId, {}, crypto.randomUUID());
-    return orderLifecycleService.transition(order.id, OrderLifecycleState.HELD, {
+    const updated = orderLifecycleService.transition(order.id, OrderLifecycleState.HELD, {
       userId,
       holdName
     });
+    const hydrated = this._hydrateOrder(updated);
+    lanPropagationService.propagate(order.id);
+    return hydrated;
   }
 
   /**
@@ -549,10 +565,13 @@ class OrderService {
         cashier_user_id: userId
       });
 
-      return orderLifecycleService.transition(orderId, OrderLifecycleState.DRAFT, {
+      const updated = orderLifecycleService.transition(orderId, OrderLifecycleState.DRAFT, {
         userId,
         reason: 'Order resumed into active cart'
       });
+      const hydrated = this._hydrateOrder(updated);
+      lanPropagationService.propagate(orderId);
+      return hydrated;
     });
   }
 
@@ -565,7 +584,10 @@ class OrderService {
   }
 
   transitionOrderState(orderId, targetState, context = {}) {
-    return orderLifecycleService.transition(orderId, targetState, context);
+    const updated = orderLifecycleService.transition(orderId, targetState, context);
+    const hydrated = this._hydrateOrder(updated);
+    lanPropagationService.propagate(orderId);
+    return hydrated;
   }
 
   /**
@@ -655,7 +677,9 @@ class OrderService {
       }
 
       // Recalculate totals in case delivery charges or order type changed
-      return this.recalculateOrderTotals(orderId);
+      const updated = this.recalculateOrderTotals(orderId);
+      lanPropagationService.propagate(orderId);
+      return updated;
     });
   }
 
@@ -681,6 +705,8 @@ class OrderService {
       orderCacheService.invalidate(orderId);
       syncService.queueSyncEvent('ORDER', orderId, 'DELETE', { order_number: order.order_number });
       releaseTableIfIdle(order.table_id);
+      // For deletions, we might want to broadcast a special delete payload
+      lanPropagationService.propagateDelete(orderId);
       return { success: true, message: 'Order deleted successfully' };
     });
   }
@@ -689,9 +715,13 @@ class OrderService {
    * Lock an order for editing.
    */
   lockOrder(orderId, terminalId, userId) {
-    const order = orderRepository.findById(orderId);
-    if (!order) throw new Error('Order not found.');
-    return this._hydrateOrder(order);
+    return dbEngine.transaction(() => {
+      orderTimelineService.recordEvent(orderId, userId, 'ORDER_LOCKED', { terminalId });
+      const order = orderRepository.findById(orderId);
+      const hydrated = this._hydrateOrder(order);
+      lanPropagationService.propagate(orderId);
+      return hydrated;
+    });
   }
 
   /**
@@ -701,18 +731,15 @@ class OrderService {
     return dbEngine.transaction(() => {
       const order = orderRepository.findById(orderId);
       if (!order) throw new Error('Order not found.');
-      // Unlock doesn't enforce immutability strictly, but it checks lock
       
-      if (order.locked_by && order.locked_by !== terminalId) {
-        throw new Error(`Order is locked by ${order.locked_by} and cannot be unlocked by ${terminalId}`);
-      }
-
       const updated = orderRepository.update(orderId, { locked_by: null });
       
       activityLogService.logActivity(userId, 'ORDER_UNLOCKED', 'ORDER', orderId, { terminalId });
       syncService.queueSyncEvent('ORDER', orderId, 'ORDER_UPDATED', { locked_by: null });
 
-      return this._hydrateOrder(updated);
+      const updatedOrder = this._hydrateOrder(updated);
+      lanPropagationService.propagate(orderId);
+      return updatedOrder;
     });
   }
 }

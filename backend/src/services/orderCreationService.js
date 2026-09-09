@@ -11,6 +11,7 @@ import { orderTimelineService } from './orderTimelineService.js';
 import { orderCacheService } from './orderCacheService.js';
 import { activityLogService } from './activityLogService.js';
 import { syncService } from './syncService.js';
+import { lanPropagationService } from './lanPropagationService.js';
 import { configService } from './configService.js';
 import { userRepository } from '../repositories/userRepository.js';
 import { productRepository } from '../repositories/productRepository.js';
@@ -209,7 +210,7 @@ class OrderCreationService {
     preallocatedNumber = await orderNumberService.allocateNextNumber(branchId, requestedBusinessDate);
 
     // 3. Atomic SQLite transaction: create all order records
-    const { orderId, orderNumber } = dbEngine.transaction(() => {
+    const result = dbEngine.transaction(() => {
       if (idempotencyKey) {
         const existingOrder = dbEngine.prepare('SELECT id, order_number FROM orders WHERE idempotency_key = ?').get(idempotencyKey);
         if (existingOrder) {
@@ -457,15 +458,21 @@ class OrderCreationService {
       // Invalidate kitchen queue cache so KDS sees the new order immediately
       kitchenQueueService.invalidate(newOrderId);
 
-      return { orderId: newOrderId, orderNumber: newOrderNumber };
+      return { orderId: newOrderId, orderNumber: newOrderNumber, alreadyExisted: false };
     });
 
     // 4. Destroy working cart AFTER successful transaction commit
     //    (if transaction throws, the cart is preserved for retry)
-    cartService.destroyCart(sessionId);
+    if (!result.alreadyExisted) {
+      cartService.destroyCart(sessionId);
+    }
 
     // 5. Hydrate and return full order graph
-    return this._hydrateOrder(orderId);
+    const hydrated = this._hydrateOrder(result.orderId);
+    if (!result.alreadyExisted) {
+      lanPropagationService.propagate(result.orderId);
+    }
+    return hydrated;
   }
 
   _existingId(table, id) {

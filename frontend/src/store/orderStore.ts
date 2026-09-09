@@ -93,6 +93,7 @@ interface OrderState {
   orderCounter: number
   isSyncingFromBackend: boolean
   addOrder: (order: Order) => void
+  upsertOrder: (order: Order) => void
   updateOrder: (id: string, updates: Partial<Order>) => void
   addAuditLog: (orderId: string, log: Omit<AuditLogEntry, 'id' | 'when'>) => void
   addTimelineEvent: (orderId: string, event: Omit<TimelineEvent, 'timestamp'>) => void
@@ -304,6 +305,19 @@ export const useOrderStore = create<OrderState>((set, get) => ({
     orders: [order, ...state.orders],
     orderCounter: state.orderCounter + 1
   })),
+
+  upsertOrder: (order) => set((state) => {
+    const exists = state.orders.some(o => o.id === order.id);
+    if (exists) {
+      return {
+        orders: state.orders.map(o => o.id === order.id ? order : o)
+      };
+    } else {
+      return {
+        orders: [order, ...state.orders]
+      };
+    }
+  }),
 
   updateOrder: (id, updates) => set((state) => ({
     orders: state.orders.map(order =>

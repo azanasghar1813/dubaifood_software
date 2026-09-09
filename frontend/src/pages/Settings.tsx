@@ -7,7 +7,7 @@ import { useAuthStore, hasPermission } from "../store/authStore"
 import { configApi } from "../api/configApi"
 import { apiClient } from "../api/client"
 import { wipeOutHistory } from "../api/historyApi"
-import type { BusinessProfile, FinanceConfig, Printer, OrderConfig } from "../api/configApi"
+import type { BusinessProfile, FinanceConfig, Printer, OrderConfig, SyncConfig } from "../api/configApi"
 
 
 
@@ -32,6 +32,8 @@ export default function Settings() {
   const [orderConfig, setOrderConfig] = useState<OrderConfig>({
     order_number_reset_daily: "true"
   })
+
+
 
   // Printers Data
   const [printers, setPrinters] = useState<Printer[]>([])
@@ -63,6 +65,7 @@ export default function Settings() {
       if (!data) return
       
       if (data?.business?.order) setOrderConfig(data.business.order)
+
       if (data?.printers) setPrinters(data.printers)
       try {
         const health: any = await apiClient.get('/health')
@@ -156,6 +159,7 @@ export default function Settings() {
     try {
       if (activeTab === "Data Management") {
         await configApi.updateOrderConfig(orderConfig)
+
       }
       setIsSaved(true)
       setTimeout(() => setIsSaved(false), 2000)
@@ -237,6 +241,7 @@ export default function Settings() {
 
   const tabsList = [
     { name: "Printers", icon: PrinterIcon },
+
     { name: "Data Management", icon: Trash2 },
     { name: "Software Update", icon: Download }
   ]
@@ -476,6 +481,8 @@ export default function Settings() {
                     </div>
                   </motion.div>
                 )}
+
+
 
                 {/* SOFTWARE UPDATE */}
                 {activeTab === "Software Update" && (

@@ -227,6 +227,10 @@ export default function POS() {
   }
 
   const handleSendKot = async () => {
+    if (usePosStore.getState().cart.length === 0) {
+      alert("This order is currently empty. Please add items before placing it.");
+      return;
+    }
     try {
       const { usePrinterStore } = await import("../store/printerStore")
       const placed = await placeCartOrder()
@@ -270,6 +274,10 @@ export default function POS() {
   }
 
   const handlePrintReceiptFromCart = async () => {
+    if (usePosStore.getState().cart.length === 0) {
+      alert("This order is currently empty. Please add items before placing it.");
+      return;
+    }
     try {
       const placed = await placeCartOrder()
       if (!placed.ok) {
@@ -363,7 +371,10 @@ export default function POS() {
   }
 
   const handleProceedToPay = () => {
-    if (cart.length === 0) return
+    if (usePosStore.getState().cart.length === 0) {
+      alert("This order is currently empty. Please add items before placing it.");
+      return;
+    }
     if (orderType === 'Delivery' && (!customer || !customer.phone)) {
       setCustomerModalOpen(true)
     } else {
@@ -541,6 +552,16 @@ export default function POS() {
       }
     }
     fetchData()
+
+    const handleSyncComplete = () => {
+      console.log('[POS] Catalog sync complete, refetching POS data...')
+      fetchData()
+    }
+
+    window.addEventListener('catalog-sync-complete', handleSyncComplete)
+    return () => {
+      window.removeEventListener('catalog-sync-complete', handleSyncComplete)
+    }
   }, [])
 
   useEffect(() => {

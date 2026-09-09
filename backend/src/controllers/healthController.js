@@ -26,7 +26,10 @@ export const checkHealth = (req, res) => {
     databaseStatus: dbConnected ? 'connected' : 'not connected',
     order_prefix: orderPrefix,
     needs_till_confirm: false,
-    waiter_urls: waiterUrls
+    waiter_urls: waiterUrls,
+    device_role: dbConnected ? configService.getSyncConfig().device_role : 'HUB',
+    hub_ip: dbConnected ? configService.getSyncConfig().hub_ip : null,
+    hub_port: dbConnected ? configService.getSyncConfig().hub_port : null
   };
 
   if (!dbConnected) {

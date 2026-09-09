@@ -14,6 +14,8 @@ import { customerRepository } from '../repositories/customerRepository.js';
 import { paymentReceiptRepository } from '../repositories/paymentReceiptRepository.js';
 import { configService } from './configService.js';
 import { orderService } from './orderService.js';
+import { dbEngine } from '../database/sqlite.js';
+import crypto from 'crypto';
 
 /**
  * PrintService — the public API for all print operations.
@@ -179,6 +181,49 @@ class PrintService {
    */
   async printKitchenTickets(orderId, cashierUserId, options = {}) {
     const order = this._loadOrder(orderId);
+    if (!order) return { job_ids: [], count: 0, status: 'FAILED', message: 'Order not found' };
+    
+    if (order.lifecycle_state === 'COMPLETED' || order.lifecycle_state === 'CANCELLED') {
+      return { job_ids: [], count: 0, status: 'SKIPPED', message: `Order is already ${order.lifecycle_state}` };
+    }
+
+    const syncConfig = configService.getSyncConfig();
+    if (syncConfig.device_role === 'TERMINAL' && syncConfig.hub_ip) {
+      // POST to Hub
+      const url = `http://${syncConfig.hub_ip}:${syncConfig.hub_port || 5000}/api/v1/internal/print/kitchen/${orderId}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), syncConfig.hub_timeout_ms || 400);
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-device-secret': syncConfig.deviceSecret || process.env.DEVICE_SECRET || 'changeme',
+            'x-terminal-id': syncConfig.device_id || 'unknown'
+          },
+          body: JSON.stringify({ cashierUserId, options }),
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        if (!res.ok) {
+          console.warn('[PrintService] Hub rejected kitchen print request:', res.status);
+          throw new Error('Hub rejected print request');
+        } else {
+          const data = await res.json();
+          return { job_ids: data.job_ids || [], count: data.count || 0, status: 'HUB_ENQUEUED' };
+        }
+      } catch (err) {
+        clearTimeout(timeout);
+        console.warn('[PrintService] Failed to forward kitchen print to Hub:', err.message);
+        // Queue it locally to be picked up by the retry worker
+        dbEngine.prepare(`
+          INSERT INTO pending_kitchen_prints (id, order_id, cashier_user_id, options) 
+          VALUES (?, ?, ?, ?)
+        `).run(crypto.randomUUID(), orderId, cashierUserId || '', JSON.stringify(options || {}));
+      }
+      return { job_ids: [], count: 0, status: 'FAILED' };
+    }
+
     const tickets = kitchenTicketGeneratorService.generateTickets(order);
 
     if (tickets.length === 0) {
@@ -301,6 +346,40 @@ class PrintService {
   }
 
   async _enqueueKitchenTicketJobs(order, options) {
+    const syncConfig = configService.getSyncConfig();
+    if (syncConfig.device_role === 'TERMINAL' && syncConfig.hub_ip) {
+      // POST to Hub
+      const url = `http://${syncConfig.hub_ip}:${syncConfig.hub_port || 5000}/api/v1/internal/print/kitchen/${order.id}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), syncConfig.hub_timeout_ms || 400);
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-device-secret': syncConfig.deviceSecret || process.env.DEVICE_SECRET || 'changeme',
+            'x-terminal-id': syncConfig.device_id || 'unknown'
+          },
+          body: JSON.stringify({ cashierUserId: options.cashierUserId, options }),
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        if (!res.ok) {
+          console.warn('[PrintService] Hub rejected kitchen print enqueuing:', res.status);
+          throw new Error('Hub rejected request');
+        }
+      } catch (err) {
+        clearTimeout(timeout);
+        console.warn('[PrintService] Failed to forward kitchen print to Hub:', err.message);
+        // Queue it locally to be picked up by the retry worker
+        dbEngine.prepare(`
+          INSERT INTO pending_kitchen_prints (id, order_id, cashier_user_id, options) 
+          VALUES (?, ?, ?, ?)
+        `).run(crypto.randomUUID(), order.id, options.cashierUserId || '', JSON.stringify(options || {}));
+      }
+      return;
+    }
+
     const tickets = kitchenTicketGeneratorService.generateTickets(order);
     if (!tickets.length) return;
 

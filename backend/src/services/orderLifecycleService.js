@@ -179,6 +179,7 @@ class OrderLifecycleService {
 
       if (targetLifecycleState === OrderLifecycleState.COMPLETED || targetLifecycleState === OrderLifecycleState.CANCELLED) {
         try { releaseTableIfIdle(order.table_id); } catch { /* table release is best-effort */ }
+        try { dbEngine.prepare(`DELETE FROM pending_kitchen_prints WHERE order_id = ?`).run(orderId); } catch { /* best-effort cleanup */ }
       }
 
       // Record Timeline Entry

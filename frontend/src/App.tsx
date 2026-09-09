@@ -4,6 +4,7 @@ import { PrinterManager } from "./components/PrinterManager"
 import { PrintTemplates } from "./components/PrintTemplates"
 import { KeyboardShortcutsModal } from "./components/KeyboardShortcutsModal"
 import { usePrinterStore } from "./store/printerStore"
+import { initSocket } from "./api/socketClient"
 
 const KDS = lazy(() => import("./pages/KDS").then(m => ({ default: m.KDS })))
 
@@ -13,6 +14,8 @@ function App() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
   useEffect(() => {
+    initSocket();
+    
     const handleKeyDown = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
       const typing = t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.tagName === 'SELECT' || !!t?.isContentEditable

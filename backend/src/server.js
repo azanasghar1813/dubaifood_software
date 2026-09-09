@@ -8,7 +8,9 @@ import { menuCacheService } from './services/menuCacheService.js';
 import { printEngineService } from './services/printEngineService.js';
 import { syncWorker } from './sync/syncWorker.js';
 import { backupService } from './backup/backupService.js';
-
+import { socketService } from './services/socketService.js';
+import { lanCatalogSyncService } from './services/lanCatalogSyncService.js';
+import { lanSyncService } from './services/lanSyncService.js';
 process.on('uncaughtException', (err) => {
   console.error('[UNCAUGHT EXCEPTION]', err.name, err.message);
   console.error(err.stack);
@@ -91,10 +93,24 @@ const startServer = async () => {
     const dbInfo = await initDatabase();
 
     configService.initialize();
+
+    try {
+      const testResult = dbEngine.transaction(() => 42);
+      if (testResult !== 42) {
+        throw new Error(`dbEngine.transaction sanity check failed: expected 42, got ${JSON.stringify(testResult)}`);
+      }
+      console.log('[Startup] dbEngine.transaction() sanity check passed.');
+    } catch (e) {
+      console.error('[Startup] FATAL: dbEngine.transaction() is not behaving as expected:', e.message);
+      process.exit(1);
+    }
+
     menuCacheService.initialize();
     printEngineService.start();
     syncWorker.start();
     backupService.startScheduler();
+    lanCatalogSyncService.startAutoSync();
+    lanSyncService.startBackgroundRetries();
 
     // Start periodic WAL maintenance now that the DB connection is live.
     // Cheap no-op checks every 15 min; only does real work if WAL > 64MB.
@@ -105,6 +121,8 @@ const startServer = async () => {
       const startupTimeMs = Date.now() - startTime;
       printStartupSummary(storageResults, dbInfo, startupTimeMs);
     });
+
+    socketService.attach(server);
 
     process.on('unhandledRejection', (err) => {
       console.error('[UNHANDLED REJECTION]', err?.name, err?.message);
@@ -123,6 +141,7 @@ const startServer = async () => {
       console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
       syncWorker.stop();
       printEngineService.stop();
+      lanCatalogSyncService.stopAutoSync();
       dbEngine.close();
 
       server.close(() => {

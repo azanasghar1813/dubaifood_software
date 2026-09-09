@@ -20,7 +20,8 @@ import {
   History,
   Shield,
   Menu,
-  Grid2X2
+  Grid2X2,
+  MonitorSmartphone
 } from "lucide-react"
 
 const menuItems = [
@@ -36,7 +37,8 @@ const menuItems = [
   { path: "/cashier", name: "Cashiers", icon: Wallet, permission: "VIEW_CASHIERS" },
   { path: "/settings", name: "Settings", icon: Building2, permission: "VIEW_SETTINGS" },
   { path: "/backup", name: "Backup", icon: Database, permission: "VIEW_BACKUP" },
-  { path: "/sync", name: "Sync", icon: RefreshCw, permission: "VIEW_SYNC" },
+  { path: "/sync", name: "Cloud Backup", icon: RefreshCw, permission: "VIEW_SYNC" },
+  { path: "/lan-sync", name: "LAN Sync", icon: MonitorSmartphone, permission: "VIEW_SYNC" },
   { path: "/permissions", name: "Users", icon: Shield, permission: "VIEW_USERS" },
   { path: "/activity-logs", name: "Activity Logs", icon: History, permission: "VIEW_ACTIVITY_LOGS" },
 ]

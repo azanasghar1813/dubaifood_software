@@ -29,6 +29,8 @@ export default function TopNavbar() {
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [isServerOnline, setIsServerOnline] = useState(true)
   const [isCheckingServer, setIsCheckingServer] = useState(false)
+  const [deviceRole, setDeviceRole] = useState<string>('HUB')
+  const [isHubOnline, setIsHubOnline] = useState(true)
   const printers = usePrinterStore((state) => state.printers)
   const activePrintersCount = printers.filter(p => p.status === 'Online' || p.current_status === 'ONLINE').length
 
@@ -70,8 +72,28 @@ export default function TopNavbar() {
   const checkServerHealth = async () => {
     setIsCheckingServer(true)
     try {
-      await apiClient.get('/health')
+      const res: any = await apiClient.get('/health')
       setIsServerOnline(true)
+      const role = res?.data?.device_role || res?.device_role || 'HUB'
+      setDeviceRole(role)
+
+      if (role === 'TERMINAL') {
+        const hubIp = res?.data?.hub_ip || res?.hub_ip
+        const hubPort = res?.data?.hub_port || res?.hub_port || 5000
+        if (hubIp) {
+          try {
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 2000)
+            await fetch(`http://${hubIp}:${hubPort}/api/v1/health`, { signal: controller.signal })
+            clearTimeout(timeoutId)
+            setIsHubOnline(true)
+          } catch {
+            setIsHubOnline(false)
+          }
+        }
+      } else {
+        setIsHubOnline(true)
+      }
     } catch (e) {
       setIsServerOnline(false)
     } finally {
@@ -147,7 +169,13 @@ export default function TopNavbar() {
   };
 
   return (
-    <>
+    <div className="flex flex-col z-50">
+      {/* TEMP Ticket Warning Banner */}
+      {deviceRole === 'TERMINAL' && !isHubOnline && (
+        <div className="bg-red-500 text-white text-xs font-bold text-center py-1.5 px-4 shadow-sm relative z-50 animate-pulse">
+          ⚠️ WARNING: Hub Connection Lost. Orders will use TEMP tickets and will NOT appear on Kitchen Displays.
+        </div>
+      )}
       <header 
         className="h-16 bg-card/80 backdrop-blur-md border-b border-border/50 flex items-center justify-between px-4 z-10 sticky top-0 shadow-sm"
         style={{ WebkitAppRegion: 'drag' } as any}
@@ -231,6 +259,21 @@ export default function TopNavbar() {
             >
               <RefreshCw className={`w-4 h-4 ${isServerOnline ? 'text-blue-500' : 'text-red-500'} ${isCheckingServer ? 'animate-spin' : ''}`} />
             </button>
+            <div className="flex items-center" title="LAN Sync Status">
+              {deviceRole === 'HUB' ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                  HUB
+                </span>
+              ) : isServerOnline ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                  LAN OK
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-500/10 text-red-500 border border-red-500/20 animate-pulse">
+                  ISOLATED
+                </span>
+              )}
+            </div>
             <div title={isOnline ? "Internet Connected" : "No Internet Connection"}>
               {isOnline ? (
                 <Wifi className="w-4 h-4 text-emerald-500" />
@@ -409,6 +452,6 @@ export default function TopNavbar() {
           </div>
         )}
       </AnimatePresence>
-    </>
+    </div>
   )
 }

@@ -7,6 +7,7 @@ import { routingService } from './routingService.js';
 import { globalSearchService } from './search/globalSearchService.js';
 import { catalogSearchProvider } from './search/providers/catalogSearchProvider.js';
 import { preferLocalProductImage, invalidateLocalProductImageIndex } from '../utils/localProductImage.js';
+import { socketService } from './socketService.js';
 
 class MenuCacheService {
   constructor() {
@@ -120,6 +121,9 @@ class MenuCacheService {
     }
     // Re-index search engine since cache changed
     globalSearchService.initialize();
+    
+    // 7. Notify Terminals that the catalog has changed (if running as Hub)
+    socketService.emitCatalogUpdated();
   }
 
   /**

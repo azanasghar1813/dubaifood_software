@@ -28,12 +28,7 @@ app.use(globalLimiter);
 // Security Headers
 app.use(helmet({ 
   crossOriginResourcePolicy: false,
-  contentSecurityPolicy: {
-    directives: {
-      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      "upgrade-insecure-requests": null
-    }
-  }
+  contentSecurityPolicy: false   // LAN-only kiosk app — CSP was blocking cross-device fetch/socket calls
 }));
 
 // Cross-Origin Resource Sharing
@@ -50,6 +45,7 @@ app.use(cors({
     'x-cashier-session-id',
     'x-terminal-id',
     'x-device-name',
+    'x-device-secret',
     'x-branch-id',
     'x-manager-pin'
   ]
@@ -105,20 +101,19 @@ app.use(config.server.apiPrefix, apiRoutes);
 // 404 Route Not Found for API
 app.use(config.server.apiPrefix, notFoundHandler);
 
-// In production, serve the React frontend
-if (config.app.isProd) {
-  // Go up from backend/src/app.js to frontend/dist
-  const frontendPath = path.join(__dirname, '../../frontend/dist');
-  app.use(express.static(frontendPath));
-  
-  // Catch-all route to serve index.html for React Router
-  app.use((req, res) => {
+// Serve the React frontend for LAN tablets (always enabled)
+const frontendPath = path.join(__dirname, '../../frontend/dist');
+app.use(express.static(frontendPath));
+
+// Catch-all route to serve index.html for React Router
+app.use((req, res, next) => {
+  // Only serve index.html if it's not an API request
+  if (!req.path.startsWith(config.server.apiPrefix)) {
     res.sendFile(path.join(frontendPath, 'index.html'));
-  });
-} else {
-  // If not prod, keep the global 404 handler for non-API routes too
-  app.use(notFoundHandler);
-}
+  } else {
+    next();
+  }
+});
 
 // Global Error Handler
 app.use(errorHandler);

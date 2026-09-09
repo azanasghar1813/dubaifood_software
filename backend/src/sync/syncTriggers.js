@@ -15,7 +15,9 @@ const SYNC_TABLES = [
   { table: 'deal_components', type: 'DEAL_COMPONENT' },
   { table: 'product_images', type: 'PRODUCT_IMAGE' },
   { table: 'modifiers', type: 'MODIFIER' },
-  { table: 'modifier_groups', type: 'MODIFIER_GROUP' }
+  { table: 'modifier_groups', type: 'MODIFIER_GROUP' },
+  { table: 'order_timeline', type: 'ORDER_TIMELINE' },
+  { table: 'order_audit_trail', type: 'ORDER_AUDIT_TRAIL' }
 ];
 
 function tableExists(name) {
@@ -46,6 +48,9 @@ export function installGuardedSyncTriggers() {
   unmuteSyncTriggers();
   try {
     dbEngine.prepare('ALTER TABLE sync_queue ADD COLUMN payload_version INTEGER NOT NULL DEFAULT 1').run();
+  } catch { /* exists */ }
+  try {
+    dbEngine.prepare("ALTER TABLE sync_queue ADD COLUMN lan_status TEXT DEFAULT 'PENDING'").run();
   } catch { /* exists */ }
 
   for (const { table, type } of SYNC_TABLES) {

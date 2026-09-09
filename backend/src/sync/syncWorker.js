@@ -252,7 +252,7 @@ function upsertFloorTablesFromDining(rows) {
   dedupeFloorTablesByName();
 }
 
-const PENDING_TYPE_MAP = {
+export const PENDING_TYPE_MAP = {
   products: ['PRODUCT'],
   categories: ['CATEGORY', 'CATEGORIE'],
   deals: ['DEAL'],
@@ -395,6 +395,12 @@ class SyncWorker {
 
   start() {
     if (this.intervalId) return;
+    const syncConfig = configService.getSyncConfig();
+    if (syncConfig.device_role === 'TERMINAL') {
+      this.logActivity('SyncWorker disabled on TERMINAL. Local LAN Hub is authoritative.');
+      return;
+    }
+
     this.logActivity('Starting background synchronization worker...');
 
     try {
