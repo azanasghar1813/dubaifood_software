@@ -163,15 +163,30 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
 </body>
 </html>`
 
-    const pw = window.open('', '_blank', 'width=420,height=780')
-    if (!pw) { alert('Please allow popups to print receipts.'); return }
-    pw.document.write(html)
-    pw.document.close()
-    pw.focus()
-    setTimeout(() => {
-      pw.print()
-      setTimeout(() => { pw.close(); if (onClose) onClose() }, 600)
-    }, 400)
+    const iframe = document.createElement('iframe')
+    iframe.style.position = 'fixed'
+    iframe.style.right = '0'
+    iframe.style.bottom = '0'
+    iframe.style.width = '0'
+    iframe.style.height = '0'
+    iframe.style.border = '0'
+    document.body.appendChild(iframe)
+
+    const iframeDoc = iframe.contentWindow?.document
+    if (iframeDoc) {
+      iframeDoc.open()
+      iframeDoc.write(html)
+      iframeDoc.close()
+      
+      setTimeout(() => {
+        iframe.contentWindow?.focus()
+        iframe.contentWindow?.print()
+        setTimeout(() => {
+          if (document.body.contains(iframe)) document.body.removeChild(iframe)
+          if (onClose) onClose()
+        }, 1000)
+      }, 400)
+    }
   }
 
   // Auto-print on mount
@@ -182,7 +197,9 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     }
   }, [autoPrint])
 
-  // â”€â”€ Preview UI (modal) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  if (autoPrint) return null
+
+  // ── Preview UI (modal) ──────────────────────────────────────────────────────────────
   const receiptPreview = (
     <div className="bg-white text-black font-sans p-4 rounded-lg w-full max-w-sm mx-auto shadow-sm" style={{ width: '320px' }}>
       {/* Header */}

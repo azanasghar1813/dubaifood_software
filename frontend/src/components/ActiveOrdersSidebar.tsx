@@ -14,6 +14,7 @@ import { useAuthStore } from "../store/authStore"
 import { fetchOrderDetail } from "../api/historyApi"
 import { apiClient } from "../api/client"
 import KitchenTicketPreview from "../pages/KitchenTicketPreview"
+import ReceiptPreview from "../pages/ReceiptPreview"
 import { formatReceiptOrderNumber } from "../utils/receiptOrderNumber"
 
 interface ActiveOrdersSidebarProps {
@@ -206,6 +207,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
         setKotPreview(order)
         setKotStatus(prev => ({ ...prev, [order.id]: 'success' }))
       } else {
+        setKotPreview(order)
         setKotStatus(prev => ({ ...prev, [order.id]: 'error' }))
       }
       setTimeout(() => {
@@ -213,6 +215,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
       }, 2000)
     } catch (e) {
       console.error(e)
+      setKotPreview(order)
       setKotStatus(prev => ({ ...prev, [order.id]: 'error' }))
       setTimeout(() => {
         setKotStatus(prev => ({ ...prev, [order.id]: undefined }))
@@ -263,6 +266,8 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     } catch (e) {
       console.warn('[ActiveOrdersSidebar] Backend print failed, falling back to browser preview:', e)
     }
+
+    setPrintOrder(order)
 
     try {
       const { fetchOrderDetail } = await import('../api/historyApi')
@@ -517,7 +522,8 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
         </>
       )}
       
-            {kotPreview && <KitchenTicketPreview order={kotPreview} autoPrint={true} onClose={() => setKotPreview(null)} />}
+      {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
+      {kotPreview && <KitchenTicketPreview order={kotPreview} autoPrint={true} onClose={() => setKotPreview(null)} />}
     </AnimatePresence>
   )
 }

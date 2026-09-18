@@ -18,6 +18,7 @@ import {
 import { deleteOrder } from "../api/historyApi"
 import { DateUtils } from "../utils/dateUtils"
 import { formatReceiptOrderNumber } from "../utils/receiptOrderNumber"
+import ReceiptPreview from "./ReceiptPreview"
 
 // Theme Colors
 
@@ -399,7 +400,8 @@ export default function Orders() {
       console.warn('[Orders] Backend print failed, falling back to browser preview:', e)
     }
 
-    }
+    setPrintOrder(order)
+  }
 
   const handleDuplicate = (order: Order) => {
     alert(`Duplicating Order ${formatReceiptOrderNumber(order.orderNumber)} is scheduled for a future update.`)
@@ -1096,8 +1098,7 @@ export default function Orders() {
         )}
       </AnimatePresence>
 
-      <div className="hidden">
-              </div>
+      {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
 
       {deleteDialog && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">

@@ -1,6 +1,7 @@
 import { useEffect } from "react"
 import { Printer, X } from "lucide-react"
 import { formatReceiptOrderNumber } from "../utils/receiptOrderNumber"
+import { useSettingsStore } from "../store/settingsStore"
 
 export interface KitchenTicketPreviewOrder {
   orderNumber?: string
@@ -116,15 +117,31 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
   <div class="ticket">${ticketBody(true)}</div>
 </body>
 </html>`
-    const pw = window.open("", "_blank", "width=420,height=780")
-    if (!pw) { alert("Please allow popups to print kitchen tickets."); return }
-    pw.document.write(html)
-    pw.document.close()
-    pw.focus()
-    setTimeout(() => {
-      pw.print()
-      setTimeout(() => { pw.close(); if (onClose) onClose() }, 600)
-    }, 400)
+
+    const iframe = document.createElement('iframe')
+    iframe.style.position = 'fixed'
+    iframe.style.right = '0'
+    iframe.style.bottom = '0'
+    iframe.style.width = '0'
+    iframe.style.height = '0'
+    iframe.style.border = '0'
+    document.body.appendChild(iframe)
+
+    const iframeDoc = iframe.contentWindow?.document
+    if (iframeDoc) {
+      iframeDoc.open()
+      iframeDoc.write(html)
+      iframeDoc.close()
+      
+      setTimeout(() => {
+        iframe.contentWindow?.focus()
+        iframe.contentWindow?.print()
+        setTimeout(() => {
+          if (document.body.contains(iframe)) document.body.removeChild(iframe)
+          if (onClose) onClose()
+        }, 1000)
+      }, 400)
+    }
   }
 
   useEffect(() => {
@@ -133,6 +150,9 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
       return () => clearTimeout(t)
     }
   }, [autoPrint])
+
+  if (autoPrint) return null
+  if (!order) return null
 
   const preview = (
     <div className="bg-white text-black font-sans p-4 rounded-lg w-full max-w-sm mx-auto shadow-sm" style={{ width: "320px" }}>

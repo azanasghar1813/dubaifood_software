@@ -262,7 +262,12 @@ export default function POS() {
         }))
       }
       const kot = await usePrinterStore.getState().printKitchen(currentOrderId, user?.id || user?.name || 'cashier')
-      if (!kot) alert("KOT could not be sent to the kitchen printer. Check USB or LAN.")
+      if (!kot) {
+        alert("KOT could not be sent to the kitchen printer. Check USB or LAN.")
+        setKotPreview(preview)
+      } else {
+        setKotPreview(preview)
+      }
       useOrderStore.getState().syncOrdersFromBackend()
       if (!wasEditing) {
         await resetAfterPlace()
@@ -314,8 +319,6 @@ export default function POS() {
           const result = await ps.printReceipt(currentOrderId, user?.id || user?.name || 'cashier', isPaidPrint)
           if (result?.job_id) {
             useOrderStore.getState().syncOrdersFromBackend()
-            if (!wasEditing) await resetAfterPlace()
-            return
           }
         }
       } catch { /* fallback to on-screen receipt */ }
@@ -405,6 +408,14 @@ export default function POS() {
     const finalOrderId = generatedOrderId || activeOrderId;
     
     try {
+      const { fetchOrderDetail } = await import('../api/historyApi')
+      const { mapHistoryDetailToOrder } = await import('../store/orderStore')
+      const res = await fetchOrderDetail(finalOrderId)
+      if (res.success && res.data) {
+         const fullOrder = mapHistoryDetailToOrder(res.data, res.data)
+         setPrintOrder(fullOrder)
+      }
+
       const { usePrinterStore } = await import("../store/printerStore");
       const ps = usePrinterStore.getState();
       if (finalOrderId) {
@@ -2867,7 +2878,7 @@ export default function POS() {
                 </div>
               </motion.div>
               {/* ReceiptPreview Popup */}
-              {false && printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
+              {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
             </div>
           )
         })()}
@@ -2906,8 +2917,8 @@ export default function POS() {
       />
 
       {/* ReceiptPreview Popup */}
-      {false && printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
-      {false && kotPreview && <KitchenTicketPreview order={kotPreview} autoPrint={false} onClose={() => setKotPreview(null)} />}
+      {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
+      {kotPreview && <KitchenTicketPreview order={kotPreview} autoPrint={true} onClose={() => setKotPreview(null)} />}
     </div>
   )
 }
