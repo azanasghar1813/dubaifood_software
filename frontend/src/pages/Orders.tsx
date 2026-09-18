@@ -5,7 +5,6 @@ import { authService } from "../services/authService"
 
 import { motion, AnimatePresence } from "framer-motion"
 import jsPDF from "jspdf"
-import ReceiptPreview from "./ReceiptPreview"
 import { useOrderStore, type Order, mapHistoryDetailToOrder, itemVariantName } from "../store/orderStore"
 import { usePosStore } from "../store/posStore"
 import { useAuthStore } from "../store/authStore"
@@ -400,19 +399,7 @@ export default function Orders() {
       console.warn('[Orders] Backend print failed, falling back to browser preview:', e)
     }
 
-    // Fallback: open browser ReceiptPreview popup (window.print)
-    try {
-      const res = await fetchOrderDetail(order.id)
-      if (res.success && res.data) {
-        const fullOrder = mapHistoryDetailToOrder(res.data, res.data)
-        setPrintOrder(fullOrder)
-      } else {
-        setPrintOrder(order)
-      }
-    } catch (e) {
-      setPrintOrder(order)
     }
-  }
 
   const handleDuplicate = (order: Order) => {
     alert(`Duplicating Order ${formatReceiptOrderNumber(order.orderNumber)} is scheduled for a future update.`)
@@ -774,6 +761,7 @@ export default function Orders() {
                       <div className="flex flex-col gap-0.5">
                         <div className="text-[10px] font-bold text-muted-foreground">Rider: {order.riderName || order.riderId ? (order.riderName || order.riderId?.substring(0,6)) : "Unassigned"}</div>
                         <div className="text-[10px] font-bold text-muted-foreground">Phone: {order.customerPhone || "—"}</div>
+                        {order.customerAddress && <div className="text-[10px] font-bold text-muted-foreground max-w-[150px] truncate" title={order.customerAddress}>Address: {order.customerAddress}</div>}
                       </div>
                     ) : (
                       <div className="text-[10px] font-bold text-muted-foreground">—</div>
@@ -1109,8 +1097,7 @@ export default function Orders() {
       </AnimatePresence>
 
       <div className="hidden">
-        {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
-      </div>
+              </div>
 
       {deleteDialog && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">

@@ -262,8 +262,7 @@ export default function POS() {
         }))
       }
       const kot = await usePrinterStore.getState().printKitchen(currentOrderId, user?.id || user?.name || 'cashier')
-      setKotPreview(preview)
-      if (!kot) alert("KOT could not be sent to the kitchen printer. Check USB or LAN. Preview is still shown.")
+      if (!kot) alert("KOT could not be sent to the kitchen printer. Check USB or LAN.")
       useOrderStore.getState().syncOrdersFromBackend()
       if (!wasEditing) {
         await resetAfterPlace()
@@ -311,10 +310,7 @@ export default function POS() {
       try {
         const { usePrinterStore } = await import("../store/printerStore")
         const ps = usePrinterStore.getState()
-        const hasThermal = ps.printers.some(
-          (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
-        )
-        if (hasThermal && currentOrderId) {
+        if (currentOrderId) {
           const result = await ps.printReceipt(currentOrderId, user?.id || user?.name || 'cashier', isPaidPrint)
           if (result?.job_id) {
             useOrderStore.getState().syncOrdersFromBackend()
@@ -370,26 +366,57 @@ export default function POS() {
     }
   }
 
-  const handleProceedToPay = () => {
+  const handleProceedToPay = async () => {
     if (usePosStore.getState().cart.length === 0) {
-      alert("This order is currently empty. Please add items before placing it.");
       return;
     }
     if (orderType === 'Delivery' && (!customer || !customer.phone)) {
-      setCustomerModalOpen(true)
-    } else {
-      // Reset checkout state every time modal opens
-      (window as any)._checkoutOpenedAt = Date.now()
-      setSelectedPaymentMethod(null)
-      setAmountReceived('')
-      const existingDiscount = Number((activeOrder as any)?.totals?.discount_total ?? (activeOrder as any)?.discount_total ?? 0) || 0
-      setDiscountAmount(existingDiscount > 0 ? String(existingDiscount) : '')
-      setCheckoutFocusZone('methods')
-      setCheckoutMethodIndex(0)
-      setCheckoutQuickCashIndex(-1)
-      setCheckoutDiscountPctIndex(-1)
-      setCheckoutModalOpen(true)
+      setCustomerModalOpen(true);
+      return;
     }
+    
+    setIsProcessing(true);
+    const method = isPaidPrint ? 'Cash' : ('Later' as any);
+    const discountVal = Number(discountAmount) || 0;
+    
+    const shouldPay = String(method) !== 'Later';
+    const totalToPay = getNetTotal();
+    
+    const { success, orderId: generatedOrderId } = await completeOrder(
+      shouldPay ? [{
+        id: `pay-${Date.now()}`,
+        method: method,
+        amount: totalToPay,
+        received: totalToPay,
+        change: 0,
+        timestamp: new Date().toISOString(),
+        cashier: user?.name || 'Cashier',
+        status: 'Completed'
+      }] : [],
+      discountVal,
+      isPaidPrint
+    );
+
+    if (!success) {
+      setIsProcessing(false);
+      return;
+    }
+    
+    const finalOrderId = generatedOrderId || activeOrderId;
+    
+    try {
+      const { usePrinterStore } = await import("../store/printerStore");
+      const ps = usePrinterStore.getState();
+      if (finalOrderId) {
+        await ps.printReceipt(finalOrderId, user?.id || user?.name || 'cashier', isPaidPrint);
+        await ps.printKitchen(finalOrderId, user?.id || user?.name || 'cashier');
+      }
+    } catch { /* fallback */ }
+
+    setOrderNotes('');
+    setDiscountAmount('');
+    setIsPaidPrint(false);
+    setIsProcessing(false);
   }
 
   // Auto-assign waiter if logged in user is a waiter
@@ -684,7 +711,7 @@ export default function POS() {
       }
 
       // ── Checkout Modal Arrow-Key Navigation ──
-      if (checkoutModalOpen) {
+      if (false && checkoutModalOpen) {
         // Amount / discount fields must keep caret, digits, paste, backspace
         if (isTyping && e.key !== "Escape" && e.key !== "F6" && !((e.ctrlKey || e.metaKey) && e.key === "Enter")) {
           return
@@ -2209,6 +2236,26 @@ export default function POS() {
                           </div>
                         </div>
                       )}
+
+                      <div className="flex justify-between items-center text-xs font-black text-foreground border-l-2 border-emerald-500 pl-2 p-1 -mx-1">
+                        <span>Discount</span>
+                        <div className="flex items-center gap-1">
+                          <span>Rs</span>
+                          <input
+                            type="number"
+                            value={discountAmount}
+                            onChange={(e) => setDiscountAmount(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleProceedToPay();
+                              }
+                            }}
+                            className="w-16 h-6 px-1 text-right bg-secondary border border-border rounded text-xs font-black outline-none focus:border-emerald-500"
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
                       <div className="flex justify-between text-lg font-black text-foreground pt-1.5 border-t border-border">
                         <span>Total</span>
                         <span>Rs {getNetTotal().toLocaleString()}</span>
@@ -2243,7 +2290,7 @@ export default function POS() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-6 gap-1.5 pb-1 flex-1">
+                    <div className="grid grid-cols-5 gap-1.5 pb-1 flex-1">
                       <button
                         onClick={() => setIsPaidPrint(!isPaidPrint)}
                         className={`p-1 font-black rounded-lg flex flex-col items-center justify-center gap-0.5 transition-colors border ${isPaidPrint
@@ -2269,18 +2316,13 @@ export default function POS() {
                             <span className="text-[7px] opacity-70">(Ctrl+S)</span>
                           </span>
                       </button>
-                      <button
+                      {false && <button
                         onClick={() => setIsKdsAutoSend(!isKdsAutoSend)}
                         className={`p-1 font-black rounded-lg flex flex-col items-center justify-center gap-0.5 transition-colors border ${isKdsAutoSend
                           ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-300 dark:bg-[#3D85E8]/14 dark:text-[#3D85E8] dark:border-transparent dark:hover:bg-[#3D85E8]/20'
                           : 'bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border-transparent hover:border-border dark:bg-[#21242B] dark:text-[#9BA2AE]'
                           }`}
-                      >
-                        <Monitor className={`w-4 h-4 ${isKdsAutoSend ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} />
-                        <span className="text-[9px] uppercase text-center leading-tight font-black">
-                          Auto KDS
-                        </span>
-                      </button>
+                      >Auto KDS</button>}
                       <button
                         onClick={handleSendKot}
                         disabled={cart.length === 0}
@@ -2481,7 +2523,7 @@ export default function POS() {
 
       {/* Checkout Modal */}
       <AnimatePresence>
-        {checkoutModalOpen && (() => {
+        {false && checkoutModalOpen && (() => {
           const discountVal = Number(discountAmount) || 0
           const storedDiscount = Number((activeOrder as any)?.totals?.discount_total ?? (activeOrder as any)?.discount_total ?? 0) || 0
           const baseTotal = getNetTotal() + storedDiscount
@@ -2825,7 +2867,7 @@ export default function POS() {
                 </div>
               </motion.div>
               {/* ReceiptPreview Popup */}
-              {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
+              {false && printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
             </div>
           )
         })()}
@@ -2864,8 +2906,8 @@ export default function POS() {
       />
 
       {/* ReceiptPreview Popup */}
-      {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
-      {kotPreview && <KitchenTicketPreview order={kotPreview} autoPrint={false} onClose={() => setKotPreview(null)} />}
+      {false && printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
+      {false && kotPreview && <KitchenTicketPreview order={kotPreview} autoPrint={false} onClose={() => setKotPreview(null)} />}
     </div>
   )
 }

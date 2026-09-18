@@ -13,7 +13,6 @@ import { usePosStore } from "../store/posStore"
 import { useAuthStore } from "../store/authStore"
 import { fetchOrderDetail } from "../api/historyApi"
 import { apiClient } from "../api/client"
-import ReceiptPreview from "../pages/ReceiptPreview"
 import KitchenTicketPreview from "../pages/KitchenTicketPreview"
 import { formatReceiptOrderNumber } from "../utils/receiptOrderNumber"
 
@@ -260,10 +259,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
       }
       const result = await printerState.printReceipt(order.id, user?.id || user?.name || 'cashier', order.paymentStatus === 'Paid')
       const jobId = result?.job_id
-      if (jobId) {
-        alert("Bill sent to the counter printer. Pick it up at the till.")
-        return
-      }
+      // Intentionally not returning here so the on-screen receipt preview also shows up perfectly as requested.
     } catch (e) {
       console.warn('[ActiveOrdersSidebar] Backend print failed, falling back to browser preview:', e)
     }
@@ -521,8 +517,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
         </>
       )}
       
-      {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
-      {kotPreview && <KitchenTicketPreview order={kotPreview} autoPrint={true} onClose={() => setKotPreview(null)} />}
+            {kotPreview && <KitchenTicketPreview order={kotPreview} autoPrint={true} onClose={() => setKotPreview(null)} />}
     </AnimatePresence>
   )
 }

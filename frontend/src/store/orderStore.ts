@@ -175,7 +175,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     variant_id: item.variant_id || item.variant?.variant_id || null,
     variant_name: vName || null,
     variant: item.variant || item.variants?.[0] || (vName ? { variant_name_snapshot: vName, variant_name: vName } : null),
-    name: base,
+    name: vName ? `${base} (${vName})` : base,
     price: Number(item.final_unit_price ?? item.unit_price ?? item.price ?? 0),
     quantity: Number(item.quantity ?? 1),
     subtotal: Number(item.subtotal ?? (Number(item.final_unit_price ?? item.unit_price ?? item.price ?? 0) * Number(item.quantity ?? 1))),

@@ -534,12 +534,15 @@ class PrinterDriverService {
       const escapedPrinterName = printerName.replace(/'/g, "''");
       const escapedTempFile = tempFile.replace(/'/g, "''");
 
+      const dllPath = path.join(os.tmpdir(), 'RawPrinterHelper.dll').replace(/\\/g, '\\\\');
       const psScript = `
-        if (-not ([System.Management.Automation.PSTypeName]'RawPrinterHelper').Type) {
+        $dllPath = '${dllPath}'
+        if (-not (Test-Path $dllPath)) {
           Add-Type -TypeDefinition @'
 ${RAW_PRINTER_CSHARP}
-'@
+'@ -OutputAssembly $dllPath
         }
+        Add-Type -Path $dllPath
         [RawPrinterHelper]::SendBytesToPrinter('${escapedPrinterName}', '${escapedTempFile}')
       `;
 

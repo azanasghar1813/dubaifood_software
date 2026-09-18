@@ -1,7 +1,6 @@
 import { useEffect } from "react"
 import { Printer, X } from "lucide-react"
 import type { Order } from "../store/orderStore"
-import { itemVariantName } from "../store/orderStore"
 import { useSettingsStore } from "../store/settingsStore"
 import { formatReceiptOrderNumber } from "../utils/receiptOrderNumber"
 
@@ -61,10 +60,6 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       const isDeal = item.category?.toLowerCase().includes('deal') || (item.name || '').toLowerCase().includes('deal')
       const itemNameClass = isDeal ? `font-weight:900;` : `font-weight:500;`
 
-      const variantLabel = itemVariantName(item)
-      const variantHtml = variantLabel
-        ? `<div style="font-size:10px;font-weight:400;margin-top:2px">(${variantLabel})</div>`
-        : ''
       const mods = item.selectedModifiers?.length
         ? `<div style="font-size:10px;font-weight:400;margin-top:2px">${item.selectedModifiers.map((m: any) => '+' + (m.name || m.modifier_name_snapshot || '')).join(', ')}</div>`
         : ''
@@ -77,7 +72,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       return `
         <tr style="border-bottom:2px solid #000;">
           <td style="padding:4px;border-right:2px solid #000;text-align:center;text-transform:uppercase;">
-            <div style="${itemNameClass}">${item.name}</div>${variantHtml}${mods}${combos}${itemNotes}
+            <div style="${itemNameClass}">${item.name}</div>${mods}${combos}${itemNotes}
           </td>
           <td style="padding:4px;border-right:2px solid #000;text-align:center;font-weight:500;font-size:13px;vertical-align:middle;">${item.quantity}</td>
           <td style="padding:4px;text-align:center;font-weight:500;vertical-align:middle;white-space:nowrap;">Rs ${itemTotal.toFixed(2)}</td>
@@ -162,10 +157,6 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     <!-- Footer -->
     <div style="text-align:center;margin-top:16px;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:4px">
       <p>Thank you for your order!<br>Please visit again.</p>
-      <div style="margin-top:12px;">
-        <img src="/receipt_qr.jpg" style="width:160px;height:160px;object-fit:contain" onerror="this.style.display='none'" />
-      </div>
-      <div style="font-size:12px;font-weight:800;margin-top:2px;">Scan to Pay</div>
       <div style="font-size:11px;font-weight:600;margin-top:8px;">Powered By : corevex.tech (-_-)</div>
     </div>
   </div>
@@ -248,9 +239,6 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
               <tr key={idx} className="border-b-2 border-black last:border-b-0">
                 <td className={`text-center py-1 px-1 border-r-2 border-black uppercase ${isDeal ? 'font-black' : 'font-medium'}`}>
                   {item.name}
-                  {itemVariantName(item) ? (
-                    <div className="text-[10px] font-normal">({itemVariantName(item)})</div>
-                  ) : null}
                   {item.selectedModifiers?.map((m: any) => (
                     <div key={m.name} className="text-[10px] font-normal">+ {m.name || m.modifier_name_snapshot}</div>
                   ))}
@@ -308,8 +296,6 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       {/* Footer */}
       <div className="text-center mt-2 text-[11px] font-semibold flex flex-col items-center gap-1 mb-4">
         <p>Thank you for your order!<br />Please visit again.</p>
-        <img src="/receipt_qr.jpg" className="w-32 h-32 object-contain mt-4" onError={(e: any) => e.target.style.display = 'none'} />
-        <div className="text-[12px] font-black mt-1">Scan to Pay</div>
         <div className="text-[11px] font-semibold mt-2">Powered By : corevex.tech</div>
       </div>
     </div>
