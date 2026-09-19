@@ -54,6 +54,43 @@ class OrderService {
     }
     return order;
   }
+
+  _resolveDiningTableId(tableId) {
+    if (!tableId) return null;
+    try {
+      const byId = dbEngine.db.prepare('SELECT id FROM dining_tables WHERE id = ?').get(tableId);
+      if (byId) return byId.id;
+      const byNumber = dbEngine.db.prepare('SELECT id FROM dining_tables WHERE table_number = ?').get(String(tableId));
+      if (byNumber) return byNumber.id;
+
+      let floor = null;
+      try {
+        floor = dbEngine.db.prepare('SELECT id, name FROM tables WHERE id = ? OR name = ?').get(tableId, String(tableId));
+      } catch { /* floor table map may be missing */ }
+
+      const id = floor?.id || String(tableId);
+      const number = floor?.name || String(tableId);
+      try {
+        dbEngine.db.prepare(
+          `INSERT OR IGNORE INTO dining_tables (id, table_number, status) VALUES (?, ?, 'OCCUPIED')`
+        ).run(id, number);
+      } catch (e) {
+        try {
+          dbEngine.db.prepare(
+            `INSERT OR IGNORE INTO dining_tables (id, table_number, status) VALUES (?, ?, 'OCCUPIED')`
+          ).run(id, id);
+        } catch {
+          console.warn('Failed to auto-create dining table:', e.message);
+          return null;
+        }
+      }
+      const created = dbEngine.db.prepare('SELECT id FROM dining_tables WHERE id = ?').get(id);
+      return created ? created.id : null;
+    } catch (e) {
+      console.warn('Error resolving dining table ID:', e.message);
+      return null;
+    }
+  }
   /**
    * Retrieves full hydrated order graph.
    */
@@ -605,12 +642,13 @@ class OrderService {
         updates.order_type = meta.order_type;
       }
       if (meta.table_id !== undefined) {
-        updates.table_id = meta.table_id;
-        if (meta.table_id) {
+        const resolvedTableId = this._resolveDiningTableId(meta.table_id);
+        updates.table_id = resolvedTableId;
+        if (resolvedTableId) {
           try {
-            dbEngine.db.prepare('INSERT OR IGNORE INTO dining_tables (id, table_number, status) VALUES (?, ?, ?)').run(meta.table_id, meta.table_id, 'OCCUPIED');
+            dbEngine.prepare(`UPDATE tables SET status = 'Occupied' WHERE id = ? OR name = ?`).run(resolvedTableId, resolvedTableId);
           } catch (err) {
-            console.error('Error auto-creating dining table on meta update:', err);
+            console.warn('Failed to mark floor table occupied:', err.message);
           }
         }
       }

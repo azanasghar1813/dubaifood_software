@@ -86,7 +86,7 @@ class OrderTotalsService {
     const discountTotal = this._round(Math.min(Math.max(0, rawDiscount), subtotal));
 
     const orderType = order.order_type;
-    const serviceCharge = this.computeServiceCharge(subtotal - discountTotal, orderType);
+    const serviceCharge = this.computeServiceCharge(subtotal, orderType);
     const typeKey = String(orderType || '').toUpperCase().replace(/\s+/g, '_');
     const deliveryFee = typeKey === 'DELIVERY' ? this._round(Number(order.delivery_fee) || 0) : 0;
     const taxTotal = 0;

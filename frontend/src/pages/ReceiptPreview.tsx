@@ -100,6 +100,20 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     const discRow = discount > 0
       ? `<div style="display:flex;justify-content:flex-end;width:100%;margin-bottom:3px"><span style="font-weight:900;margin-right:16px;">Discount:</span><span>-Rs ${discount.toFixed(2)}</span></div>` : ''
 
+    // 1. Determine if we are running in Electron
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment 
+    // @ts-ignore 
+    const isElectron = !!(window.electronAPI && window.electronAPI.printHtml);
+
+    const autoPrintScript = isElectron
+      ? ''
+      : `<script> 
+           window.onload = function() { 
+             window.print(); 
+             window.setTimeout(function(){ window.close(); }, 100); 
+           }; 
+         </script>`;
+
     const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -117,9 +131,12 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
 </head>
 <body>
   <div class="receipt">
-    <!-- Header -->
-    <div style="display:flex;justify-content:center;margin-bottom:6px">
-      <img src="/receipt_logo.png" style="width:140px;object-fit:contain;" onerror="this.style.display='none'" />
+    <!-- Header --> 
+    <div style="display:flex;justify-content:center;margin-bottom:6px"> 
+      ${settings.logoBase64 
+        ? `<img src="${settings.logoBase64}" style="width:140px;object-fit:contain;" onerror="this.style.display='none'" />`
+        : `<img src="${window.location.origin}/receipt_logo.png" style="width:140px;object-fit:contain;" onerror="this.style.display='none'" />`
+      }
     </div>
     
     <!-- Address -->
@@ -157,35 +174,34 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     <!-- Footer -->
     <div style="text-align:center;margin-top:16px;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:4px">
       <p>Thank you for your order!<br>Please visit again.</p>
-      <div style="font-size:11px;font-weight:600;margin-top:8px;">Powered By : corevex.tech (-_-)</div>
-    </div>
+      <div style="font-size:11px;font-weight:600;margin-top:8px;">Powered By : corevex.tech (-_-)</div> 
+    </div> 
   </div>
-</body>
-</html>`
-
-    const iframe = document.createElement('iframe')
-    iframe.style.position = 'fixed'
-    iframe.style.right = '0'
-    iframe.style.bottom = '0'
-    iframe.style.width = '0'
-    iframe.style.height = '0'
-    iframe.style.border = '0'
-    document.body.appendChild(iframe)
-
-    const iframeDoc = iframe.contentWindow?.document
-    if (iframeDoc) {
-      iframeDoc.open()
-      iframeDoc.write(html)
-      iframeDoc.close()
+  ${autoPrintScript}
+</body> 
+</html>` 
+ 
+    if (isElectron) { 
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment 
+      // @ts-ignore 
+      window.electronAPI.printHtml(html).then(() => { 
+        if (onClose) onClose() 
+      })
+    } else {
+      const pw = window.open('', '_blank', 'width=420,height=780')
+      if (!pw) { alert('Please allow popups to print receipts.'); return }
+      pw.document.write(html)
+      pw.document.close()
       
-      setTimeout(() => {
-        iframe.contentWindow?.focus()
-        iframe.contentWindow?.print()
-        setTimeout(() => {
-          if (document.body.contains(iframe)) document.body.removeChild(iframe)
-          if (onClose) onClose()
-        }, 1000)
-      }, 400)
+      if (onClose) {
+        // Monitor window close to trigger onClose if the popup is closed by the user or script
+        const timer = setInterval(() => {
+          if (pw.closed) {
+            clearInterval(timer);
+            onClose();
+          }
+        }, 200);
+      }
     }
   }
 
@@ -195,7 +211,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       const t = setTimeout(doPrint, 300)
       return () => clearTimeout(t)
     }
-  }, [autoPrint])
+  }, [autoPrint, order?.orderNumber, order?.id, order?.timestamp])
 
   if (autoPrint) return null
 
@@ -204,7 +220,11 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     <div className="bg-white text-black font-sans p-4 rounded-lg w-full max-w-sm mx-auto shadow-sm" style={{ width: '320px' }}>
       {/* Header */}
       <div className="flex flex-col items-center justify-center mb-6">
-        <img src="/receipt_logo.png" className="w-[140px] object-contain mb-2" onError={(e: any) => e.target.style.display = 'none'} />
+        {settings.logoBase64 ? (
+          <img src={settings.logoBase64} className="w-[140px] object-contain mb-2" onError={(e: any) => e.target.style.display = 'none'} />
+        ) : (
+          <img src="/receipt_logo.png" className="w-[140px] object-contain mb-2" onError={(e: any) => e.target.style.display = 'none'} />
+        )}
         <div className="text-[9.5px] text-center mt-1 font-semibold leading-[1.35] w-full whitespace-pre-line">
           {settings.address || 'Opposite Akbar Plaza Near Waqas Nazir Printers Layyah Road,\nChowk Azam (Layyah)'}
           {'\n'}Contact: <span className="font-black">{settings.phoneNumber || '0308-8020784, 0345-6420784'}</span>

@@ -55,6 +55,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [selectedActionIndex, setSelectedActionIndex] = useState(0)
   const [kotStatus, setKotStatus] = useState<Record<string, 'loading' | 'success' | 'error' | undefined>>({})
+  const [billStatus, setBillStatus] = useState<Record<string, 'loading' | 'success' | 'error' | undefined>>({})
   const [printOrder, setPrintOrder] = useState<Order | null>(null)
   const [kotPreview, setKotPreview] = useState<Order | null>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -140,28 +141,21 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
         e.stopPropagation()
         const order = orders[curIdx]
         if (!order) return
-        // Cycle: 0(Edit) -> 1(MarkComplete if Unpaid, else 2) -> 2(Print) -> 0
-        if (curAction === 0) {
-          if (order.paymentStatus === 'Unpaid') setSelectedActionIndex(1)
-          else setSelectedActionIndex(2)
-        } else if (curAction === 1) {
-          setSelectedActionIndex(2)
-        } else {
-          setSelectedActionIndex(0)
-        }
+        if (curAction === 0 && order.paymentStatus === 'Unpaid') setSelectedActionIndex(1)
+        else if (curAction === 0 || curAction === 1) setSelectedActionIndex(2)
+        else if (curAction === 2) setSelectedActionIndex(3)
+        else if (curAction === 3) setSelectedActionIndex(4)
+        else setSelectedActionIndex(0)
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault()
         e.stopPropagation()
         const order = orders[curIdx]
         if (!order) return
-        if (curAction === 2) {
-          if (order.paymentStatus === 'Unpaid') setSelectedActionIndex(1)
-          else setSelectedActionIndex(0)
-        } else if (curAction === 1) {
-          setSelectedActionIndex(0)
-        } else {
-          setSelectedActionIndex(2)
-        }
+        if (curAction === 4) setSelectedActionIndex(3)
+        else if (curAction === 3) setSelectedActionIndex(2)
+        else if (curAction === 2 && order.paymentStatus === 'Unpaid') setSelectedActionIndex(1)
+        else if (curAction === 2 || curAction === 1) setSelectedActionIndex(0)
+        else setSelectedActionIndex(4)
       } else if (e.key === 'Enter') {
         e.preventDefault()
         e.stopPropagation()
@@ -170,7 +164,11 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
         if (curAction === 1 && order.paymentStatus === 'Unpaid') {
           handleMarkComplete(null, order)
         } else if (curAction === 2) {
+          handleSendKot(null, order)
+        } else if (curAction === 3) {
           handlePrint(null, order)
+        } else if (curAction === 4) {
+          handleCancel(null, order)
         } else {
           handleEdit(order)
         }
@@ -200,15 +198,18 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     setKotStatus(prev => ({ ...prev, [order.id]: 'loading' }))
     try {
       const { usePrinterStore } = await import('../store/printerStore')
-      const result = await usePrinterStore.getState().printKitchen(order.id, user?.id || user?.name || 'cashier')
+      const ps = usePrinterStore.getState()
+      const hasThermal = ps.printers.some(
+        (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
+      )
+      const result = await ps.printKitchen(order.id, user?.id || user?.name || 'cashier')
       syncOrdersFromBackend()
-      if (result) {
-        setPrintOrder(null)
-        setKotPreview(order)
+      
+      if (hasThermal && result) {
         setKotStatus(prev => ({ ...prev, [order.id]: 'success' }))
       } else {
         setKotPreview(order)
-        setKotStatus(prev => ({ ...prev, [order.id]: 'error' }))
+        setKotStatus(prev => ({ ...prev, [order.id]: result ? 'success' : 'error' }))
       }
       setTimeout(() => {
         setKotStatus(prev => ({ ...prev, [order.id]: undefined }))
@@ -254,20 +255,37 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
   const handlePrint = async (e: React.MouseEvent | null, order: Order) => {
     if (e) e.stopPropagation()
     
+    setBillStatus(prev => ({ ...prev, [order.id]: 'loading' }))
     try {
       const { usePrinterStore } = await import("../store/printerStore")
       const printerState = usePrinterStore.getState()
       if (!printerState.printers.length) {
         await printerState.fetchPrinters()
       }
-      const result = await printerState.printReceipt(order.id, user?.id || user?.name || 'cashier', order.paymentStatus === 'Paid')
-      const jobId = result?.job_id
-      // Intentionally not returning here so the on-screen receipt preview also shows up perfectly as requested.
+      
+      const hasThermal = printerState.printers.some(
+        (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
+      )
+      
+      if (hasThermal) {
+        const result = await printerState.printReceipt(order.id, user?.id || user?.name || 'cashier', order.paymentStatus === 'Paid')
+        if (result?.job_id) {
+          setBillStatus(prev => ({ ...prev, [order.id]: 'success' }))
+          setTimeout(() => {
+            setBillStatus(prev => ({ ...prev, [order.id]: undefined }))
+          }, 2000)
+          return
+        }
+      }
     } catch (e) {
       console.warn('[ActiveOrdersSidebar] Backend print failed, falling back to browser preview:', e)
     }
 
     setPrintOrder(order)
+    setBillStatus(prev => ({ ...prev, [order.id]: 'success' }))
+    setTimeout(() => {
+      setBillStatus(prev => ({ ...prev, [order.id]: undefined }))
+    }, 2000)
 
     try {
       const { fetchOrderDetail } = await import('../api/historyApi')
@@ -477,9 +495,11 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
                         onClick={(e) => handleSendKot(e, order)}
                         disabled={kotStatus[order.id] === 'loading'}
                         className={`flex-1 min-w-[80px] flex items-center justify-center gap-1.5 border py-2 px-1 rounded-lg text-[11px] font-bold leading-tight transition-colors ${
-                          kotStatus[order.id] === 'success' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' 
-                          : kotStatus[order.id] === 'error' ? 'bg-red-500/10 text-red-600 border-red-500/20'
-                          : 'bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 border-orange-500/20'
+                          selectedIndex === index && selectedActionIndex === 2
+                            ? 'bg-orange-500 text-white ring-2 ring-orange-500/50 shadow-lg shadow-orange-500/20 border-orange-500'
+                            : kotStatus[order.id] === 'success' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' 
+                            : kotStatus[order.id] === 'error' ? 'bg-red-500/10 text-red-600 border-red-500/20'
+                            : 'bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 border-orange-500/20'
                         } disabled:opacity-70`}
                       >
                         {kotStatus[order.id] === 'loading' ? (
@@ -496,19 +516,34 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
 
                       <button 
                         onClick={(e) => handlePrint(e, order)}
-                        className={`flex-1 min-w-[70px] flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-[11px] font-bold leading-tight transition-colors ${
-                          selectedIndex === index && selectedActionIndex === 2
-                            ? 'bg-blue-500 text-white ring-2 ring-blue-500/50 shadow-lg shadow-blue-500/20'
-                            : 'bg-secondary hover:bg-secondary/80 text-foreground'
-                        }`}
+                        disabled={billStatus[order.id] === 'loading'}
+                        className={`flex-1 min-w-[70px] flex items-center justify-center gap-1.5 border py-2 px-1 rounded-lg text-[11px] font-bold leading-tight transition-colors ${
+                          selectedIndex === index && selectedActionIndex === 3
+                            ? 'bg-blue-500 text-white ring-2 ring-blue-500/50 shadow-lg shadow-blue-500/20 border-blue-500'
+                            : billStatus[order.id] === 'success' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                            : billStatus[order.id] === 'error' ? 'bg-red-500/10 text-red-600 border-red-500/20'
+                            : 'bg-secondary hover:bg-secondary/80 text-foreground border-transparent'
+                        } disabled:opacity-70`}
                       >
-                        <Printer className="w-3.5 h-3.5" />
-                        Print Bill
+                        {billStatus[order.id] === 'loading' ? (
+                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : billStatus[order.id] === 'success' ? (
+                           <CheckCircle2 className="w-3.5 h-3.5" />
+                        ) : billStatus[order.id] === 'error' ? (
+                           <AlertCircle className="w-3.5 h-3.5" />
+                        ) : (
+                           <Printer className="w-3.5 h-3.5" />
+                        )}
+                        {billStatus[order.id] === 'loading' ? 'Printing...' : billStatus[order.id] === 'success' ? 'Printed!' : billStatus[order.id] === 'error' ? 'Failed' : 'Print Bill'}
                       </button>
 
                       <button
                         onClick={(e) => handleCancel(e, order)}
-                        className="flex-1 min-w-[80px] flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-[11px] font-bold leading-tight bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 transition-colors"
+                        className={`flex-1 min-w-[80px] flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-[11px] font-bold leading-tight border transition-colors ${
+                          selectedIndex === index && selectedActionIndex === 4
+                            ? 'bg-red-500 text-white ring-2 ring-red-500/50 shadow-lg shadow-red-500/20 border-red-500'
+                            : 'bg-red-500/10 hover:bg-red-500/20 text-red-600 border-red-500/20'
+                        }`}
                       >
                         <Ban className="w-3.5 h-3.5" />
                         Cancel
@@ -522,8 +557,8 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
         </>
       )}
       
-      {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
-      {kotPreview && <KitchenTicketPreview order={kotPreview} autoPrint={true} onClose={() => setKotPreview(null)} />}
+      {printOrder && <ReceiptPreview key={printOrder.orderNumber || printOrder.id} order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
+      {kotPreview && <KitchenTicketPreview key={kotPreview.orderNumber || kotPreview.id || 'kot'} order={kotPreview} autoPrint={true} onClose={() => setKotPreview(null)} />}
     </AnimatePresence>
   )
 }

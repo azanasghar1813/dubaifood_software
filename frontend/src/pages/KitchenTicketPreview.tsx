@@ -98,6 +98,17 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
   }
 
   const doPrint = () => {
+    const isElectron = !!(window as any).electronAPI;
+
+    const autoPrintScript = isElectron
+      ? ''
+      : `<script>
+          window.onload = function() {
+            window.print();
+            window.setTimeout(function(){ window.close(); }, 100);
+          };
+        </script>`;
+
     const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -113,34 +124,31 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
     }
   </style>
 </head>
-<body>
-  <div class="ticket">${ticketBody(true)}</div>
-</body>
-</html>`
-
-    const iframe = document.createElement('iframe')
-    iframe.style.position = 'fixed'
-    iframe.style.right = '0'
-    iframe.style.bottom = '0'
-    iframe.style.width = '0'
-    iframe.style.height = '0'
-    iframe.style.border = '0'
-    document.body.appendChild(iframe)
-
-    const iframeDoc = iframe.contentWindow?.document
-    if (iframeDoc) {
-      iframeDoc.open()
-      iframeDoc.write(html)
-      iframeDoc.close()
-      
-      setTimeout(() => {
-        iframe.contentWindow?.focus()
-        iframe.contentWindow?.print()
-        setTimeout(() => {
-          if (document.body.contains(iframe)) document.body.removeChild(iframe)
-          if (onClose) onClose()
-        }, 1000)
-      }, 400)
+  <body>
+    <div class="ticket">${ticketBody(true)}</div>
+    ${autoPrintScript}
+  </body>
+  </html>`
+  
+    if (isElectron) {
+      (window as any).electronAPI.printHtml(html).then(() => {
+        if (onClose) onClose();
+      });
+      return;
+    }
+  
+    const pw = window.open('', '_blank', 'width=420,height=780')
+    if (!pw) { alert('Please allow popups to print receipts.'); return }
+    pw.document.write(html)
+    pw.document.close()
+    
+    if (onClose) {
+      const timer = setInterval(() => {
+        if (pw.closed) {
+          clearInterval(timer);
+          onClose();
+        }
+      }, 200);
     }
   }
 
@@ -149,7 +157,7 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
       const t = setTimeout(doPrint, 300)
       return () => clearTimeout(t)
     }
-  }, [autoPrint])
+  }, [autoPrint, order?.orderNumber, order?.timestamp])
 
   if (autoPrint) return null
   if (!order) return null

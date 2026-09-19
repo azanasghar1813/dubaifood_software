@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Search, User, Phone, MapPin, StickyNote, Star, X, CheckCircle2, Plus, Heart, Pencil, Trash2 } from "lucide-react"
+import { Search, User, Phone, MapPin, StickyNote, Star, X, CheckCircle2, Plus, Heart, Pencil, Trash2, Printer } from "lucide-react"
 import { usePosStore } from "../store/posStore"
 import { toast } from "../store/toastStore"
 
@@ -10,10 +10,11 @@ interface CustomerPanelModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
+  onPrint?: () => void
 }
 
-export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanelModalProps) {
-  const { setCustomer } = usePosStore()
+export function CustomerPanelModal({ isOpen, onClose, onSuccess, onPrint }: CustomerPanelModalProps) {
+  const { setCustomer, orderType } = usePosStore()
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [searchQuery, setSearchQuery] = useState("")
   
@@ -105,6 +106,12 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault()
+        handleSave(e as any, true)
+        return
+      }
+
       const el = e.target as HTMLElement
       const typing = el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || el?.tagName === 'SELECT' || !!el?.isContentEditable
 
@@ -315,7 +322,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
     }
   }
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent, triggerPrint = false) => {
     e.preventDefault()
     // Name is not mandatory, if empty write Guest
     const finalName = newName.trim() === '' ? 'Guest' : newName
@@ -345,7 +352,8 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
         fetchCustomers()
         resetForm()
         onClose()
-        if (onSuccess) onSuccess()
+        if (triggerPrint && onPrint) onPrint()
+        else if (onSuccess) onSuccess()
       } else {
         if (isFavourite) {
           const res: any = await customerService.createCustomer(custData)
@@ -358,7 +366,8 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
             setCustomer(newCustomer)
             setCustomers(prev => [newCustomer, ...prev])
             onClose()
-            if (onSuccess) onSuccess()
+            if (triggerPrint && onPrint) onPrint()
+            else if (onSuccess) onSuccess()
           } else {
             toast.error("Failed to create customer")
           }
@@ -371,7 +380,8 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
           }
           setCustomer(tempCustomer)
           onClose()
-          if (onSuccess) onSuccess()
+          if (triggerPrint && onPrint) onPrint()
+          else if (onSuccess) onSuccess()
         }
       }
     } catch (err: any) {
@@ -493,7 +503,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
                       </div>
                     )}
 
-                    <input ref={nameRef} onFocus={() => setActiveInput(0)} type="text" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(e as any); } }} className="w-full h-10 pl-9 pr-4 rounded-xl bg-transparent border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold relative z-20 text-foreground placeholder:text-muted-foreground/50" placeholder="Guest" />
+                    <input ref={nameRef} onFocus={() => setActiveInput(0)} type="text" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(e as any, e.ctrlKey); } }} className="w-full h-10 pl-9 pr-4 rounded-xl bg-transparent border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold relative z-20 text-foreground placeholder:text-muted-foreground/50" placeholder="Guest" />
                   </div>
                 </div>
                 <div className="space-y-1.5">
@@ -528,7 +538,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
                           if (suggestedCustomer && suggestedCustomer.phone.startsWith(newPhone)) {
                             acceptSuggestion();
                           } else {
-                            handleSave(e as any); 
+                            handleSave(e as any, e.ctrlKey); 
                           }
                         } 
                       }} 
@@ -567,7 +577,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
                     </div>
                   )}
 
-                  <textarea ref={addressRef} onFocus={() => setActiveInput(2)} value={newAddress} onChange={e => setNewAddress(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(e as any); } }} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-transparent border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none relative z-20 text-foreground placeholder:text-muted-foreground/50" placeholder="Delivery address..." />
+                  <textarea ref={addressRef} onFocus={() => setActiveInput(2)} value={newAddress} onChange={e => setNewAddress(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(e as any, e.ctrlKey); } }} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-transparent border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none relative z-20 text-foreground placeholder:text-muted-foreground/50" placeholder="Delivery address..." />
                 </div>
               </div>
 
@@ -582,7 +592,7 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
                     </div>
                   )}
 
-                  <textarea ref={notesRef} onFocus={() => setActiveInput(3)} value={newNotes} onChange={e => setNewNotes(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(e as any); } }} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-transparent border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none relative z-20 text-foreground placeholder:text-muted-foreground/50" placeholder="Allergies, preferences..." />
+                  <textarea ref={notesRef} onFocus={() => setActiveInput(3)} value={newNotes} onChange={e => setNewNotes(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(e as any, e.ctrlKey); } }} className="w-full h-20 pl-9 pr-4 pt-2.5 rounded-xl bg-transparent border-none focus:ring-2 focus:ring-orange-500 outline-none text-sm font-semibold resize-none relative z-20 text-foreground placeholder:text-muted-foreground/50" placeholder="Allergies, preferences..." />
                 </div>
               </div>
 
@@ -622,10 +632,15 @@ export function CustomerPanelModal({ isOpen, onClose, onSuccess }: CustomerPanel
                 </button>
               </div>
 
-              <div className="pt-4 mt-auto">
-                <button type="submit" className="w-full h-12 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors">
-                  <Plus className="w-5 h-5" /> {editingCustomerId ? 'Update Customer' : (isFavourite ? 'Save & Select' : 'Select for Order')}
+              <div className="pt-4 mt-auto flex gap-2">
+                <button type="submit" className="flex-1 h-12 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors">
+                  <Plus className="w-5 h-5" /> {editingCustomerId ? 'Update' : (isFavourite ? 'Save & Select' : 'Select')}
                 </button>
+                {orderType === 'Delivery' && onPrint && (
+                  <button type="button" onClick={(e) => handleSave(e, true)} className="flex-1 h-12 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors">
+                    <Printer className="w-5 h-5" /> Print & Place
+                  </button>
+                )}
               </div>
             </form>
           </div>

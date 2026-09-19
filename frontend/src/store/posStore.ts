@@ -706,12 +706,11 @@ export const usePosStore = create<POSState>()(
   },
   getServiceCharge: () => {
     if (get().orderType !== 'Dine In') return 0;
-    const discount = Number(get().activeOrder?.totals?.discount_total ?? get().activeOrder?.discount_total ?? 0) || 0
     const cfg = get().financeConfig || {};
     const raw = Number(cfg.service_charge_percent ?? cfg.service_charge_rate ?? 7);
     const rate = !Number.isFinite(raw) || raw <= 0 ? 0.07 : (raw > 1 ? raw / 100 : raw);
 
-    const food = Math.max(0, get().getSubtotal() - discount);
+    const food = Math.max(0, get().getSubtotal());
     return Math.round(food * rate);
   },
   getGrandTotal: () => {

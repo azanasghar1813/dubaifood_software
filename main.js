@@ -392,6 +392,69 @@ app.whenReady().then(async () => {
     app.quit();
   });
 
+  ipcMain.handle('print-html', async (event, htmlContent) => {
+    return new Promise((resolve) => {
+      let settled = false;
+      const settle = (result) => {
+        if (!settled) {
+          settled = true;
+          resolve(result);
+        }
+      };
+
+      const printWindow = new BrowserWindow({ 
+        show: false,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      });
+
+      // Inject base styles to ensure background colors print and layout is correct
+      const fullHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            @media print {
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          ${htmlContent}
+        </body>
+        </html>
+      `;
+
+      printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`);
+
+      const hardTimeout = setTimeout(() => {
+        console.warn('[print-html] Timed out waiting for print to complete, closing window.');
+        if (!printWindow.isDestroyed()) printWindow.close();
+        settle({ success: false, errorType: 'Timeout' });
+      }, 20000);
+
+      printWindow.webContents.once('did-finish-load', () => {
+        // Use setTimeout to ensure any images are fully rendered
+        setTimeout(() => {
+          if (printWindow.isDestroyed()) {
+            clearTimeout(hardTimeout);
+            settle({ success: false, errorType: 'WindowDestroyed' });
+            return;
+          }
+          printWindow.webContents.print({ silent: true, printBackground: true }, (success, errorType) => {
+            clearTimeout(hardTimeout);
+            if (!printWindow.isDestroyed()) {
+              printWindow.close();
+            }
+            settle({ success, errorType });
+          });
+        }, 500);
+      });
+    });
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();

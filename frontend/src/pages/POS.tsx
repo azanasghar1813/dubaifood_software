@@ -5,6 +5,7 @@ import type { CartItem } from "../store/posStore"
 import { motion, AnimatePresence } from "framer-motion"
 import { useAuthStore } from "../store/authStore"
 import { useOrderStore } from "../store/orderStore"
+import { useSettingsStore } from "../store/settingsStore"
 import {
   Search, Plus, Minus, User,
   Loader2, Star,
@@ -312,30 +313,49 @@ export default function POS() {
         notes: orderNotes || null
       }
 
+      let thermalSuccess = false;
       try {
         const { usePrinterStore } = await import("../store/printerStore")
         const ps = usePrinterStore.getState()
-        if (currentOrderId) {
+        const hasThermal = ps.printers.some(
+          (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
+        );
+        if (currentOrderId && hasThermal) {
           const result = await ps.printReceipt(currentOrderId, user?.id || user?.name || 'cashier', isPaidPrint)
           if (result?.job_id) {
+            thermalSuccess = true;
             useOrderStore.getState().syncOrdersFromBackend()
           }
         }
       } catch { /* fallback to on-screen receipt */ }
 
-      try {
-        const { fetchOrderDetail } = await import('../api/historyApi')
-        const { mapHistoryDetailToOrder } = await import('../store/orderStore')
-        const res = await fetchOrderDetail(currentOrderId)
-        if (res.success && res.data) {
-          const fullOrder = mapHistoryDetailToOrder(res.data, res.data)
-          setPrintOrder({
-            ...fullOrder,
-            ...receiptFromCart,
-            paymentStatus: isPaidPrint ? 'Paid' : (fullOrder.paymentStatus || 'Unpaid'),
-            tableNumber: latest.orderType === 'Dine In' ? (fullOrder.tableNumber || latest.tableNumber || null) : null
-          })
-        } else {
+      if (!thermalSuccess) {
+        try {
+          const { fetchOrderDetail } = await import('../api/historyApi')
+          const { mapHistoryDetailToOrder } = await import('../store/orderStore')
+          const res = await fetchOrderDetail(currentOrderId)
+          if (res.success && res.data) {
+            const fullOrder = mapHistoryDetailToOrder(res.data, res.data)
+            setPrintOrder({
+              ...fullOrder,
+              ...receiptFromCart,
+              paymentStatus: isPaidPrint ? 'Paid' : (fullOrder.paymentStatus || 'Unpaid'),
+              tableNumber: latest.orderType === 'Dine In' ? (fullOrder.tableNumber || latest.tableNumber || null) : null
+            })
+          } else {
+            setPrintOrder({
+              ...receiptFromCart,
+              id: currentOrderId,
+              orderNumber: formatReceiptOrderNumber((latest.activeOrder as any)?.order_number || latest.previewOrderNumber),
+              orderType: latest.orderType,
+              tableNumber: latest.orderType === 'Dine In' ? latest.tableNumber : null,
+              customerName: latest.customer?.name || 'Guest',
+              cashierName: user?.name || 'Cashier',
+              timestamp: new Date().toISOString(),
+              paymentStatus: isPaidPrint ? 'Paid' : 'Unpaid'
+            } as any)
+          }
+        } catch {
           setPrintOrder({
             ...receiptFromCart,
             id: currentOrderId,
@@ -348,18 +368,6 @@ export default function POS() {
             paymentStatus: isPaidPrint ? 'Paid' : 'Unpaid'
           } as any)
         }
-      } catch {
-        setPrintOrder({
-          ...receiptFromCart,
-          id: currentOrderId,
-          orderNumber: formatReceiptOrderNumber((latest.activeOrder as any)?.order_number || latest.previewOrderNumber),
-          orderType: latest.orderType,
-          tableNumber: latest.orderType === 'Dine In' ? latest.tableNumber : null,
-          customerName: latest.customer?.name || 'Guest',
-          cashierName: user?.name || 'Cashier',
-          timestamp: new Date().toISOString(),
-          paymentStatus: isPaidPrint ? 'Paid' : 'Unpaid'
-        } as any)
       }
 
       useOrderStore.getState().syncOrdersFromBackend()
@@ -370,10 +378,11 @@ export default function POS() {
   }
 
   const handleProceedToPay = async () => {
-    if (usePosStore.getState().cart.length === 0) {
+    const storeState = usePosStore.getState();
+    if (storeState.cart.length === 0) {
       return;
     }
-    if (orderType === 'Delivery' && (!customer || !customer.phone)) {
+    if (storeState.orderType === 'Delivery' && !storeState.customer) {
       setCustomerModalOpen(true);
       return;
     }
@@ -385,20 +394,32 @@ export default function POS() {
     const shouldPay = String(method) !== 'Later';
     const totalToPay = getNetTotal();
     
-    const { success, orderId: generatedOrderId } = await completeOrder(
-      shouldPay ? [{
-        id: `pay-${Date.now()}`,
-        method: method,
-        amount: totalToPay,
-        received: totalToPay,
-        change: 0,
-        timestamp: new Date().toISOString(),
-        cashier: user?.name || 'Cashier',
-        status: 'Completed'
-      }] : [],
-      discountVal,
-      isPaidPrint
-    );
+    let success = false;
+    let generatedOrderId: string | undefined;
+
+    try {
+      const result = await completeOrder(
+        shouldPay ? [{
+          id: `pay-${Date.now()}`,
+          method: method,
+          amount: totalToPay,
+          received: totalToPay,
+          change: 0,
+          timestamp: new Date().toISOString(),
+          cashier: user?.name || 'Cashier',
+          status: 'Completed'
+        }] : [],
+        discountVal,
+        isPaidPrint
+      );
+      success = result.success;
+      generatedOrderId = result.orderId;
+    } catch (err: any) {
+      console.error("Order failed:", err);
+      alert(err?.response?.data?.error || err?.message || "Order could not be placed. Check the cart and try again.");
+      setIsProcessing(false);
+      return;
+    }
 
     if (!success) {
       setIsProcessing(false);
@@ -408,19 +429,32 @@ export default function POS() {
     const finalOrderId = generatedOrderId || activeOrderId;
     
     try {
-      const { fetchOrderDetail } = await import('../api/historyApi')
-      const { mapHistoryDetailToOrder } = await import('../store/orderStore')
-      const res = await fetchOrderDetail(finalOrderId)
-      if (res.success && res.data) {
-         const fullOrder = mapHistoryDetailToOrder(res.data, res.data)
-         setPrintOrder(fullOrder)
-      }
+      let thermalSuccess = false;
+      try {
+        const { usePrinterStore } = await import("../store/printerStore");
+        const ps = usePrinterStore.getState();
+        
+        const hasThermal = ps.printers.some(
+          (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
+        );
+        
+        if (finalOrderId && hasThermal) {
+          const receiptResult = await ps.printReceipt(finalOrderId, user?.id || user?.name || 'cashier', isPaidPrint);
+          await ps.printKitchen(finalOrderId, user?.id || user?.name || 'cashier');
+          if (receiptResult?.job_id) {
+            thermalSuccess = true;
+          }
+        }
+      } catch { /* thermal check fail */ }
 
-      const { usePrinterStore } = await import("../store/printerStore");
-      const ps = usePrinterStore.getState();
-      if (finalOrderId) {
-        await ps.printReceipt(finalOrderId, user?.id || user?.name || 'cashier', isPaidPrint);
-        await ps.printKitchen(finalOrderId, user?.id || user?.name || 'cashier');
+      if (!thermalSuccess) {
+        const { fetchOrderDetail } = await import('../api/historyApi');
+        const { mapHistoryDetailToOrder } = await import('../store/orderStore');
+        const res = await fetchOrderDetail(finalOrderId);
+        if (res.success && res.data) {
+          const fullOrder = mapHistoryDetailToOrder(res.data, res.data);
+          setPrintOrder(fullOrder);
+        }
       }
     } catch { /* fallback */ }
 
@@ -449,6 +483,7 @@ export default function POS() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        useSettingsStore.getState().fetchLogoBase64()
         const [prodsRes, catsRes, dealsRes] = await Promise.all([
           menuService.getProducts(),
           menuService.getCategories(),
@@ -1100,7 +1135,7 @@ export default function POS() {
       }
 
       if (e.ctrlKey && e.key === 'Enter') {
-        if (cart.length > 0 && !checkoutModalOpen && !customizeModalOpen && !sizeModalOpen) {
+        if (cart.length > 0 && !checkoutModalOpen && !customizeModalOpen && !sizeModalOpen && !customerModalOpen) {
           e.preventDefault()
           handleProceedToPay()
         }
@@ -2237,7 +2272,9 @@ export default function POS() {
                               value={deliveryCharges || ''}
                               onChange={(e) => setDeliveryCharges(parseFloat(e.target.value) || 0)}
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
+                                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                } else if (e.key === 'Enter') {
                                   e.preventDefault();
                                   handleProceedToPay();
                                 }
@@ -2257,7 +2294,9 @@ export default function POS() {
                             value={discountAmount}
                             onChange={(e) => setDiscountAmount(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
+                              if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                e.preventDefault();
+                              } else if (e.key === 'Enter') {
                                 e.preventDefault();
                                 handleProceedToPay();
                               }
@@ -2624,6 +2663,11 @@ export default function POS() {
                           type="number"
                           value={discountAmount}
                           onChange={(e) => setDiscountAmount(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                              e.preventDefault();
+                            }
+                          }}
                           onFocus={() => setCheckoutFocusZone('discount')}
                           min={0}
                           max={baseTotal}
@@ -2683,6 +2727,11 @@ export default function POS() {
                           type="number"
                           value={amountReceived}
                           onChange={(e) => setAmountReceived(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                              e.preventDefault();
+                            }
+                          }}
                           onFocus={() => setCheckoutFocusZone('amount')}
                           placeholder={totalToPay.toString()}
                           className={`flex-1 h-9 px-3 rounded-lg bg-background border font-black text-sm outline-none transition-all text-right ${checkoutFocusZone === 'amount' ? 'border-orange-500' : 'border-border'
@@ -2878,7 +2927,7 @@ export default function POS() {
                 </div>
               </motion.div>
               {/* ReceiptPreview Popup */}
-              {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
+              {printOrder && <ReceiptPreview key={printOrder.id || printOrder.orderNumber} order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
             </div>
           )
         })()}
@@ -2890,10 +2939,12 @@ export default function POS() {
       <CustomerPanelModal
         isOpen={customerModalOpen}
         onClose={() => setCustomerModalOpen(false)}
+        onPrint={() => {
+          setIsPaidPrint(true) // Treat as paid/printed
+          handleProceedToPay()
+        }}
         onSuccess={() => {
-          if (orderType === 'Delivery' && cart.length > 0) {
-            setCheckoutModalOpen(true)
-          }
+          // Do nothing, just return to cart as requested by user
         }}
       />
       <TableSelectorModal
@@ -2917,8 +2968,8 @@ export default function POS() {
       />
 
       {/* ReceiptPreview Popup */}
-      {printOrder && <ReceiptPreview order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
-      {kotPreview && <KitchenTicketPreview order={kotPreview} autoPrint={true} onClose={() => setKotPreview(null)} />}
+      {printOrder && <ReceiptPreview key={printOrder.id || printOrder.orderNumber} order={printOrder} autoPrint={true} onClose={() => setPrintOrder(null)} />}
+      {kotPreview && <KitchenTicketPreview key={kotPreview.id || kotPreview.orderNumber || 'kot'} order={kotPreview} autoPrint={true} onClose={() => setKotPreview(null)} />}
     </div>
   )
 }
