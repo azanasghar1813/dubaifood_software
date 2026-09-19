@@ -403,29 +403,41 @@ app.whenReady().then(async () => {
       };
 
       const printWindow = new BrowserWindow({ 
-        show: false,
+        show: true,
+        width: 420,
+        height: 780,
         webPreferences: {
           nodeIntegration: false,
-          contextIsolation: true
+          contextIsolation: true,
+          backgroundThrottling: false
         }
       });
 
       // Inject base styles to ensure background colors print and layout is correct
-      const fullHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            @media print {
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; }
-            }
-          </style>
-        </head>
-        <body>
-          ${htmlContent}
-        </body>
-        </html>
-      `;
+      let fullHtml = htmlContent;
+      const printStyles = `<style>
+        html, body { min-height: 0 !important; height: auto !important; }
+        @media print {
+          @page { margin: 0 !important; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+      </style></head>`;
+
+      if (fullHtml.includes('</head>')) {
+        fullHtml = fullHtml.replace('</head>', printStyles);
+      } else {
+        fullHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            ${printStyles.replace('</head>', '')}
+          </head>
+          <body>
+            ${htmlContent}
+          </body>
+          </html>
+        `;
+      }
 
       printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`);
 
@@ -436,21 +448,20 @@ app.whenReady().then(async () => {
       }, 20000);
 
       printWindow.webContents.once('did-finish-load', () => {
-        // Use setTimeout to ensure any images are fully rendered
-        setTimeout(() => {
-          if (printWindow.isDestroyed()) {
-            clearTimeout(hardTimeout);
-            settle({ success: false, errorType: 'WindowDestroyed' });
-            return;
-          }
-          printWindow.webContents.print({ silent: true, printBackground: true }, (success, errorType) => {
-            clearTimeout(hardTimeout);
-            if (!printWindow.isDestroyed()) {
-              printWindow.close();
-            }
-            settle({ success, errorType });
-          });
-        }, 500);
+        if (printWindow.isDestroyed()) {
+          clearTimeout(hardTimeout);
+          settle({ success: false, errorType: 'WindowDestroyed' });
+          return;
+        }
+
+        printWindow.webContents.print({ 
+          silent: false, 
+          printBackground: true 
+        }, (success, errorType) => {
+          clearTimeout(hardTimeout);
+          if (!printWindow.isDestroyed()) printWindow.close();
+          settle({ success, errorType });
+        });
       });
     });
   });
