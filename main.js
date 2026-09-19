@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -72,9 +72,9 @@ process.env.NODE_ENV = isProdMode ? 'production' : 'development';
 
 const envCandidates = app.isPackaged
   ? [
-      path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', '.env'),
-      path.join(__dirname, 'backend', '.env'),
-    ]
+    path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', '.env'),
+    path.join(__dirname, 'backend', '.env'),
+  ]
   : [path.join(__dirname, 'backend', '.env')];
 for (const envPath of envCandidates) {
   if (fs.existsSync(envPath)) {
@@ -371,6 +371,440 @@ const stopBackendGracefully = (timeoutMs = 5000) => {
   });
 };
 
+// ════════════════════════════════════════════════════════════════════════════
+// Silent thermal printing: HTML -> bitmap -> ESC/POS raster -> RAW to spooler.
+// Independent of driver paper size. Falls back to the Windows print dialog.
+// Optional env: POS_PRINT_MODE=driver, POS_PRINTER_NAME, POS_PRINTER_DOTS, POS_PRINT_TEST=1
+// ════════════════════════════════════════════════════════════════════════════
+const PRINT_MODE = String(process.env.POS_PRINT_MODE || 'auto').toLowerCase();
+const DEFAULT_PRINTER_DOTS = 512; // safe on 512/576/640-dot heads; raise after the width test
+const PRINTER_DOTS = Math.max(256, Math.floor((Number.parseInt(process.env.POS_PRINTER_DOTS || '', 10) || DEFAULT_PRINTER_DOTS) / 8) * 8);
+const RECEIPT_CSS_WIDTH = 302;   // 80mm in CSS px, what your HTML is designed for
+const INK_THRESHOLD = 170;       // 0-255, higher = darker print
+const RASTER_BAND_ROWS = 128;
+const TOP_MARGIN_ROWS = 4;
+const BOTTOM_MARGIN_ROWS = 16;
+const FEED_BEFORE_CUT_DOTS = 24;
+
+const VIRTUAL_PRINTER_RE = /pdf|xps|onenote|fax|document writer|virtual|snagit|anydesk|send to/i;
+const OFFICE_PRINTER_RE = /laserjet|deskjet|officejet|designjet|canon|brother|ricoh|kyocera|lexmark|xerox|konica|pantum|\bhp\b/i;
+const THERMAL_PRINTER_RE = /thermal|receipt|\bpos\b|pos-?\d|xp-?\d|tm-?[tum]?\d|rp-?\d|rongta|xprinter|bixolon|citizen|munbyn|gprinter|gp-?\d|zjiang|zj-?\d|hoin|sunmi|3nstar|sewoo|tsp\d|srp-?\d|80mm|58mm|escpos|kitchen|bill/i;
+
+const BASE_CSS = 'html,body{margin:0!important;padding:0!important;min-height:0!important;height:auto!important;background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}';
+const RASTER_CSS = BASE_CSS + 'html,body{width:100%!important;display:block!important}.receipt,.ticket{width:100%!important;max-width:none!important;padding:4px!important;margin:0!important}';
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const withTimeout = (promise, ms, label) => {
+  let t;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms); })
+  ]).finally(() => clearTimeout(t));
+};
+
+const injectCss = (html, css) => {
+  const tag = `<style>${css}</style>`;
+  return html.includes('</head>')
+    ? html.replace('</head>', () => `${tag}</head>`)
+    : `<!DOCTYPE html><html><head>${tag}</head><body>${html}</body></html>`;
+};
+
+// ── printer selection (automatic) ───────────────────────────────────────────
+const listPrinters = async () => {
+  const win = (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : BrowserWindow.getAllWindows()[0];
+  const wc = win && win.webContents;
+  if (!wc) return [];
+  return typeof wc.getPrintersAsync === 'function' ? wc.getPrintersAsync() : wc.getPrinters();
+};
+
+const pickThermalPrinter = (printers) => {
+  const forced = String(process.env.POS_PRINTER_NAME || '').trim();
+  if (forced) return forced;
+  const real = printers.filter((p) => !VIRTUAL_PRINTER_RE.test(p.name));
+  const thermal = real.filter((p) => THERMAL_PRINTER_RE.test(p.name));
+  const pool = thermal.length ? thermal : real.filter((p) => !OFFICE_PRINTER_RE.test(p.name));
+  if (!pool.length) return null;
+  return (pool.find((p) => p.isDefault) || pool[0]).name;
+};
+
+// ── persistent offscreen renderer (created once, lives for the app's lifetime) ──
+let rendererWindow = null;
+let rendererReady = null;
+
+const DSF = PRINTER_DOTS / RECEIPT_CSS_WIDTH;
+
+const createRendererWindow = () => new Promise((resolve, reject) => {
+  const win = new BrowserWindow({
+    show: false, frame: false, width: RECEIPT_CSS_WIDTH, height: 900,
+    webPreferences: { offscreen: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false }
+  });
+  const wc = win.webContents;
+
+  win.webContents.once('did-finish-load', async () => {
+    try {
+      wc.debugger.attach('1.3'); // attached ONCE for the window's whole life
+      await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride', {
+        width: RECEIPT_CSS_WIDTH, height: 900, deviceScaleFactor: DSF, mobile: false
+      });
+      resolve(win);
+    } catch (err) {
+      reject(err);
+    }
+  });
+  win.webContents.once('did-fail-load', (_e, code, desc) => reject(new Error(`Renderer init failed: ${desc || code}`)));
+  win.loadURL('about:blank').catch(reject);
+});
+
+const getRendererWindow = async () => {
+  if (rendererWindow && !rendererWindow.isDestroyed()) return rendererWindow;
+  if (!rendererReady) {
+    rendererReady = createRendererWindow().then((win) => {
+      rendererWindow = win;
+      win.on('closed', () => { rendererWindow = null; rendererReady = null; });
+      return win;
+    }).catch((err) => { rendererReady = null; throw err; });
+  }
+  return withTimeout(rendererReady, 15000, 'Renderer init');
+};
+
+// Call this once at app startup (app.whenReady) so the FIRST real print
+// isn't the one that pays for window creation + CDP attach.
+const prewarmPrinting = async () => {
+  try { await getRendererWindow(); } catch (err) { console.error('[print] prewarm failed:', err.message); }
+  try { await ensureRawWorker(); } catch (err) { console.error('[print] worker prewarm failed:', err.message); }
+};
+
+// One in-page round trip: reset the document AND wait for it to be paint-ready.
+// document.open/write/close replaces the whole DOM in-place — no navigation,
+// no did-finish-load wait, fonts/cache stay warm from the previous job.
+const renderAndMeasure = (wc, html) => withTimeout(wc.executeJavaScript(`(async () => {
+  document.open();
+  document.write(${JSON.stringify(injectCss(html, RASTER_CSS))});
+  document.close();
+  await Promise.all(Array.from(document.images).map(img => img.complete ? null : new Promise(r => {
+    img.addEventListener('load', r, { once: true });
+    img.addEventListener('error', r, { once: true });
+  })));
+  if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (e) {} }
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const el = document.querySelector('.receipt, .ticket') || document.body;
+  return { height: Math.ceil(el.getBoundingClientRect().height) };
+})()`, true), 10000, 'Render+measure');
+
+const waitForPaintSettle = (wc) => withTimeout(
+  wc.executeJavaScript('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))', true),
+  5000, 'Paint settle'
+);
+
+// ── HTML -> PNG at printer resolution (persistent window, no per-job creation) ──
+const renderReceiptImage = async (html) => {
+  const win = await getRendererWindow();
+  const wc = win.webContents;
+
+  const m = await renderAndMeasure(wc, html);
+  const cssHeight = Math.min(Math.max(m.height, 50), 12000);
+
+  await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride', {
+    width: RECEIPT_CSS_WIDTH, height: cssHeight + 4, deviceScaleFactor: DSF, mobile: false
+  });
+  await waitForPaintSettle(wc); // replaces the old fixed 200ms sleep
+
+  const shot = await withTimeout(
+    wc.debugger.sendCommand('Page.captureScreenshot', { format: 'png', fromSurface: true }),
+    15000, 'Screenshot'
+  );
+  const image = nativeImage.createFromBuffer(Buffer.from(shot.data, 'base64'));
+  if (image.isEmpty()) throw new Error('Screenshot was empty');
+
+  // Reset viewport back to the tall default so the NEXT job's measure pass
+  // isn't accidentally clipped by this job's shorter height.
+  await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride', {
+    width: RECEIPT_CSS_WIDTH, height: 900, deviceScaleFactor: DSF, mobile: false
+  });
+
+  return image;
+};
+
+// ── printer selection, now CACHED — enumeration cost paid once, not per job ──
+let printerCache = { name: null, resolvedAt: 0 };
+const PRINTER_CACHE_MS = 10 * 60 * 1000; // re-check every 10 min, or immediately on failure
+
+const resolveThermalPrinter = async (force = false) => {
+  const fresh = !force && printerCache.name && (Date.now() - printerCache.resolvedAt < PRINTER_CACHE_MS);
+  if (fresh) return printerCache.name;
+
+  const printers = await listPrinters();
+  const target = pickThermalPrinter(printers);
+  if (target) {
+    printerCache = { name: target, resolvedAt: Date.now() };
+    return target;
+  }
+  printerCache = { name: null, resolvedAt: 0 };
+  console.warn('[print-html] No physical printer matched. Installed:', printers.map((p) => p.name).join(', ') || '(none)');
+  return null;
+};
+
+// ── bitmap -> ESC/POS (centered, trimmed top/bottom, feed, cut) ─────────────
+const buildEscPosRaster = (image) => {
+  let img = image;
+  if (img.getSize().width !== PRINTER_DOTS) img = img.resize({ width: PRINTER_DOTS, quality: 'best' });
+  const { width, height } = img.getSize();
+  const bmp = img.toBitmap(); // BGRA
+  const stride = Math.floor(bmp.length / height);
+  const rowBytes = Math.ceil(width / 8);
+  const packed = Buffer.alloc(rowBytes * height);
+  let firstInk = -1;
+  let lastInk = -1;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * stride + x * 4;
+      const lum = 0.114 * bmp[i] + 0.587 * bmp[i + 1] + 0.299 * bmp[i + 2] + (255 - bmp[i + 3]);
+      if (lum < INK_THRESHOLD) {
+        packed[y * rowBytes + (x >> 3)] |= 0x80 >> (x & 7);
+        if (firstInk < 0) firstInk = y;
+        lastInk = y;
+      }
+    }
+  }
+  if (lastInk < 0) throw new Error('Rendered receipt is blank, refusing to print');
+
+  const startRow = Math.max(0, firstInk - TOP_MARGIN_ROWS);
+  const endRow = Math.min(height, lastInk + 1 + BOTTOM_MARGIN_ROWS);
+  const parts = [Buffer.from([0x1b, 0x40]), Buffer.from([0x1b, 0x61, 0x01])]; // init, center
+  for (let y = startRow; y < endRow; y += RASTER_BAND_ROWS) {
+    const h = Math.min(RASTER_BAND_ROWS, endRow - y);
+    parts.push(Buffer.from([0x1d, 0x76, 0x30, 0x00, rowBytes & 0xff, (rowBytes >> 8) & 0xff, h & 0xff, (h >> 8) & 0xff]));
+    parts.push(packed.subarray(y * rowBytes, (y + h) * rowBytes));
+  }
+  parts.push(Buffer.from([0x1b, 0x4a, FEED_BEFORE_CUT_DOTS]));
+  parts.push(Buffer.from([0x1d, 0x56, 0x42, 0x00])); // feed to cut position + cut
+  console.log(`[print-html] raster ${width}x${endRow - startRow} dots`);
+  return Buffer.concat(parts);
+};
+
+// ── RAW bytes -> Windows spooler through ONE long-lived PowerShell worker ───
+const RAW_PRINTER_CS = `using System;
+using System.Runtime.InteropServices;
+public class RawPrinter {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public class DOCINFOW {
+    [MarshalAs(UnmanagedType.LPWStr)] public string pDocName;
+    [MarshalAs(UnmanagedType.LPWStr)] public string pOutputFile;
+    [MarshalAs(UnmanagedType.LPWStr)] public string pDataType;
+  }
+  [DllImport("winspool.drv", EntryPoint = "OpenPrinterW", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true)]
+  static extern bool OpenPrinter(string name, out IntPtr h, IntPtr pd);
+  [DllImport("winspool.drv", SetLastError = true, ExactSpelling = true)]
+  static extern bool ClosePrinter(IntPtr h);
+  [DllImport("winspool.drv", EntryPoint = "StartDocPrinterW", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true)]
+  static extern bool StartDocPrinter(IntPtr h, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOW di);
+  [DllImport("winspool.drv", SetLastError = true, ExactSpelling = true)]
+  static extern bool EndDocPrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError = true, ExactSpelling = true)]
+  static extern bool StartPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError = true, ExactSpelling = true)]
+  static extern bool EndPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError = true, ExactSpelling = true)]
+  static extern bool WritePrinter(IntPtr h, IntPtr bytes, int count, out int written);
+
+  public static void Send(string printer, byte[] data) {
+    IntPtr h;
+    if (!OpenPrinter(printer, out h, IntPtr.Zero))
+      throw new Exception("OpenPrinter failed for '" + printer + "' (Win32 error " + Marshal.GetLastWin32Error() + ")");
+    try {
+      DOCINFOW di = new DOCINFOW();
+      di.pDocName = "POS Receipt";
+      di.pDataType = "RAW";
+      if (!StartDocPrinter(h, 1, di))
+        throw new Exception("StartDocPrinter failed (Win32 error " + Marshal.GetLastWin32Error() + ")");
+      try {
+        if (!StartPagePrinter(h))
+          throw new Exception("StartPagePrinter failed (Win32 error " + Marshal.GetLastWin32Error() + ")");
+        IntPtr p = Marshal.AllocCoTaskMem(data.Length);
+        try {
+          Marshal.Copy(data, 0, p, data.Length);
+          int written;
+          if (!WritePrinter(h, p, data.Length, out written) || written != data.Length)
+            throw new Exception("WritePrinter failed (Win32 error " + Marshal.GetLastWin32Error() + ")");
+        } finally { Marshal.FreeCoTaskMem(p); }
+        EndPagePrinter(h);
+      } finally { EndDocPrinter(h); }
+    } finally { ClosePrinter(h); }
+  }
+}`;
+
+const RAW_WORKER_PS = [
+  "$ErrorActionPreference = 'Stop'",
+  "$src = @'",
+  RAW_PRINTER_CS,
+  "'@",
+  'Add-Type -TypeDefinition $src',
+  "[Console]::Out.WriteLine('READY')",
+  '[Console]::Out.Flush()',
+  'while ($true) {',
+  '  $line = [Console]::In.ReadLine()',
+  '  if ($null -eq $line) { break }',
+  '  try {',
+  "    $p = $line.Split('|')",
+  '    $printer = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[0]))',
+  '    $file = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[1]))',
+  '    [RawPrinter]::Send($printer, [IO.File]::ReadAllBytes($file))',
+  "    [Console]::Out.WriteLine('OK')",
+  '  } catch {',
+  "    $m = ($_.Exception.Message -replace '[\\r\\n]+', ' ')",
+  "    [Console]::Out.WriteLine('ERR ' + $m)",
+  '  }',
+  '  [Console]::Out.Flush()',
+  '}'
+].join('\n');
+
+let rawWorker = null;
+let rawWorkerReady = null;
+let rawJob = null;
+let rawOut = '';
+
+const killRawWorker = () => {
+  const w = rawWorker;
+  rawWorker = null;
+  rawWorkerReady = null;
+  if (w) { try { w.kill(); } catch { /* ignore */ } }
+};
+
+const ensureRawWorker = async () => {
+  if (rawWorker && rawWorkerReady) return withTimeout(rawWorkerReady, 20000, 'PowerShell start');
+  const { spawn } = await import('child_process');
+  const encoded = Buffer.from(RAW_WORKER_PS, 'utf16le').toString('base64');
+  const ps = spawn('powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
+    { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  rawWorker = ps;
+  ps.stdin.on('error', () => { /* worker died; the exit handler rejects the job and the dialog fallback prints */ });
+  rawOut = '';
+  let stderr = '';
+  let readyResolve;
+  let readyReject;
+  rawWorkerReady = new Promise((res, rej) => { readyResolve = res; readyReject = rej; });
+  rawWorkerReady.catch(() => { });
+
+  ps.stderr.on('data', (d) => { stderr += d.toString(); });
+  ps.stdout.on('data', (d) => {
+    rawOut += d.toString();
+    let idx;
+    while ((idx = rawOut.indexOf('\n')) >= 0) {
+      const line = rawOut.slice(0, idx).trim();
+      rawOut = rawOut.slice(idx + 1);
+      if (line === 'READY') { readyResolve(); continue; }
+      if (rawJob && (line === 'OK' || line.startsWith('ERR'))) {
+        const job = rawJob;
+        rawJob = null;
+        if (line === 'OK') job.resolve();
+        else job.reject(Object.assign(new Error(line.slice(4) || 'Printer error'), { soft: true }));
+      }
+    }
+  });
+  const onDead = (why) => {
+    if (rawWorker === ps) { rawWorker = null; rawWorkerReady = null; }
+    const err = new Error(`PowerShell worker ${why}: ${stderr.slice(0, 300)}`);
+    readyReject(err);
+    if (rawJob) { const j = rawJob; rawJob = null; j.reject(err); }
+  };
+  ps.on('error', (e) => onDead(e.message));
+  ps.on('exit', (c) => onDead(`exited (${c})`));
+  return withTimeout(rawWorkerReady, 20000, 'PowerShell start');
+};
+
+const sendRawToPrinter = async (printerName, data) => {
+  const tmpFile = path.join(app.getPath('temp'), `pos-raw-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.bin`);
+  fs.writeFileSync(tmpFile, data);
+  try {
+    await ensureRawWorker();
+    await withTimeout(new Promise((resolve, reject) => {
+      rawJob = { resolve, reject };
+      const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
+      rawWorker.stdin.write(`${b64(printerName)}|${b64(tmpFile)}\n`);
+    }), 25000, 'RAW spool');
+  } catch (err) {
+    rawJob = null;
+    if (!err.soft) killRawWorker(); // restart the worker only if it is unhealthy
+    throw err;
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+  }
+};
+
+// ── fallback: your existing working Windows print dialog ────────────────────
+const printViaDialog = (htmlContent) => new Promise((resolve) => {
+  let settled = false;
+  const win = new BrowserWindow({
+    show: true, width: 420, height: 780,
+    webPreferences: { nodeIntegration: false, contextIsolation: true, backgroundThrottling: false }
+  });
+  const hardTimeout = setTimeout(() => done({ success: false, errorType: 'Timeout' }), 60000);
+  const done = (result) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(hardTimeout);
+    if (!win.isDestroyed()) win.close();
+    resolve(result);
+  };
+  win.webContents.once('did-finish-load', () => {
+    if (win.isDestroyed()) return done({ success: false, errorType: 'WindowDestroyed' });
+    win.webContents.print({ silent: false, printBackground: true }, (success, errorType) => done({ success, errorType }));
+  });
+  win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(injectCss(htmlContent, BASE_CSS + '@media print{@page{margin:0!important}}'))}`).catch(() => { });
+});
+
+// ── one job at a time (receipt + kitchen ticket never overlap) ──────────────
+let printQueue = Promise.resolve();
+const enqueuePrint = (task) => {
+  const run = printQueue.then(task, task);
+  printQueue = run.catch(() => { });
+  return run;
+};
+
+const printJob = async (htmlContent) => {
+  if (PRINT_MODE !== 'driver' && process.platform === 'win32') {
+    let target = null;
+    try {
+      target = await resolveThermalPrinter();
+      if (target) {
+        const image = await withTimeout(renderReceiptImage(htmlContent), 30000, 'Render');
+        const data = buildEscPosRaster(image);
+        try {
+          await sendRawToPrinter(target, data);
+        } catch (err) {
+          // Cached printer name may be stale (renamed/unplugged) — re-resolve once and retry.
+          if (!err.soft) throw err;
+          target = await resolveThermalPrinter(true);
+          if (!target) throw err;
+          await sendRawToPrinter(target, data);
+        }
+        console.log(`[print-html] RAW ESC/POS sent to "${target}" (${data.length} bytes)`);
+        return { success: true };
+      }
+    } catch (err) {
+      console.error('[print-html] RAW print failed, using print dialog:', err.message);
+    }
+  }
+  return printViaDialog(htmlContent);
+};
+
+// One-time width test: run the app once with POS_PRINT_TEST=1
+const RULER_HTML = `<!DOCTYPE html><html><head><style>
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:sans-serif;background:#fff;color:#000}
+.receipt{width:302px;padding:8px}.row{display:flex;width:100%}
+.row div{flex:1;border:2px solid #000;text-align:center;font-weight:900;font-size:18px;padding:12px 0}
+</style></head><body><div class="receipt">
+<div style="font-weight:900;font-size:14px;text-align:center;margin-bottom:6px">WIDTH TEST (${PRINTER_DOTS} dots)</div>
+<div class="row">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<div>${n}</div>`).join('')}</div>
+<div style="font-size:11px;font-weight:700;margin-top:6px;text-align:center">Count the fully visible boxes (of 10)</div>
+</div></body></html>`;
+
+
+
+
 app.whenReady().then(async () => {
   ipcMain.on('window-minimize', () => { if (mainWindow) mainWindow.minimize(); });
   ipcMain.on('window-maximize', () => {
@@ -383,6 +817,15 @@ app.whenReady().then(async () => {
 
   createSplashWindow();
   startBackendProcess();
+  prewarmPrinting();
+
+  // Start the print worker now so the first receipt is fast
+  if (process.platform === 'win32' && PRINT_MODE !== 'driver') {
+    ensureRawWorker().catch((e) => console.warn('[print-html] Worker warm-up failed:', e.message));
+  }
+  if (process.env.POS_PRINT_TEST === '1') {
+    setTimeout(() => enqueuePrint(() => printJob(RULER_HTML)), 8000);
+  }
 
   ipcMain.on('retry-startup', () => {
     startBackendProcess();
@@ -392,79 +835,7 @@ app.whenReady().then(async () => {
     app.quit();
   });
 
-  ipcMain.handle('print-html', async (event, htmlContent) => {
-    return new Promise((resolve) => {
-      let settled = false;
-      const settle = (result) => {
-        if (!settled) {
-          settled = true;
-          resolve(result);
-        }
-      };
-
-      const printWindow = new BrowserWindow({ 
-        show: true,
-        width: 420,
-        height: 780,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-          backgroundThrottling: false
-        }
-      });
-
-      // Inject base styles to ensure background colors print and layout is correct
-      let fullHtml = htmlContent;
-      const printStyles = `<style>
-        html, body { min-height: 0 !important; height: auto !important; }
-        @media print {
-          @page { margin: 0 !important; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        }
-      </style></head>`;
-
-      if (fullHtml.includes('</head>')) {
-        fullHtml = fullHtml.replace('</head>', printStyles);
-      } else {
-        fullHtml = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            ${printStyles.replace('</head>', '')}
-          </head>
-          <body>
-            ${htmlContent}
-          </body>
-          </html>
-        `;
-      }
-
-      printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`);
-
-      const hardTimeout = setTimeout(() => {
-        console.warn('[print-html] Timed out waiting for print to complete, closing window.');
-        if (!printWindow.isDestroyed()) printWindow.close();
-        settle({ success: false, errorType: 'Timeout' });
-      }, 20000);
-
-      printWindow.webContents.once('did-finish-load', () => {
-        if (printWindow.isDestroyed()) {
-          clearTimeout(hardTimeout);
-          settle({ success: false, errorType: 'WindowDestroyed' });
-          return;
-        }
-
-        printWindow.webContents.print({ 
-          silent: false, 
-          printBackground: true 
-        }, (success, errorType) => {
-          clearTimeout(hardTimeout);
-          if (!printWindow.isDestroyed()) printWindow.close();
-          settle({ success, errorType });
-        });
-      });
-    });
-  });
+  ipcMain.handle('print-html', (_event, htmlContent) => enqueuePrint(() => printJob(htmlContent)));
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -546,6 +917,10 @@ app.on('before-quit', async (event) => {
   if (quitting) return;
   quitting = true;
   event.preventDefault();
+  if (rendererWindow && !rendererWindow.isDestroyed()) {
+    try { rendererWindow.destroy(); } catch { /* ignore */ }
+  }
+  killRawWorker();
   await stopBackendGracefully();
   app.exit(0);
 });
