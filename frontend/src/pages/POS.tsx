@@ -252,21 +252,38 @@ export default function POS() {
         waiterName: latest.waiterName || null,
         riderName: latest.riderName || null,
         isVip: latest.isVipOrder || latest.customer?.is_vip || latest.customer?.isVip || false,
+        customerName: latest.customer?.name || null,
+        customerPhone: latest.customer?.phone || null,
+        customerAddress: latest.customer?.address || null,
         notes: orderNotes || null,
         timestamp: new Date().toISOString(),
         items: latest.cart.map((item: any) => ({
+          id: item.id,
           name: item.name,
+          price: item.price,
           quantity: item.quantity,
+          category: item.category,
           selectedModifiers: item.selectedModifiers,
           notes: item.notes,
           combo_components: item.combo_components || item.comboComponents || []
         }))
       }
-      const kot = await usePrinterStore.getState().printKitchen(currentOrderId, user?.id || user?.name || 'cashier')
-      if (!kot) {
-        alert("KOT could not be sent to the kitchen printer. Check USB or LAN.")
-        setKotPreview(preview)
-      } else {
+      const ps = usePrinterStore.getState()
+      if (!ps.printers.length) await ps.fetchPrinters()
+      const isElectron = !!(window as any).electronAPI
+      const hasThermal = isElectron && ps.printers.some(
+        (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
+      )
+
+      let kot = null;
+      if (hasThermal) {
+        kot = await ps.printKitchen(currentOrderId, user?.id || user?.name || 'cashier')
+        if (!kot) {
+          alert("KOT could not be sent to the kitchen printer. Check USB or LAN.")
+        }
+      }
+      
+      if (!(hasThermal && kot)) {
         setKotPreview(preview)
       }
       useOrderStore.getState().syncOrdersFromBackend()
@@ -309,6 +326,9 @@ export default function POS() {
         subtotal: getSubtotal(),
         serviceCharge: getServiceCharge(),
         deliveryCharge: latest.orderType === 'Delivery' ? (latest.deliveryCharges || 0) : 0,
+        customerName: latest.customer?.name || null,
+        customerPhone: latest.customer?.phone || null,
+        customerAddress: latest.customer?.address || null,
         total: getNetTotal(),
         notes: orderNotes || null
       }
@@ -317,7 +337,9 @@ export default function POS() {
       try {
         const { usePrinterStore } = await import("../store/printerStore")
         const ps = usePrinterStore.getState()
-        const hasThermal = ps.printers.some(
+        if (!ps.printers.length) await ps.fetchPrinters()
+        const isElectron = !!(window as any).electronAPI
+        const hasThermal = isElectron && ps.printers.some(
           (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
         );
         if (currentOrderId && hasThermal) {
@@ -394,6 +416,37 @@ export default function POS() {
     const shouldPay = String(method) !== 'Later';
     const totalToPay = getNetTotal();
     
+    const preview = {
+      orderNumber: storeState.activeOrder?.order_number || storeState.previewOrderNumber,
+      orderType: storeState.orderType,
+      tableNumber: storeState.tableNumber,
+      cashierName: user?.name || 'Cashier',
+      waiterName: storeState.waiterName || null,
+      riderName: storeState.riderName || null,
+      isVip: storeState.isVipOrder || storeState.customer?.is_vip || storeState.customer?.isVip || false,
+      customerName: storeState.customer?.name || null,
+      customerPhone: storeState.customer?.phone || null,
+      customerAddress: storeState.customer?.address || null,
+      notes: orderNotes || null,
+      timestamp: new Date().toISOString(),
+      items: storeState.cart.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        category: item.category,
+        selectedModifiers: item.selectedModifiers,
+        notes: item.notes,
+        combo_components: item.combo_components || item.comboComponents || []
+      })),
+      subtotal: storeState.getSubtotal(),
+      serviceCharge: storeState.getServiceCharge(),
+      deliveryCharge: storeState.orderType === 'Delivery' ? (storeState.deliveryCharges || 0) : 0,
+      total: totalToPay,
+      discount: discountVal,
+      paymentStatus: shouldPay ? 'Paid' : 'Unpaid'
+    }
+
     let success = false;
     let generatedOrderId: string | undefined;
 
@@ -433,28 +486,22 @@ export default function POS() {
       try {
         const { usePrinterStore } = await import("../store/printerStore");
         const ps = usePrinterStore.getState();
+        if (!ps.printers.length) await ps.fetchPrinters();
         
-        const hasThermal = ps.printers.some(
+        const isElectron = !!(window as any).electronAPI;
+        const hasThermal = isElectron && ps.printers.some(
           (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
         );
         
         if (finalOrderId && hasThermal) {
-          const receiptResult = await ps.printReceipt(finalOrderId, user?.id || user?.name || 'cashier', isPaidPrint);
-          await ps.printKitchen(finalOrderId, user?.id || user?.name || 'cashier');
-          if (receiptResult?.job_id) {
-            thermalSuccess = true;
-          }
+          ps.printReceipt(finalOrderId, user?.id || user?.name || 'cashier', isPaidPrint).catch(e => console.error("Receipt print error:", e));
+          ps.printKitchen(finalOrderId, user?.id || user?.name || 'cashier').catch(e => console.error("Kitchen print error:", e));
+          thermalSuccess = true;
         }
       } catch { /* thermal check fail */ }
 
       if (!thermalSuccess) {
-        const { fetchOrderDetail } = await import('../api/historyApi');
-        const { mapHistoryDetailToOrder } = await import('../store/orderStore');
-        const res = await fetchOrderDetail(finalOrderId);
-        if (res.success && res.data) {
-          const fullOrder = mapHistoryDetailToOrder(res.data, res.data);
-          setPrintOrder(fullOrder);
-        }
+        setPrintOrder(preview as any);
       }
     } catch { /* fallback */ }
 
@@ -2854,7 +2901,9 @@ export default function POS() {
                       try {
                         const { usePrinterStore } = await import("../store/printerStore")
                         const ps = usePrinterStore.getState()
-                        const hasThermal = ps.printers.some(
+                        if (!ps.printers.length) await ps.fetchPrinters()
+                        const isElectron = !!(window as any).electronAPI
+                        const hasThermal = isElectron && ps.printers.some(
                           (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
                         )
                         if (finalOrderId) {
@@ -2864,7 +2913,7 @@ export default function POS() {
                               thermalPrintQueued = true
                             }
                           }
-                          if (isKdsAutoSend) {
+                          if (hasThermal && isKdsAutoSend) {
                             await ps.printKitchen(finalOrderId, user?.id || user?.name || 'cashier')
                           }
                           if (thermalPrintQueued) {

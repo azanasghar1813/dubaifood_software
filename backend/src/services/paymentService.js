@@ -220,7 +220,7 @@ class PaymentService {
 
       // ── 3d. Generate + save receipt payload ─────────────────────────────
       // Build hydrated order for the receipt (items already loaded above)
-      const orderForReceipt = { ...updatedRawOrder, items: liveOrder.items };
+      const orderForReceipt = { ...updatedRawOrder, items: liveOrder.items, metadata: liveOrder.metadata, customer: liveOrder.customer };
       const receiptPayload  = receiptService.generateReceiptPayload(orderForReceipt, newPayment);
       const savedReceipt    = receiptService.saveReceipt(
         paymentId,

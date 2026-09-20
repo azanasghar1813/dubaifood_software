@@ -188,7 +188,11 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
         if (onClose) onClose() 
       })
     } else {
-      const pw = window.open('', '_blank', 'width=420,height=780')
+      const popupWidth = 420;
+      const popupHeight = 780;
+      const left = Math.round(window.screenX + (window.outerWidth - popupWidth) / 2);
+      const top = Math.round(window.screenY + (window.outerHeight - popupHeight) / 2);
+      const pw = window.open('', '_blank', `width=${popupWidth},height=${popupHeight},left=${left},top=${top}`)
       if (!pw) { alert('Please allow popups to print receipts.'); return }
       pw.document.write(html)
       pw.document.close()

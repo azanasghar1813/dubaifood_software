@@ -6,6 +6,7 @@ import { dbEngine } from './database/sqlite.js';
 import { configService } from './services/configService.js';
 import { menuCacheService } from './services/menuCacheService.js';
 import { printEngineService } from './services/printEngineService.js';
+import { printerDriverService } from './services/printerDriverService.js';
 import { syncWorker } from './sync/syncWorker.js';
 import { backupService } from './backup/backupService.js';
 import { socketService } from './services/socketService.js';
@@ -107,6 +108,7 @@ const startServer = async () => {
 
     menuCacheService.initialize();
     printEngineService.start();
+    printerDriverService.ensureRawWorker().catch(e => console.warn('[PrinterDriver] Prewarming worker failed:', e.message));
     syncWorker.start();
     backupService.startScheduler();
     lanCatalogSyncService.startAutoSync();
@@ -141,6 +143,7 @@ const startServer = async () => {
       console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
       syncWorker.stop();
       printEngineService.stop();
+      printerDriverService.shutdown();
       lanCatalogSyncService.stopAutoSync();
       dbEngine.close();
 

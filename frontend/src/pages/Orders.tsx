@@ -384,8 +384,8 @@ export default function Orders() {
       const { usePrinterStore } = await import("../store/printerStore")
       const printerState = usePrinterStore.getState()
 
-      // Check if any real (non-VIRTUAL) printer is configured and active
-      const hasThermalPrinter = printerState.printers.some(
+      const isElectron = !!(window as any).electronAPI
+      const hasThermalPrinter = isElectron && printerState.printers.some(
         (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
       )
 

@@ -199,10 +199,16 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     try {
       const { usePrinterStore } = await import('../store/printerStore')
       const ps = usePrinterStore.getState()
-      const hasThermal = ps.printers.some(
+      if (!ps.printers.length) await ps.fetchPrinters()
+      const isElectron = !!(window as any).electronAPI
+      const hasThermal = isElectron && ps.printers.some(
         (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
       )
-      const result = await ps.printKitchen(order.id, user?.id || user?.name || 'cashier')
+      
+      let result = null
+      if (hasThermal) {
+        result = await ps.printKitchen(order.id, user?.id || user?.name || 'cashier')
+      }
       syncOrdersFromBackend()
       
       if (hasThermal && result) {
@@ -263,7 +269,8 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
         await printerState.fetchPrinters()
       }
       
-      const hasThermal = printerState.printers.some(
+      const isElectron = !!(window as any).electronAPI
+      const hasThermal = isElectron && printerState.printers.some(
         (p) => p.driver_type && p.driver_type !== 'VIRTUAL' && (p.current_status === 'ONLINE' || p.current_status === 'OFFLINE')
       )
       

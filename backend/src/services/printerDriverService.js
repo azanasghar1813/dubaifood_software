@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { execSync, exec } from 'child_process';
+import { execSync, exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import { escposEncoder } from './escposEncoder.js';
 import { SerialPort } from 'serialport';
@@ -124,6 +124,129 @@ public class RawPrinterHelper
     }
 }
 `;
+
+
+const RAW_WORKER_PS = [
+  "$ErrorActionPreference = 'Stop'",
+  "$src = @'",
+  RAW_PRINTER_CSHARP,
+  "'@",
+  'Add-Type -TypeDefinition $src',
+  "[Console]::Out.WriteLine('READY')",
+  '[Console]::Out.Flush()',
+  'while ($true) {',
+  '  $line = [Console]::In.ReadLine()',
+  '  if ($null -eq $line) { break }',
+  '  try {',
+  "    $p = $line.Split('|')",
+  '    $printer = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[0]))',
+  '    $file = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[1]))',
+  '    [RawPrinterHelper]::SendBytesToPrinter($printer, $file)',
+  "    [Console]::Out.WriteLine('OK')",
+  '  } catch {',
+  "    $m = ($_.Exception.Message -replace '[\\r\\n]+', ' ')",
+  "    [Console]::Out.WriteLine('ERR ' + $m)",
+  '  }',
+  '  [Console]::Out.Flush()',
+  '}'
+].join('\n');
+
+let rawWorker = null;
+let rawWorkerReady = null;
+let rawJob = null;
+let rawOut = '';
+
+let printQueue = Promise.resolve();
+const enqueuePrint = (task) => {
+  const run = printQueue.then(task, task);
+  printQueue = run.catch(() => { });
+  return run;
+};
+
+const killRawWorker = () => {
+  const w = rawWorker;
+  rawWorker = null;
+  rawWorkerReady = null;
+  if (w) { try { w.kill(); } catch { /* ignore */ } }
+};
+
+const ensureRawWorker = async () => {
+  if (rawWorker && rawWorkerReady) {
+    let t;
+    return Promise.race([
+      rawWorkerReady,
+      new Promise((_, reject) => { t = setTimeout(() => reject(new Error('PowerShell start timed out')), 20000); })
+    ]).finally(() => clearTimeout(t));
+  }
+  
+  const encoded = Buffer.from(RAW_WORKER_PS, 'utf16le').toString('base64');
+  const ps = spawn('powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
+    { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  rawWorker = ps;
+  ps.stdin.on('error', () => { });
+  rawOut = '';
+  let stderr = '';
+  let readyResolve;
+  let readyReject;
+  rawWorkerReady = new Promise((res, rej) => { readyResolve = res; readyReject = rej; });
+  rawWorkerReady.catch(() => { });
+
+  ps.stderr.on('data', (d) => { stderr += d.toString(); });
+  ps.stdout.on('data', (d) => {
+    rawOut += d.toString();
+    let idx;
+    while ((idx = rawOut.indexOf('\n')) >= 0) {
+      const line = rawOut.slice(0, idx).trim();
+      rawOut = rawOut.slice(idx + 1);
+      if (line === 'READY') { readyResolve(); continue; }
+      if (rawJob && (line === 'OK' || line.startsWith('ERR'))) {
+        const job = rawJob;
+        rawJob = null;
+        if (line === 'OK') job.resolve();
+        else job.reject(Object.assign(new Error(line.slice(4) || 'Printer error'), { soft: true }));
+      }
+    }
+  });
+  const onDead = (why) => {
+    if (rawWorker === ps) { rawWorker = null; rawWorkerReady = null; }
+    const err = new Error(`PowerShell worker ${why}: ${stderr.slice(0, 300)}`);
+    readyReject(err);
+    if (rawJob) { const j = rawJob; rawJob = null; j.reject(err); }
+  };
+  ps.on('error', (e) => onDead(e.message));
+  ps.on('exit', (c) => onDead(`exited (${c})`));
+  
+  let t;
+  return Promise.race([
+    rawWorkerReady,
+    new Promise((_, reject) => { t = setTimeout(() => reject(new Error('PowerShell start timed out')), 20000); })
+  ]).finally(() => clearTimeout(t));
+};
+
+const sendRawToPrinter = async (printerName, data) => {
+  const tmpFile = path.join(os.tmpdir(), `pos-raw-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.bin`);
+  fs.writeFileSync(tmpFile, data);
+  try {
+    await ensureRawWorker();
+    
+    let t;
+    await Promise.race([
+      new Promise((resolve, reject) => {
+        rawJob = { resolve, reject };
+        const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
+        rawWorker.stdin.write(`${b64(printerName)}|${b64(tmpFile)}\n`);
+      }),
+      new Promise((_, reject) => { t = setTimeout(() => reject(new Error('RAW spool timed out')), 25000); })
+    ]).finally(() => clearTimeout(t));
+  } catch (err) {
+    rawJob = null;
+    if (!err.soft) killRawWorker();
+    throw err;
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+  }
+};
 
 /**
  * PrinterDriverService
@@ -511,75 +634,22 @@ class PrinterDriverService {
    */
   async _sendUsb(printer, buffer) {
     const printerName = printer?.usb_port || printer?.name;
-
     if (!printerName) {
       throw new Error('No Windows printer name configured (usb_port or name required).');
     }
 
-    // Generate unique temp file per job to avoid collisions
-    const jobUuid = crypto.randomUUID();
-    const tempDir = os.tmpdir();
-    const tempFile = path.join(tempDir, `escpos_${jobUuid}.bin`);
-
-    try {
-      // Write raw bytes to temp file
-      fs.writeFileSync(tempFile, buffer);
-
-      // Build PowerShell script that:
-      // 1. Compiles the RawPrinterHelper C# type (if not already loaded)
-      // 2. Calls SendBytesToPrinter with the printer name and temp file path
-      //
-      // The C# code uses winspool.drv P/Invoke to send RAW data directly
-      // to the printer — no sharing configuration needed.
-      const escapedPrinterName = printerName.replace(/'/g, "''");
-      const escapedTempFile = tempFile.replace(/'/g, "''");
-
-      const dllPath = path.join(os.tmpdir(), 'RawPrinterHelper.dll').replace(/\\/g, '\\\\');
-      const psScript = `
-        $dllPath = '${dllPath}'
-        if (-not (Test-Path $dllPath)) {
-          Add-Type -TypeDefinition @'
-${RAW_PRINTER_CSHARP}
-'@ -OutputAssembly $dllPath
-        }
-        Add-Type -Path $dllPath
-        [RawPrinterHelper]::SendBytesToPrinter('${escapedPrinterName}', '${escapedTempFile}')
-      `;
-
-      await execAsync(
-        `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${psScript.replace(/"/g, '\\"')}"`,
-        {
-          timeout: 15000,  // 15 second timeout
-          windowsHide: true
-        }
-      );
-    } catch (error) {
-      // Parse PowerShell/winspool errors into clear messages
-      const stderr = error.stderr?.toString() || '';
-      const stdout = error.stdout?.toString() || '';
-
-      if (stderr.includes('WritePrinter failed') || stdout.includes('WritePrinter failed')) {
-        throw new Error(`USB printer "${printerName}" rejected the print job. Verify the printer name matches exactly in Windows Settings > Printers. (${stderr || stdout})`);
-      }
-      if (stderr.includes('OpenPrinter') || error.message?.includes('OpenPrinter')) {
-        throw new Error(`Cannot open USB printer "${printerName}". The printer may not be installed or the name is incorrect. Check Windows Settings > Printers & scanners.`);
-      }
-      if (error.killed) {
-        throw new Error(`USB print job timed out after 15 seconds. The printer "${printerName}" may be offline or busy.`);
-      }
-
-      throw new Error(`USB print failed for "${printerName}": ${stderr || error.message}`);
-    } finally {
-      // Always clean up temp file — even on error
+    return enqueuePrint(async () => {
+      const startTime = Date.now();
       try {
-        if (fs.existsSync(tempFile)) {
-          fs.unlinkSync(tempFile);
-        }
-      } catch (cleanupErr) {
-        console.warn(`[PrinterDriver][USB] Failed to clean up temp file ${tempFile}: ${cleanupErr.message}`);
+        await sendRawToPrinter(printerName, buffer);
+        console.log(`[PrinterDriver][USB] Print job completed for "${printerName}" in ${Date.now() - startTime}ms`);
+      } catch (error) {
+        throw new Error(`USB print failed for "${printerName}": ${error.message}`);
       }
-    }
+    });
   }
+
+
 
   /**
    * USB printer connectivity test.
@@ -605,12 +675,12 @@ ${RAW_PRINTER_CSHARP}
         else { Write-Output 'FAIL' }
       `;
 
-      const result = execSync(
+      const { stdout } = await execAsync(
         `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${psScript.replace(/"/g, '\\"')}"`,
         { timeout: 5000, windowsHide: true, encoding: 'utf8' }
       );
 
-      const reachable = result.trim().includes('OK');
+      const reachable = stdout.trim().includes('OK');
       return {
         reachable,
         latency_ms: Date.now() - startTime,
@@ -624,6 +694,8 @@ ${RAW_PRINTER_CSHARP}
       };
     }
   }
+
+
 
   // ──────────────────────────────────────────────────────────────────────────
   // ESC/POS Bluetooth / Serial Driver — via serialport to COM port
@@ -757,6 +829,13 @@ ${RAW_PRINTER_CSHARP}
     const r = String(right || '');
     const gap = Math.max(1, width - l.length - r.length);
     return l + ' '.repeat(gap) + r;
+  }
+  shutdown() {
+    killRawWorker();
+  }
+
+  ensureRawWorker() {
+    return ensureRawWorker();
   }
 }
 

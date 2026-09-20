@@ -1,7 +1,7 @@
 import { Outlet } from "react-router-dom"
 import { useState, useEffect, lazy, Suspense } from "react"
 import { PrinterManager } from "./components/PrinterManager"
-import { PrintTemplates } from "./components/PrintTemplates"
+
 import { KeyboardShortcutsModal } from "./components/KeyboardShortcutsModal"
 import { usePrinterStore } from "./store/printerStore"
 import { initSocket } from "./api/socketClient"
@@ -73,7 +73,7 @@ function App() {
         </Suspense>
       )}
       <PrinterManager isOpen={printerManagerOpen} onClose={() => setPrinterManagerOpen(false)} />
-      <PrintTemplates />
+
       <KeyboardShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   )
