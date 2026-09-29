@@ -226,6 +226,7 @@ export default function POS() {
   }
 
   const handleSendKot = async () => {
+    if (isProcessing) return;
     if (usePosStore.getState().cart.length === 0) {
       alert("This order is currently empty. Please add items before placing it.");
       return;
@@ -284,7 +285,7 @@ export default function POS() {
       if (!(hasThermal && kot)) {
         setKotPreview(preview)
       }
-      useOrderStore.getState().syncOrdersFromBackend()
+      // WebSockets will handle order hydration automatically
       if (!wasEditing) {
         await resetAfterPlace()
       }
@@ -344,7 +345,7 @@ export default function POS() {
           const result = await ps.printReceipt(currentOrderId, user?.id || user?.name || 'cashier', isPaidPrint)
           if (result?.job_id) {
             thermalSuccess = true;
-            useOrderStore.getState().syncOrdersFromBackend()
+            // WebSockets will handle order hydration automatically
           }
         }
       } catch { /* fallback to on-screen receipt */ }
@@ -390,7 +391,7 @@ export default function POS() {
         }
       }
 
-      useOrderStore.getState().syncOrdersFromBackend()
+      // WebSockets will handle order hydration automatically
       if (!wasEditing) await resetAfterPlace()
     } catch {
       alert("Order could not be placed. Check the cart and try again.")
@@ -398,6 +399,7 @@ export default function POS() {
   }
 
   const handleProceedToPay = async () => {
+    if (isProcessing) return;
     const storeState = usePosStore.getState();
     if (storeState.cart.length === 0) {
       return;
@@ -2317,7 +2319,7 @@ export default function POS() {
                                   e.preventDefault();
                                 } else if (e.key === 'Enter') {
                                   e.preventDefault();
-                                  handleProceedToPay();
+                                  if (!isProcessing) handleProceedToPay();
                                 }
                               }}
                               className="w-16 h-6 px-1 text-right bg-secondary border border-border rounded text-xs font-black outline-none focus:border-blue-500"
@@ -2339,7 +2341,7 @@ export default function POS() {
                                 e.preventDefault();
                               } else if (e.key === 'Enter') {
                                 e.preventDefault();
-                                handleProceedToPay();
+                                if (!isProcessing) handleProceedToPay();
                               }
                             }}
                             className="w-16 h-6 px-1 text-right bg-secondary border border-border rounded text-xs font-black outline-none focus:border-emerald-500"
@@ -2356,7 +2358,7 @@ export default function POS() {
                     <div className="grid grid-cols-1 gap-2 mb-2">
                       <button
                         onClick={handleProceedToPay}
-                        disabled={cart.length === 0}
+                        disabled={cart.length === 0 || isProcessing}
                         className="w-full py-3 bg-[var(--checkout-bg)] hover:bg-[var(--checkout-hover)] text-[var(--checkout-text)] font-black text-lg rounded-xl shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         PROCEED TO PAY <span className="bg-white/30 text-white text-[11px] px-2 py-1 rounded-md ml-1 font-bold">CTRL+ENTER</span>

@@ -209,7 +209,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
       if (hasThermal) {
         result = await ps.printKitchen(order.id, user?.id || user?.name || 'cashier')
       }
-      syncOrdersFromBackend()
+      // WebSockets handle state hydration
       
       if (hasThermal && result) {
         setKotStatus(prev => ({ ...prev, [order.id]: 'success' }))
@@ -236,7 +236,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     try {
       await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'CANCELLED' })
       useOrderStore.getState().updateOrder(order.id, { status: 'Cancelled', kitchenStatus: 'Cancelled' })
-      await syncOrdersFromBackend()
+      // WebSockets handle state hydration
     } catch (err: any) {
       console.error(err)
       alert(err?.response?.data?.message || err?.message || 'Could not cancel this order.')
@@ -251,7 +251,7 @@ export const ActiveOrdersSidebar: React.FC<ActiveOrdersSidebarProps> = ({ isOpen
     try {
       await apiClient.post(`/orders/${order.id}/transition`, { targetState: 'COMPLETED', reason: 'Marked complete from active orders' })
       useOrderStore.getState().updateOrder(order.id, { status: 'Completed' })
-      await syncOrdersFromBackend()
+      // WebSockets handle state hydration
     } catch (e: any) {
       console.error(e)
       alert(e?.response?.data?.message || e?.message || 'Could not complete this order.')

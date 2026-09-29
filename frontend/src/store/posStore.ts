@@ -586,9 +586,12 @@ export const usePosStore = create<POSState>()(
 
         order = (checkoutResult as any).data
         set({ activeOrder: order, cart: mapCartItems(order?.items) })
-      } else if (order?.id) {
-        try {
-          await apiClient.put(`/orders/${order.id}/meta`, {
+      }
+      
+      if (order?.id) {
+        const parallelTasks = [];
+        parallelTasks.push(
+          apiClient.put(`/orders/${order.id}/meta`, {
             is_vip: state.isVipOrder || !!state.customer?.is_vip || !!state.customer?.isVip || false,
             customer_id: (!state.customer?.is_temp ? state.customer?.id : null) || order.customer_id || null,
             customer_name: state.customer?.name || null,
@@ -601,18 +604,13 @@ export const usePosStore = create<POSState>()(
             table_id: state.orderType === 'Dine In' ? (state.tableNumber || order.table_id || null) : null,
             service_charge: state.getServiceCharge(),
             receipt_paid_stamp: printPaid,
-          })
-        } catch (e) {
-          console.warn('Could not persist VIP / staff meta on numbered order', e)
-        }
-      }
-
-      if (order?.id) {
-        try {
-          await cartService.applyDiscount(order.id, discountTotal || 0, printPaid)
-        } catch (e) {
-          console.warn('Could not apply discount before payment', e)
-        }
+          }).catch(e => console.warn('Could not persist VIP / staff meta on numbered order', e))
+        );
+        parallelTasks.push(
+          cartService.applyDiscount(order.id, discountTotal || 0, printPaid)
+            .catch(e => console.warn('Could not apply discount before payment', e))
+        );
+        await Promise.all(parallelTasks);
       }
 
       const paymentKeys = get().paymentIdempotencyKeys;
@@ -652,7 +650,7 @@ export const usePosStore = create<POSState>()(
       set({ paymentIdempotencyKeys: updatedPaymentKeys });
 
       await get().resetAfterPlace()
-      useOrderStore.getState().syncOrdersFromBackend()
+      // WebSockets will handle order hydration automatically
       return { success: true, orderId: order.id }
     } catch (e) {
       console.error(e)
@@ -664,6 +662,7 @@ export const usePosStore = create<POSState>()(
 
   resetAfterPlace: async () => {
     const orderType = get().orderType
+    await get().fetchDraftOrder()
     set({
       activeOrder: null,
       cart: [],
@@ -680,7 +679,6 @@ export const usePosStore = create<POSState>()(
       paymentIdempotencyKeys: {},
       orderType
     })
-    await get().fetchDraftOrder()
   },
 
   clearCart: () => {

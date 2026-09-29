@@ -190,7 +190,6 @@ export default function Dashboard() {
     // Poll every 60 seconds
     const interval = setInterval(() => {
       fetchDashboardData()
-      syncOrdersFromBackend()
     }, 60000)
     return () => clearInterval(interval)
   }, [])
