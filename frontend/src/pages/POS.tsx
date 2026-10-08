@@ -398,6 +398,12 @@ export default function POS() {
     }
   }
 
+  const getDisplayTotal = () => {
+    const storedDiscount = Number((activeOrder as any)?.totals?.discount_total ?? (activeOrder as any)?.discount_total ?? 0) || 0;
+    const baseTotal = getNetTotal() + storedDiscount;
+    return Math.max(0, baseTotal - (Number(discountAmount) || 0));
+  };
+
   const handleProceedToPay = async () => {
     if (isProcessing) return;
     const storeState = usePosStore.getState();
@@ -414,7 +420,7 @@ export default function POS() {
     const discountVal = Number(discountAmount) || 0;
     
     const shouldPay = String(method) !== 'Later';
-    const totalToPay = getNetTotal();
+    const totalToPay = getDisplayTotal();
     
     const preview = {
       orderNumber: storeState.activeOrder?.order_number || storeState.previewOrderNumber,
@@ -2351,7 +2357,7 @@ export default function POS() {
                       </div>
                       <div className="flex justify-between text-lg font-black text-foreground pt-1.5 border-t border-border">
                         <span>Total</span>
-                        <span>Rs {getNetTotal().toLocaleString()}</span>
+                        <span>Rs {getDisplayTotal().toLocaleString()}</span>
                       </div>
                     </div>
 
@@ -2505,7 +2511,7 @@ export default function POS() {
                 </div>
                 <span>View Cart</span>
               </div>
-              <span>Rs {getNetTotal().toLocaleString()}</span>
+              <span>Rs {getDisplayTotal().toLocaleString()}</span>
             </button>
           )}
         </div>
