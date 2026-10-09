@@ -2,7 +2,7 @@ import rateLimit from 'express-rate-limit';
 
 export const globalLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  max: 3000, // Very high limit since this is an offline local POS
+  max: 5000, // Very high limit since this is an offline local POS
   message: {
     error: 'Too many requests from this IP, please try again after a minute'
   },

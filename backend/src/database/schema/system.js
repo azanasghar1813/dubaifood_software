@@ -47,5 +47,6 @@ export const systemSchema = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON activity_logs(user_id);
+  CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON activity_logs(entity_id);
   CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);
 `;
