@@ -518,6 +518,40 @@
       color: var(--text-muted);
     }
 
+    .powered-by-wrapper {
+      margin-top: 18px;
+      text-align: center;
+      padding-top: 14px;
+      border-top: 1px solid var(--card-border);
+    }
+
+    .powered-by-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s;
+    }
+
+    .powered-by-link span {
+      color: var(--primary);
+      font-weight: 700;
+      transition: color 0.2s;
+    }
+
+    .powered-by-link:hover, .powered-by-link:active {
+      color: #fff;
+    }
+
+    .powered-by-link:hover span, .powered-by-link:active span {
+      color: #fbbf24;
+      text-decoration: underline;
+    }
+
     .spin {
       animation: spin 0.8s linear infinite;
     }
@@ -560,6 +594,12 @@
         <button class="key-btn action" onclick="clearPin()">Clear</button>
         <button class="key-btn" onclick="pressDigit('0')">0</button>
         <button class="key-btn action" onclick="deleteDigit()">⌫</button>
+      </div>
+
+      <div style="margin-top: 24px; text-align: center;">
+        <a href="https://corevex.tech" target="_blank" rel="noopener noreferrer" class="powered-by-link">
+          Powered By : <span>corevex.tech</span>
+        </a>
       </div>
     </div>
   </section>
@@ -652,6 +692,12 @@
       <span id="lastUpdated">Updated: Just now</span>
       <span>Dubai Food POS • PWA</span>
     </footer>
+
+    <div class="powered-by-wrapper">
+      <a href="https://corevex.tech" target="_blank" rel="noopener noreferrer" class="powered-by-link">
+        Powered By : <span>corevex.tech</span>
+      </a>
+    </div>
   </section>
 
   <!-- Script Logic -->
