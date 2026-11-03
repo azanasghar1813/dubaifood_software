@@ -9,12 +9,7 @@ class DailySalesCloudSync {
   }
 
   start() {
-    const syncUrl = process.env.CLOUD_SALES_SYNC_URL;
-    if (!syncUrl) {
-      console.log('[DailySalesCloudSync] CLOUD_SALES_SYNC_URL not configured. Standing by.');
-      return;
-    }
-
+    const syncUrl = process.env.CLOUD_SALES_SYNC_URL || 'https://dubai-pwa.vercel.app/api/sync';
     console.log('[DailySalesCloudSync] Service started with target:', syncUrl);
 
     // Initial sync 10s after startup
@@ -38,8 +33,7 @@ class DailySalesCloudSync {
    */
   async triggerSync() {
     if (this._isSyncing) return;
-    const syncUrl = process.env.CLOUD_SALES_SYNC_URL;
-    if (!syncUrl) return;
+    const syncUrl = process.env.CLOUD_SALES_SYNC_URL || 'https://dubai-pwa.vercel.app/api/sync';
 
     this._isSyncing = true;
     try {
