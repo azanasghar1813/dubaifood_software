@@ -13,6 +13,7 @@ import { socketService } from './services/socketService.js';
 import { lanCatalogSyncService } from './services/lanCatalogSyncService.js';
 import { lanSyncService } from './services/lanSyncService.js';
 import { syncService } from './services/syncService.js';
+import { dailySalesCloudSync } from './services/dailySalesCloudSync.js';
 process.on('uncaughtException', (err) => {
   console.error('[UNCAUGHT EXCEPTION]', err.name, err.message);
   if (err.stack) console.error(err.stack);
@@ -122,6 +123,7 @@ const startServer = async () => {
     backupService.startScheduler();
     lanCatalogSyncService.startAutoSync();
     lanSyncService.startBackgroundRetries();
+    dailySalesCloudSync.start();
 
     // Start periodic WAL maintenance now that the DB connection is live.
     // Cheap no-op checks every 15 min; only does real work if WAL > 64MB.
@@ -152,6 +154,7 @@ const startServer = async () => {
       printEngineService.stop();
       printerDriverService.shutdown();
       lanCatalogSyncService.stopAutoSync();
+      dailySalesCloudSync.stop();
       dbEngine.close();
 
       server.close(() => {

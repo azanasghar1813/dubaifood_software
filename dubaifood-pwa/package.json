@@ -1,0 +1,10 @@
+{
+  "name": "dubaifood-sales-pwa",
+  "version": "1.0.0",
+  "description": "Dubai Food Real-time Daily Sales PWA",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}
