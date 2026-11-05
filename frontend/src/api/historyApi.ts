@@ -245,8 +245,8 @@ export async function deleteOrder(orderId: string, pin?: string): Promise<{ succ
 }
 
 /**
- * Wipe out entire order history. Requires PIN.
+ * Wipe out entire order history, logs, and transactional data to speed up database.
  */
-export async function wipeOutHistory(pin: string): Promise<{ success: boolean; message?: string }> {
+export async function wipeOutHistory(pin?: string): Promise<{ success: boolean; message?: string }> {
   return apiClient.post('/history/wipe-out', { pin });
 }

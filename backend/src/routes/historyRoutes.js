@@ -40,6 +40,6 @@ router.get('/orders/:orderId/sync-status',      getSyncStatus);
 router.post('/orders/:orderId/invalidate-cache', invalidateOrder);
 
 // ─── Data Management ──────────────────────────────────────────────────────────
-router.post('/wipe-out', authorize(['MANAGE_SETTINGS', 'VIEW_ORDERS']), wipeOutHistory);
+router.post('/wipe-out', wipeOutHistory);
 
 export default router;

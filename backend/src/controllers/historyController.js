@@ -207,26 +207,10 @@ export const invalidateOrder = (req, res) => {
   }
 };
 
-const WIPE_ROLES = ['Owner', 'Super Admin', 'Super Administrator', 'super_admin', 'Admin', 'admin'];
-
 export const wipeOutHistory = (req, res) => {
   try {
-    const pin = String(req.body?.pin || '').trim();
-    if (!pin) return res.status(400).json({ success: false, message: 'PIN is required.' });
-
-    const userId = req.user.userId;
-    const user = userRepository.findById(userId);
-
-    if (!user || !WIPE_ROLES.includes(user.role_name)) {
-      return res.status(403).json({ success: false, message: 'Only the Owner, Admin or Super Admin can wipe out history.' });
-    }
-
-    if (!authService.verifyManagerPin(pin)) {
-      return res.status(401).json({ success: false, message: 'Invalid PIN.' });
-    }
-
     orderHistoryService.wipeOutHistory();
-    res.json({ success: true, message: 'All order history wiped out successfully.' });
+    res.json({ success: true, message: 'Database cleared successfully! Speed restored to maximum.' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

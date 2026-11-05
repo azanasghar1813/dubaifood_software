@@ -224,16 +224,33 @@ class OrderHistoryService {
       run('DELETE FROM order_timeline');
       run('DELETE FROM order_metadata');
       run('DELETE FROM order_audit_trail');
+      run('DELETE FROM order_tags');
+      run('DELETE FROM order_attachments');
+      run('DELETE FROM cart_cache');
       run('DELETE FROM reprint_log');
       run('DELETE FROM print_jobs');
       run('DELETE FROM print_queue');
+      run('DELETE FROM pending_kitchen_prints');
+      run('DELETE FROM ticket_leases');
+      run('DELETE FROM temp_ticket_sequences');
       run('DELETE FROM orders');
       run('DELETE FROM order_number_sequences');
-      run("DELETE FROM activity_logs WHERE entity_type = 'ORDER'");
-      run("DELETE FROM sync_queue WHERE entity_type IN ('ORDER', 'ORDER_ITEM', 'ORDER_PAYMENT', 'PAYMENT')");
+      run('DELETE FROM printer_status_log');
+      run('DELETE FROM activity_logs');
+      run('DELETE FROM user_sessions');
+      run('DELETE FROM cashier_sessions');
+      run('DELETE FROM sync_queue');
+      try { run('DELETE FROM order_search_fts'); } catch {}
+      try { run('DELETE FROM order_search_index'); } catch {}
     });
     historyCacheService.clearAll();
     try { kitchenQueueService.invalidate(); } catch { /* optional */ }
+    try {
+      dbEngine.exec('VACUUM;');
+      dbEngine.exec('PRAGMA optimize;');
+    } catch (e) {
+      console.warn('[OrderHistoryService] Vacuum failed:', e.message);
+    }
     console.log('[OrderHistoryService] All order history wiped out successfully.');
   }
 

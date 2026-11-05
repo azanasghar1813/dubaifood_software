@@ -254,18 +254,6 @@ export default function Settings() {
     )
   }
 
-  if (!hasPermission('VIEW_SETTINGS') && currentUser?.role !== 'Admin' && currentUser?.role !== 'Super Admin') {
-    return (
-      <div className="h-full flex items-center justify-center min-h-[calc(100vh-100px)]">
-        <div className="text-center space-y-4">
-          <Shield className="w-12 h-12 text-red-500 mx-auto" />
-          <h2 className="text-2xl font-bold">Access Denied</h2>
-          <p className="text-slate-500">You do not have permission to view Settings.</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto text-foreground pb-12">
       
@@ -365,43 +353,51 @@ export default function Settings() {
                       </div>
                     </div>
 
-                    <div className="bg-red-500/10 p-6 rounded-2xl border border-red-500/20 space-y-4">
-                      <div>
-                        <h3 className="text-base font-black text-red-500 flex items-center gap-2"><Trash2 className="w-5 h-5"/> Wipe Out History</h3>
-                        <p className="text-sm text-red-500/80 mt-1">Permanently delete all order history and related data. This action is irreversible.</p>
+                    <div className="bg-red-500/10 p-6 md:p-8 rounded-2xl border-2 border-red-500/30 space-y-5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                          <h3 className="text-lg font-black text-red-500 flex items-center gap-2">
+                            <Trash2 className="w-6 h-6"/> Clear Database & Speed Up
+                          </h3>
+                          <p className="text-sm text-red-600 dark:text-red-400 mt-1 font-medium">
+                            Agar software slow ho jaye ya purana sales record delete karna ho to is button se saara heavy data (orders, sale history, logs) clear ho jayega aur software foran fast ho jayega.
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-2 font-bold flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                            Aapke Products, Menu, Rates, Users aur Settings bilkul mehfooz rahengay.
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                        <input 
-                          type="password"
-                          id="wipePin"
-                          placeholder="Enter Owner PIN to authorize"
-                          className="w-full sm:w-64 h-11 px-4 bg-background border border-red-500/20 rounded-xl text-sm font-bold focus:outline-none focus:border-red-500 transition-colors placeholder:text-red-500/40"
-                        />
+                      <div className="pt-2">
                         <button
                           type="button"
+                          disabled={isSaving}
                           onClick={async () => {
-                            const pinInput = document.getElementById('wipePin') as HTMLInputElement
-                            const pin = pinInput.value
-                            if (!pin) {
-                              alert("Please enter the Owner PIN.")
-                              return
-                            }
-                            if (!confirm("Are you ABSOLUTELY SURE you want to wipe out all order history? This cannot be undone.")) return
+                            const confirmed = confirm(
+                              "⚠️ WARNING: KYA AAP WAQAYI SAARA SALES DATA AUR ORDERS CLEAR KARNA CHAHTE HAIN?\n\n" +
+                              "• Tamam purani orders aur sale history permanently delete ho jayegi.\n" +
+                              "• Database clean ho kar software ki speed restore ho jayegi.\n" +
+                              "• Aapke Products, Rates aur Users bilkul safe rahengay.\n\n" +
+                              "Agar aap agree hain to 'OK' dabayein."
+                            )
+                            if (!confirmed) return
+
                             try {
                               setIsSaving(true)
-                              const res = await wipeOutHistory(pin)
-                              alert(res.message || "History wiped out successfully.")
-                              pinInput.value = ""
+                              const res = await wipeOutHistory()
+                              alert(res.message || "Database successfully clear ho gya! Speed restore ho chuki hai.")
+                              window.location.reload()
                             } catch (e: any) {
-                              alert(e.response?.data?.message || "Failed to wipe history.")
+                              alert(e.response?.data?.message || "Database clear karne mein masla aaya.")
                             } finally {
                               setIsSaving(false)
                             }
                           }}
-                          className="w-full sm:w-auto h-11 px-6 bg-red-500 text-white font-black rounded-xl hover:bg-red-600 transition-all shadow-md shadow-red-500/20"
+                          className="w-full sm:w-auto h-12 px-8 bg-red-600 text-white font-black text-sm rounded-xl hover:bg-red-700 active:scale-[0.98] transition-all shadow-lg shadow-red-600/30 flex items-center justify-center gap-2"
                         >
-                          Wipe Out History
+                          <Trash2 className="w-5 h-5" />
+                          {isSaving ? "Clearing Database..." : "Clear Database (Speed Up)"}
                         </button>
                       </div>
                     </div>

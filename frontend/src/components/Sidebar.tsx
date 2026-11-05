@@ -35,7 +35,7 @@ const menuItems = [
   { path: "/customers", name: "Customers", icon: UserSquare2, permission: "VIEW_CUSTOMERS" },
   { path: "/tables", name: "Tables", icon: Grid2X2, permission: "VIEW_TABLES" },
   { path: "/cashier", name: "Cashiers", icon: Wallet, permission: "VIEW_CASHIERS" },
-  { path: "/settings", name: "Settings", icon: Building2, permission: "VIEW_SETTINGS" },
+  { path: "/settings", name: "Settings", icon: Building2, permission: null },
   { path: "/backup", name: "Backup", icon: Database, permission: "VIEW_BACKUP" },
   { path: "/sync", name: "Cloud Backup", icon: RefreshCw, permission: "VIEW_SYNC" },
   { path: "/lan-sync", name: "LAN Sync", icon: MonitorSmartphone, permission: "VIEW_SYNC" },
@@ -82,7 +82,7 @@ export default function Sidebar() {
         </div>
         
         <div className={`flex-1 overflow-y-auto py-4 flex flex-col gap-1 px-3 ${isSidebarOpen ? 'custom-scrollbar' : 'scrollbar-hide'}`}>
-          {menuItems.filter(item => hasPermission(item.permission)).map((item) => (
+          {menuItems.filter(item => !item.permission || hasPermission(item.permission)).map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
