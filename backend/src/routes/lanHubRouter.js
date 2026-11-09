@@ -41,18 +41,19 @@ router.use(verifyInternal);
 
 router.post('/allocate-number', async (req, res) => {
   try {
-    const { branch_id, business_date, min_sequence, peek } = req.body;
+    const { branch_id, business_date, min_sequence, order_type, peek } = req.body;
+    const oType = order_type || 'DINE_IN';
     // 3. Set floor sequence to avoid issuing used numbers after Hub restore
     if (min_sequence) {
       const dateKey = orderNumberService.resolveDateKey(business_date);
-      orderNumberService._setLocalSeq(branch_id, dateKey, Number(min_sequence));
+      orderNumberService._setLocalSeq(branch_id, dateKey, Number(min_sequence), oType);
     }
     if (peek) {
-      const orderNumber = orderNumberService.peekNextNumberSync(branch_id, business_date);
+      const orderNumber = orderNumberService.peekNextNumberSync(branch_id, business_date, oType);
       return res.json({ success: true, order_number: orderNumber });
     }
     // The HUB allocates the next number from its live sequence
-    const orderNumber = await orderNumberService.allocateNextNumber(branch_id, business_date);
+    const orderNumber = await orderNumberService.allocateNextNumber(branch_id, business_date, oType);
     res.json({ success: true, order_number: orderNumber });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

@@ -1,14 +1,31 @@
 /**
- * Ticket numbers: new tickets are "#1". Old till tickets stay "A - #1".
- * Stored unique form for new tickets is YYYYMMDD-#n so daily reset can reuse #1.
+ * Ticket numbers: formatted by order type (Delivery - 1, Dine In - 1, Takeaway - 1).
+ * Stored unique form: YYYYMMDD-TYPE-#n (e.g. 20261108-DELIVERY-#1).
  */
 
 export const SHARED_TICKET_PREFIX = 'SHARED';
 
+export function normalizeOrderTypePrefix(rawType) {
+  const t = String(rawType || '').trim().toUpperCase();
+  if (t.includes('DELIV')) return 'DELIVERY';
+  if (t.includes('TAKE') || t.includes('PICK')) return 'TAKEAWAY';
+  return 'DINE_IN';
+}
+
+export function getOrderTypeLabel(typeKey) {
+  const t = String(typeKey || '').trim().toUpperCase();
+  if (t.includes('DELIV')) return 'Delivery';
+  if (t.includes('TAKE') || t.includes('PICK')) return 'Takeaway';
+  return 'Dine In';
+}
+
 export function parseTicketSeq(raw) {
   const cleaned = String(raw || '').trim();
   if (!cleaned) return 0;
-  let m = cleaned.match(/^\d{8}-#(\d+)$/);
+  // Format: 20261108-DELIVERY-#5 or 20261108-#5 or 20261108-TAKEAWAY-#5
+  let m = cleaned.match(/#0*(\d+)$/);
+  if (m) return Number(m[1]);
+  m = cleaned.match(/^(?:Delivery|Dine\s*In|Takeaway)[-\s]+#?0*(\d+)$/i);
   if (m) return Number(m[1]);
   m = cleaned.match(/^([A-F])[-\s]*\d{8}[-\s]*#?\s*0*(\d+)$/i);
   if (m) return Number(m[2]);
@@ -16,33 +33,38 @@ export function parseTicketSeq(raw) {
   if (m) return Number(m[2]);
   m = cleaned.match(/^(?:PC-?)?([A-F])[-\s]*#?\s*0*(\d+)$/i);
   if (m) return Number(m[2]);
-  m = cleaned.match(/^#\s*0*(\d+)$/);
-  if (m) return Number(m[1]);
   m = cleaned.match(/(\d+)\s*$/);
   return m ? Number(m[1]) : 0;
 }
 
-export function buildReceiptOrderNumber(_prefix, seq, businessDate) {
+export function buildReceiptOrderNumber(orderType, seq, businessDate) {
   const n = Number(seq) || 1;
   const ymd = String(businessDate || '').replace(/-/g, '');
-  if (/^\d{8}$/.test(ymd)) return `${ymd}-#${n}`;
-  return `#${n}`;
+  const typeKey = normalizeOrderTypePrefix(orderType);
+  if (/^\d{8}$/.test(ymd)) return `${ymd}-${typeKey}-#${n}`;
+  return `${typeKey}-#${n}`;
 }
 
-export function formatReceiptOrderNumber(raw) {
+export function formatReceiptOrderNumber(raw, explicitOrderType = null) {
   const cleaned = String(raw || '').trim().replace(/^#+/, '');
   if (!cleaned) return 'N/A';
-  let m = cleaned.match(/^(\d{8})-#0*(\d+)$/);
-  if (m) return `#${Number(m[2])}`;
-  m = cleaned.match(/^#\s*0*(\d+)$/);
-  if (m) return `#${Number(m[1])}`;
-  m = cleaned.match(/^([A-F])[-\s]*(\d{8})[-\s]*#?\s*0*(\d+)$/i);
-  if (m) return `${m[1].toUpperCase()} - #${Number(m[3])}`;
-  m = cleaned.match(/^([A-F])\s*-\s*#\s*0*(\d+)$/i);
-  if (m) return `${m[1].toUpperCase()} - #${Number(m[2])}`;
-  m = cleaned.match(/^(?:PC-?)?([A-F])[-\s]*#?\s*0*(\d+)$/i);
-  if (m) return `${m[1].toUpperCase()} - #${Number(m[2])}`;
-  if (/^\d+$/.test(cleaned)) return `#${Number(cleaned)}`;
+
+  const seq = parseTicketSeq(cleaned);
+  let typeKey = '';
+  if (explicitOrderType) {
+    typeKey = explicitOrderType;
+  } else {
+    const m = cleaned.match(/^(\d{8})-([A-Z_]+)-#0*(\d+)$/i) || cleaned.match(/^(Delivery|Dine\s*In|Takeaway)[-\s]+/i);
+    if (m) {
+      typeKey = m[2] || m[1];
+    }
+  }
+
+  const label = getOrderTypeLabel(typeKey);
+  if (seq > 0) {
+    return `${label} - ${seq}`;
+  }
+
   return cleaned;
 }
 

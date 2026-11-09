@@ -30,8 +30,8 @@ interface KitchenTicketPreviewProps {
 }
 
 export default function KitchenTicketPreview({ order, autoPrint, onClose }: KitchenTicketPreviewProps) {
-  const orderNumber = formatReceiptOrderNumber(order?.orderNumber)
-  const orderType = order?.orderType ?? "Dine In"
+  const orderType = order?.orderType ?? (order as any)?.order_type ?? "Dine In"
+  const orderNumber = formatReceiptOrderNumber(order?.orderNumber, orderType)
   const tableNumber = order?.tableNumber ?? null
   const cashier = order?.cashierName ?? "Cashier"
   const waiterName = order?.waiterName ?? null
@@ -83,7 +83,7 @@ export default function KitchenTicketPreview({ order, autoPrint, onClose }: Kitc
 
     return `
       <div style="text-align:center;font-weight:900;font-size:18px;letter-spacing:1px;margin-bottom:6px;">KITCHEN TICKET</div>
-      <div style="text-align:center;font-weight:900;font-size:22px;margin-bottom:8px;">${orderNumber}</div>
+      <div style="text-align:center;font-weight:900;font-size:26px;padding:4px 0;margin-bottom:8px;border-top:2px dashed #000;border-bottom:2px dashed #000;letter-spacing:0.5px;">${orderNumber}</div>
       ${isVip ? `<div style="text-align:center;font-weight:900;font-size:16px;margin:6px 0;">** VIP ORDER **</div>` : ""}
       <div style="font-size:12px;display:flex;flex-direction:column;gap:3px;margin-bottom:10px;">
         ${isDineIn && tableNumber && tableNumber !== "N/A" ? `<div><b>Table:</b> ${tableNumber}</div>` : ""}

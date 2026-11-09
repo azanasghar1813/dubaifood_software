@@ -443,6 +443,217 @@
       gap: 6px;
     }
 
+    /* ORDER TYPE BREAKDOWN CARDS (Delivery, Dine In, Takeaway) */
+    .breakdown-section {
+      margin-bottom: 22px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .section-badge {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 12px;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: var(--primary);
+    }
+
+    .breakdown-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    @media (max-width: 420px) {
+      .breakdown-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+    }
+
+    .breakdown-card {
+      border-radius: 16px;
+      padding: 14px 12px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--card-border);
+      background: var(--card-bg);
+      transition: transform 0.15s, border-color 0.15s;
+    }
+
+    .breakdown-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .breakdown-card.delivery {
+      border-color: rgba(59, 130, 246, 0.35);
+      background: linear-gradient(145deg, rgba(59, 130, 246, 0.12) 0%, rgba(18, 24, 38, 0.95) 100%);
+    }
+
+    .breakdown-card.dinein {
+      border-color: rgba(16, 185, 129, 0.35);
+      background: linear-gradient(145deg, rgba(16, 185, 129, 0.12) 0%, rgba(18, 24, 38, 0.95) 100%);
+    }
+
+    .breakdown-card.takeaway {
+      border-color: rgba(245, 158, 11, 0.35);
+      background: linear-gradient(145deg, rgba(245, 158, 11, 0.12) 0%, rgba(18, 24, 38, 0.95) 100%);
+    }
+
+    .breakdown-top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .breakdown-icon {
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    .breakdown-type {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+    }
+
+    .breakdown-card.delivery .breakdown-type { color: #60a5fa; }
+    .breakdown-card.dinein .breakdown-type { color: #34d399; }
+    .breakdown-card.takeaway .breakdown-type { color: #fbbf24; }
+
+    .breakdown-val {
+      font-family: 'Outfit', sans-serif;
+      font-size: 18px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.4px;
+      line-height: 1.2;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .breakdown-orders {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 500;
+    }
+
+    /* CONNECTED DEVICES SECTION */
+    .devices-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 14px 16px;
+      margin-bottom: 22px;
+      backdrop-filter: blur(12px);
+    }
+
+    .devices-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .devices-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .devices-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+
+    .devices-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .device-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+    }
+
+    .device-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .device-icon {
+      font-size: 18px;
+    }
+
+    .device-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .device-orders {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .device-sales {
+      font-family: 'Outfit', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      color: #fbbf24;
+    }
+
     /* History Section */
     .history-card {
       background: var(--card-bg);
@@ -652,7 +863,7 @@
       <div class="hero-card sales">
         <div class="card-top">
           <span class="card-label">
-            <span class="card-icon">💰</span> Total Sales
+            <span class="card-icon">💰</span> Grand Total Sales
           </span>
           <span class="card-meta">PKR</span>
         </div>
@@ -671,6 +882,59 @@
         <div class="card-value" id="totalOrdersVal">0</div>
         <div class="card-meta" id="ordersSub">Active business day orders</div>
       </div>
+    </div>
+
+    <!-- 3 Order Type Breakdown Cards (Delivery, Dine In, Takeaway) -->
+    <div class="breakdown-section">
+      <div class="section-head">
+        <span class="section-title">
+          <span>📊</span> Order Types Breakdown
+        </span>
+        <span class="section-badge">All Devices</span>
+      </div>
+
+      <div class="breakdown-grid">
+        <!-- 1. Delivery Card -->
+        <div class="breakdown-card delivery">
+          <div class="breakdown-top">
+            <span class="breakdown-icon">🛵</span>
+            <span class="breakdown-type">Delivery</span>
+          </div>
+          <div class="breakdown-val" id="deliverySalesVal">PKR 0</div>
+          <div class="breakdown-orders" id="deliveryOrdersVal">0 Orders</div>
+        </div>
+
+        <!-- 2. Dine In Card -->
+        <div class="breakdown-card dinein">
+          <div class="breakdown-top">
+            <span class="breakdown-icon">🍽️</span>
+            <span class="breakdown-type">Dine In</span>
+          </div>
+          <div class="breakdown-val" id="dineInSalesVal">PKR 0</div>
+          <div class="breakdown-orders" id="dineInOrdersVal">0 Orders</div>
+        </div>
+
+        <!-- 3. Takeaway Card -->
+        <div class="breakdown-card takeaway">
+          <div class="breakdown-top">
+            <span class="breakdown-icon">🥡</span>
+            <span class="breakdown-type">Takeaway</span>
+          </div>
+          <div class="breakdown-val" id="takeawaySalesVal">PKR 0</div>
+          <div class="breakdown-orders" id="takeawayOrdersVal">0 Orders</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Synced POS Devices List (PC, Laptop, etc.) -->
+    <div class="devices-card" id="devicesSection" style="display: none;">
+      <div class="devices-head">
+        <span class="devices-title">
+          <span>🖥️</span> Connected POS Terminals
+        </span>
+        <span class="devices-badge" id="devicesBadge">0 Terminals</span>
+      </div>
+      <div class="devices-list" id="devicesList"></div>
     </div>
 
     <!-- Past Days History (Contacting Online DB) -->
@@ -858,6 +1122,12 @@
       if (!isSilent) {
         document.getElementById('totalSalesVal').innerText = 'Loading...';
         document.getElementById('totalOrdersVal').innerText = '...';
+        document.getElementById('deliverySalesVal').innerText = '...';
+        document.getElementById('deliveryOrdersVal').innerText = '...';
+        document.getElementById('dineInSalesVal').innerText = '...';
+        document.getElementById('dineInOrdersVal').innerText = '...';
+        document.getElementById('takeawaySalesVal').innerText = '...';
+        document.getElementById('takeawayOrdersVal').innerText = '...';
       }
 
       try {
@@ -868,26 +1138,89 @@
           const sales = Number(result.data.total_sales || 0);
           const orders = parseInt(result.data.total_orders || 0, 10);
 
+          const delSales = Number(result.data.delivery_sales || 0);
+          const delOrders = parseInt(result.data.delivery_orders || 0, 10);
+
+          const dineSales = Number(result.data.dine_in_sales || 0);
+          const dineOrders = parseInt(result.data.dine_in_orders || 0, 10);
+
+          const takeSales = Number(result.data.takeaway_sales || 0);
+          const takeOrders = parseInt(result.data.takeaway_orders || 0, 10);
+
+          // 1. Hero Grand Totals
           document.getElementById('totalSalesVal').innerText = `PKR ${sales.toLocaleString('en-PK')}`;
           document.getElementById('totalOrdersVal').innerText = `${orders.toLocaleString('en-PK')} Orders`;
+
+          // 2. Breakdown Cards
+          document.getElementById('deliverySalesVal').innerText = `PKR ${delSales.toLocaleString('en-PK')}`;
+          document.getElementById('deliveryOrdersVal').innerText = `${delOrders.toLocaleString('en-PK')} Orders`;
+
+          document.getElementById('dineInSalesVal').innerText = `PKR ${dineSales.toLocaleString('en-PK')}`;
+          document.getElementById('dineInOrdersVal').innerText = `${dineOrders.toLocaleString('en-PK')} Orders`;
+
+          document.getElementById('takeawaySalesVal').innerText = `PKR ${takeSales.toLocaleString('en-PK')}`;
+          document.getElementById('takeawayOrdersVal').innerText = `${takeOrders.toLocaleString('en-PK')} Orders`;
 
           const aov = orders > 0 ? Math.round(sales / orders) : 0;
           document.getElementById('avgOrderVal').innerText = `Avg: PKR ${aov.toLocaleString('en-PK')}`;
           document.getElementById('salesSub').innerText = isToday 
-            ? 'Live updated from 6:00 AM cycle' 
+            ? 'Live updated across all active POS devices' 
             : `Completed business day (${dateStr})`;
+
+          // 3. Connected Devices Breakdown
+          const devicesSec = document.getElementById('devicesSection');
+          const devicesList = document.getElementById('devicesList');
+          const devicesBadge = document.getElementById('devicesBadge');
+
+          if (Array.isArray(result.data.devices) && result.data.devices.length > 0) {
+            devicesSec.style.display = 'block';
+            devicesBadge.innerText = `${result.data.devices.length} Terminal${result.data.devices.length > 1 ? 's' : ''}`;
+            devicesList.innerHTML = '';
+            result.data.devices.forEach(dev => {
+              const row = document.createElement('div');
+              row.className = 'device-row';
+              const nameLower = (dev.device_name || '').toLowerCase();
+              const devIcon = nameLower.includes('laptop') ? '💻' : '🖥️';
+              const devSales = Number(dev.total_sales || 0).toLocaleString('en-PK');
+              const devOrders = parseInt(dev.total_orders || 0, 10);
+
+              row.innerHTML = `
+                <div class="device-info">
+                  <span class="device-icon">${devIcon}</span>
+                  <div>
+                    <div class="device-name">${dev.device_name || dev.device_id || 'POS Terminal'}</div>
+                    <div class="device-orders">${devOrders} orders synced</div>
+                  </div>
+                </div>
+                <div class="device-sales">PKR ${devSales}</div>
+              `;
+              devicesList.appendChild(row);
+            });
+          } else {
+            devicesSec.style.display = 'none';
+          }
 
           const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           document.getElementById('lastUpdated').innerText = `Updated: ${nowTime}`;
         } else {
           document.getElementById('totalSalesVal').innerText = 'PKR 0';
           document.getElementById('totalOrdersVal').innerText = '0 Orders';
+          document.getElementById('deliverySalesVal').innerText = 'PKR 0';
+          document.getElementById('deliveryOrdersVal').innerText = '0 Orders';
+          document.getElementById('dineInSalesVal').innerText = 'PKR 0';
+          document.getElementById('dineInOrdersVal').innerText = '0 Orders';
+          document.getElementById('takeawaySalesVal').innerText = 'PKR 0';
+          document.getElementById('takeawayOrdersVal').innerText = '0 Orders';
           document.getElementById('avgOrderVal').innerText = 'Avg: PKR 0';
+          document.getElementById('devicesSection').style.display = 'none';
         }
       } catch (err) {
         console.error('Fetch sales error:', err);
         if (!isSilent) {
           document.getElementById('totalSalesVal').innerText = 'Offline / Error';
+          document.getElementById('deliverySalesVal').innerText = 'PKR 0';
+          document.getElementById('dineInSalesVal').innerText = 'PKR 0';
+          document.getElementById('takeawaySalesVal').innerText = 'PKR 0';
         }
       } finally {
         isFetching = false;

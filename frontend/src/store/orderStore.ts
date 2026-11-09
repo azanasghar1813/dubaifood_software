@@ -240,9 +240,11 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     return false;
   })
 
+  const resolvedOrderType = (row.order_type === 'TAKEAWAY' ? 'Takeaway' : row.order_type === 'DELIVERY' ? 'Delivery' : (row.order_type === 'DRIVE_THROUGH' || row.order_type === 'DRIVE_THRU') ? 'Drive Through' : 'Dine In');
+
   return {
     id: row.id,
-    orderNumber: formatReceiptOrderNumber(row.order_number),
+    orderNumber: formatReceiptOrderNumber(row.order_number, resolvedOrderType),
     waiterId: row.waiter_id || undefined,
     waiterName: row.waiter_name_snapshot || row.waiter_name || detail?.metadata?.waiter_name || undefined,
     riderId: row.rider_id || undefined,
@@ -254,7 +256,7 @@ export const mapHistoryDetailToOrder = (row: HistoryOrderRow, detail?: HistoryOr
     isVip: detail?.metadata?.is_vip === 'true' || detail?.metadata?.is_vip === true || detail?.metadata?.is_vip === 1 || String(detail?.metadata?.is_vip) === '1' || row.is_vip === 1 || row.is_vip === true || !!(detail as any)?.customer?.is_vip || false,
     tableNumber: row.table_id || detail?.metadata?.table_number || null,
     guestCount: Number(detail?.metadata?.guest_count ?? 1) || 1,
-    orderType: (row.order_type === 'TAKEAWAY' ? 'Takeaway' : row.order_type === 'DELIVERY' ? 'Delivery' : (row.order_type === 'DRIVE_THROUGH' || row.order_type === 'DRIVE_THRU') ? 'Drive Through' : 'Dine In'),
+    orderType: resolvedOrderType,
     items,
     ...(() => {
       const foodNet = items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0)

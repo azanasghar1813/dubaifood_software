@@ -27,9 +27,10 @@ const resolveSessionContext = (req, res, { requireShift = true } = {}) => {
 };
 
 export const orderController = {
-  peekNextNumber: async (_req, res) => {
+  peekNextNumber: async (req, res) => {
     try {
-      sendSuccess(res, { order_number: orderNumberService.peekNextNumberSync() }, 'Next order number');
+      const orderType = req.query?.order_type || req.query?.type || 'DINE_IN';
+      sendSuccess(res, { order_number: orderNumberService.peekNextNumberSync('DEFAULT_BRANCH', null, orderType) }, 'Next order number');
     } catch (error) {
       sendError(res, 400, error.message);
     }
@@ -39,7 +40,8 @@ export const orderController = {
     const ctx = resolveSessionContext(req, res);
     if (!ctx) return;
     try {
-      const draft = await orderService.getOrCreateDraft(ctx.shiftId, ctx.userId);
+      const orderType = req.query?.order_type || 'DINE_IN';
+      const draft = await orderService.getOrCreateDraft(ctx.shiftId, ctx.userId, { order_type: orderType });
       sendSuccess(res, draft, 'Draft retrieved successfully');
     } catch (error) {
       sendError(res, 400, error.message);
@@ -52,8 +54,9 @@ export const orderController = {
     try {
       const businessDate = req.body?.business_date || new Date().toISOString().split('T')[0];
       const branchId = req.body?.branch_id || 'DEFAULT_BRANCH';
-      const orderNumber = await orderNumberService.allocateNextNumber(branchId, businessDate);
-      const order = orderService.createDraftOrder(ctx.shiftId, ctx.userId, { ...req.body, business_date: businessDate, branch_id: branchId, order_number: orderNumber });
+      const orderType = req.body?.order_type || 'DINE_IN';
+      const orderNumber = await orderNumberService.allocateNextNumber(branchId, businessDate, orderType);
+      const order = orderService.createDraftOrder(ctx.shiftId, ctx.userId, { ...req.body, business_date: businessDate, branch_id: branchId, order_number: orderNumber, order_type: orderType });
 sendSuccess(res, order, 'Order created successfully', 201);
     } catch (error) {
       sendError(res, 400, error.message);

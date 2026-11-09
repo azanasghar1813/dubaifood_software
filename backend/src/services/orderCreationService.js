@@ -200,6 +200,8 @@ class OrderCreationService {
     this._assertCartAvailability(cart);
     this._assertComboRules(cart);
 
+    const orderType = normalizeOrderType(options.order_type || cart.order_type || 'DINE_IN');
+
     let preallocatedNumber = null;
     if (idempotencyKey) {
       const existingOrder = dbEngine.prepare('SELECT id, order_number FROM orders WHERE idempotency_key = ?').get(idempotencyKey);
@@ -207,7 +209,7 @@ class OrderCreationService {
         return this._hydrateOrder(existingOrder.id);
       }
     }
-    preallocatedNumber = await orderNumberService.allocateNextNumber(branchId, requestedBusinessDate);
+    preallocatedNumber = await orderNumberService.allocateNextNumber(branchId, requestedBusinessDate, orderType);
 
     // 3. Atomic SQLite transaction: create all order records
     const result = dbEngine.transaction(() => {
@@ -219,7 +221,6 @@ class OrderCreationService {
       }
 
       const businessDate = requestedBusinessDate;
-      const orderType = normalizeOrderType(options.order_type || cart.order_type || 'DINE_IN');
       
       const resolveId = (val, cartVal) => {
         const v = val !== undefined ? val : cartVal;
@@ -243,7 +244,7 @@ class OrderCreationService {
       const orderNotes = options.notes !== undefined ? options.notes : (cart.notes || null);
       const kitchenNotes = cart.kitchen_notes || null;
 
-      const newOrderNumber = preallocatedNumber || orderNumberService.generateNextNumber(branchId, businessDate);
+      const newOrderNumber = preallocatedNumber || orderNumberService.generateNextNumber(branchId, businessDate, orderType);
       const newOrderId = crypto.randomUUID();
 
       // ── 3b. Calculate cart-level financial totals ──────────────────────────

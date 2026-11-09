@@ -244,7 +244,7 @@ export default function POS() {
         return
       }
       const preview = {
-        orderNumber: formatReceiptOrderNumber((latest.activeOrder as any)?.order_number || latest.previewOrderNumber),
+        orderNumber: formatReceiptOrderNumber((latest.activeOrder as any)?.order_number || latest.previewOrderNumber, latest.orderType),
         orderType: latest.orderType,
         tableNumber: latest.tableNumber,
         cashierName: user?.name || 'Cashier',
@@ -367,7 +367,7 @@ export default function POS() {
             setPrintOrder({
               ...receiptFromCart,
               id: currentOrderId,
-              orderNumber: formatReceiptOrderNumber((latest.activeOrder as any)?.order_number || latest.previewOrderNumber),
+              orderNumber: formatReceiptOrderNumber((latest.activeOrder as any)?.order_number || latest.previewOrderNumber, latest.orderType),
               orderType: latest.orderType,
               tableNumber: latest.orderType === 'Dine In' ? latest.tableNumber : null,
               customerName: latest.customer?.name || 'Guest',
@@ -380,7 +380,7 @@ export default function POS() {
           setPrintOrder({
             ...receiptFromCart,
             id: currentOrderId,
-            orderNumber: formatReceiptOrderNumber((latest.activeOrder as any)?.order_number || latest.previewOrderNumber),
+            orderNumber: formatReceiptOrderNumber((latest.activeOrder as any)?.order_number || latest.previewOrderNumber, latest.orderType),
             orderType: latest.orderType,
             tableNumber: latest.orderType === 'Dine In' ? latest.tableNumber : null,
             customerName: latest.customer?.name || 'Guest',

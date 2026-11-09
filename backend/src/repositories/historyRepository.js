@@ -137,21 +137,31 @@ class HistoryRepository {
       const orderIds = orders.map(o => o.id);
       const placeholders = orderIds.map(() => '?').join(',');
       const items = dbEngine.prepare(`
-        SELECT id, order_id, product_id, product_name_snapshot, product_code_snapshot,
-               final_unit_price, quantity, subtotal
-        FROM order_items
-        WHERE order_id IN (${placeholders})
-        ORDER BY created_at ASC
+        SELECT oi.id, oi.order_id, oi.product_id, oi.product_name_snapshot, oi.product_code_snapshot,
+               oi.final_unit_price, oi.quantity, oi.subtotal,
+               v.variant_name_snapshot, v.variant_id
+        FROM order_items oi
+        LEFT JOIN order_item_variants v ON v.order_item_id = oi.id
+        WHERE oi.order_id IN (${placeholders})
+        ORDER BY oi.created_at ASC
       `).all(...orderIds);
 
       const itemsByOrderId = {};
       for (const item of items) {
         if (!itemsByOrderId[item.order_id]) itemsByOrderId[item.order_id] = [];
+        const vName = item.variant_name_snapshot;
+        const baseName = item.product_name_snapshot || 'Item';
+        const fullName = (vName && !baseName.toLowerCase().includes(vName.toLowerCase()))
+          ? `${baseName} (${vName})`
+          : baseName;
         itemsByOrderId[item.order_id].push({
           id: item.id,
           product_id: item.product_id,
-          name: item.product_name_snapshot,
+          name: fullName,
+          product_name: fullName,
           product_name_snapshot: item.product_name_snapshot,
+          variant_name: vName || null,
+          variant: vName ? { variant_name: vName, variant_name_snapshot: vName, variant_id: item.variant_id } : null,
           code: item.product_code_snapshot || '',
           price: item.final_unit_price,
           final_unit_price: item.final_unit_price,

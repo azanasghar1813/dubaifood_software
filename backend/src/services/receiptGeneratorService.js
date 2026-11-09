@@ -200,10 +200,14 @@ class ReceiptGeneratorService {
         || item.variant_name
         || item.variant_name_snapshot
         || null;
+      const baseName = item.product_name || item.product_name_snapshot || 'Item';
+      const formattedProductName = (variantName && !baseName.toLowerCase().includes(variantName.toLowerCase()))
+        ? `${baseName} (${variantName})`
+        : baseName;
       return {
       item_id: item.id || item.item_id,
       product_id: item.product_id,
-      product_name: item.product_name || item.product_name_snapshot,
+      product_name: formattedProductName,
       product_code: item.product_code || item.product_code_snapshot,
       quantity: item.quantity,
       base_unit_price: item.base_unit_price,

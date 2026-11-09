@@ -108,13 +108,14 @@ class EscPosEncoder {
     // ── Order info ────────────────────────────────────────────────────────
     if (payload.order) {
       const o = payload.order;
-      parts.push(this._align('left'));
+      parts.push(this._align('center'));
       parts.push(this._bold(true));
-      parts.push(this._tall(true));
-      parts.push(this._encodeText(formatReceiptOrderNumber(o.order_number), iconvEncoding));
+      parts.push(this._doubleSize(true));
+      parts.push(this._encodeText(formatReceiptOrderNumber(o.order_number, o.order_type), iconvEncoding));
       parts.push(this._lf());
-      parts.push(this._tall(false));
+      parts.push(this._doubleSize(false));
       parts.push(this._bold(false));
+      parts.push(this._align('left'));
       parts.push(this._encodeText(`Type : ${o.order_type || ''}`, iconvEncoding));
       parts.push(this._lf());
       const isDineIn = String(o.order_type || '').toUpperCase().includes('DINE');
@@ -428,13 +429,14 @@ class EscPosEncoder {
     parts.push(this._bold(false));
 
     const oh = payload.order_header || {};
-    parts.push(this._align('left'));
+    parts.push(this._align('center'));
     parts.push(this._bold(true));
-    parts.push(this._tall(true));
-    parts.push(this._encodeText(formatReceiptOrderNumber(oh.order_number), iconvEncoding));
+    parts.push(this._doubleSize(true));
+    parts.push(this._encodeText(formatReceiptOrderNumber(oh.order_number, oh.order_type), iconvEncoding));
     parts.push(this._lf());
-    parts.push(this._tall(false));
+    parts.push(this._doubleSize(false));
     parts.push(this._bold(false));
+    parts.push(this._align('left'));
     const kotIsDineIn = String(oh.order_type || '').toUpperCase().includes('DINE');
     const kotTable = kotIsDineIn ? (oh.table_number || oh.table_id) : null;
     if (kotTable) {

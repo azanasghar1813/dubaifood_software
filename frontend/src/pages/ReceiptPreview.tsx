@@ -14,8 +14,8 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
   const settings = useSettingsStore()
 
   // â”€â”€ data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const orderNumber = formatReceiptOrderNumber(order?.orderNumber || order?.id)
-  const orderType = order?.orderType ?? "Dine In"
+  const orderType = order?.orderType ?? (order as any)?.order_type ?? "Dine In"
+  const orderNumber = formatReceiptOrderNumber(order?.orderNumber || order?.id, orderType)
   const tableNumber = order?.tableNumber ?? null
   const cashier = order?.cashierName ?? "Cashier"
   const customerName = order?.customerName || 'Guest'
@@ -147,7 +147,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
 
     <!-- Order Details -->
     <div style="font-size:11px;display:flex;flex-direction:column;gap:3px;margin-bottom:12px">
-      <div style="font-size:15px;font-weight:900;line-height:1.2;">${orderNumber}</div>
+      <div style="font-size:24px;font-weight:900;line-height:1.2;text-align:center;padding:4px 0;margin-bottom:4px;border-top:1px dashed #000;border-bottom:1px dashed #000;letter-spacing:0.5px;">${orderNumber}</div>
       <div style="display:flex"><span style="margin-right:4px;font-weight:900;">Customer:</span><span>${customerName}${customerPhone ? ' - <b style="font-size:14px">' + customerPhone + '</b>' : ''}${customerAddress ? ' - ' + customerAddress : ''}</span></div>
       ${isDineIn && tableNumber && tableNumber !== 'N/A' ? `<div><span style="margin-right:4px;font-weight:900;">Table No:</span>${tableNumber}</div>` : ''}
       <div><span style="margin-right:4px;font-weight:900;">Order Type:</span>${orderType}</div>

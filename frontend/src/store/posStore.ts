@@ -217,7 +217,9 @@ export const usePosStore = create<POSState>()(
         let previewOrderNumber = get().previewOrderNumber
         if (!(res.data as any)?.order_number) {
           try {
-            const next = await apiClient.get('/orders/next-number') as any
+            const oType = get().orderType || (res.data as any)?.order_type
+            const currentType = oType === 'Delivery' || oType === 'DELIVERY' ? 'DELIVERY' : (oType === 'Takeaway' || oType === 'TAKEAWAY') ? 'TAKEAWAY' : 'DINE_IN'
+            const next = await apiClient.get('/orders/next-number', { params: { order_type: currentType } }) as any
             previewOrderNumber = next?.data?.order_number || next?.order_number || previewOrderNumber
           } catch { /* keep previous preview */ }
         }
@@ -239,10 +241,11 @@ export const usePosStore = create<POSState>()(
     const active = get().activeOrder as any
     if (active?.order_number) return
     try {
-      const next = await apiClient.get('/orders/next-number') as any
+      const oType = get().orderType
+      const currentType = oType === 'Delivery' ? 'DELIVERY' : oType === 'Takeaway' ? 'TAKEAWAY' : 'DINE_IN'
+      const next = await apiClient.get('/orders/next-number', { params: { order_type: currentType } }) as any
       const n = next?.data?.order_number || next?.order_number
-      if (!n) return
-      if (n !== get().previewOrderNumber) {
+      if (n) {
         set({ previewOrderNumber: n })
       }
     } catch { /* local peek is best-effort; never block the till */ }
@@ -770,6 +773,7 @@ const resolveValidCustomerId = (customer?: any, fallbackId?: any): string | null
           set({ activeOrder: (res as any).data });
         }
       }
+      void get().refreshPreviewOrderNumber();
     } catch (e) {
       console.error('Failed to sync order type:', e);
     }
@@ -798,6 +802,7 @@ const resolveValidCustomerId = (customer?: any, fallbackId?: any): string | null
           set({ activeOrder: (res as any).data });
         }
       }
+      void get().refreshPreviewOrderNumber();
     } catch (e) {
       console.error('Failed to sync customer:', e);
     }

@@ -262,7 +262,8 @@ class OrderService {
       const businessDate = options.business_date || dateUtils.getBusinessDate();
       const branchId = options.branch_id || 'DEFAULT_BRANCH';
 
-      const orderNumber = options.order_number || orderNumberService.generateNextNumber(branchId, businessDate);
+      const orderType = options.order_type || 'DINE_IN';
+      const orderNumber = options.order_number || orderNumberService.generateNextNumber(branchId, businessDate, orderType);
       const orderId = crypto.randomUUID();
 
       const newOrder = orderRepository.create({
@@ -274,7 +275,7 @@ class OrderService {
         shift_id: shiftId,
         customer_id: this._existingId('customers', options.customer_id),
         table_id: this._resolveDiningTableId(options.table_id),
-        order_type: options.order_type || 'DINE_IN',
+        order_type: orderType,
         lifecycle_state: OrderLifecycleState.DRAFT,
         kitchen_state: 'PENDING',
         payment_state: 'UNPAID',
@@ -314,7 +315,8 @@ class OrderService {
     if (existing) return this._hydrateOrder(existing);
     const businessDate = options.business_date || dateUtils.getBusinessDate();
     const branchId = options.branch_id || 'DEFAULT_BRANCH';
-    const orderNumber = await orderNumberService.allocateNextNumber(branchId, businessDate);
+    const orderType = options.order_type || 'DINE_IN';
+    const orderNumber = await orderNumberService.allocateNextNumber(branchId, businessDate, orderType);
     return this.createDraftOrder(shiftId, userId, { ...options, business_date: businessDate, branch_id: branchId, order_number: orderNumber });
   }
 

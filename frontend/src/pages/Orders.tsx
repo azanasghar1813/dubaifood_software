@@ -379,6 +379,17 @@ export default function Orders() {
     updateOrder(order.id, { receiptReprints: (order.receiptReprints || 0) + 1 })
     addTimelineEvent(order.id, { event: "Receipt Printed", remarks: "Printed thermal receipt", cashier: user?.name || "Ahmed" })
 
+    // Hydrate fresh order detail on-demand so variants & modifiers are 100% complete
+    let orderToPrint: Order = order
+    try {
+      const res = await fetchOrderDetail(order.id)
+      if (res?.success && res?.data) {
+        orderToPrint = mapHistoryDetailToOrder(res.data, res.data)
+      }
+    } catch (e) {
+      console.warn('[Orders] Could not fetch fresh order detail for print:', e)
+    }
+
     // Try backend thermal print first (goes through print queue → engine → real driver)
     try {
       const { usePrinterStore } = await import("../store/printerStore")
@@ -400,7 +411,7 @@ export default function Orders() {
       console.warn('[Orders] Backend print failed, falling back to browser preview:', e)
     }
 
-    setPrintOrder(order)
+    setPrintOrder(orderToPrint)
   }
 
   const handleDuplicate = (order: Order) => {
