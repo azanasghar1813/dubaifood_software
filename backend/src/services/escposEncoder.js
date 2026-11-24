@@ -389,7 +389,7 @@ class EscPosEncoder {
     // ── Final line feeds + paper cut ──────────────────────────────────────
     parts.push(this._lf());
     parts.push(this._align('center'));
-    parts.push(this._encodeText('Powered By : corevex.tech (-_-)', iconvEncoding));
+    parts.push(this._encodeText('Powered By : azanasghar.me', iconvEncoding));
     parts.push(this._lf());
     parts.push(this._lf());
     parts.push(this._lf());

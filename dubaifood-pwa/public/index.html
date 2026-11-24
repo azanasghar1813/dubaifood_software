@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -17,7 +18,9 @@
   <!-- Fonts: Inter / Outfit -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
 
   <style>
     :root {
@@ -43,7 +46,7 @@
 
     body {
       background-color: var(--bg);
-      background-image: 
+      background-image:
         radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.12) 0%, transparent 60%),
         radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
       color: var(--text);
@@ -61,6 +64,7 @@
       min-height: 100vh;
       flex-direction: column;
     }
+
     .screen.active {
       display: flex;
     }
@@ -139,6 +143,7 @@
       opacity: 0;
       transition: opacity 0.2s;
     }
+
     .pin-error.visible {
       opacity: 1;
     }
@@ -256,8 +261,17 @@
     }
 
     @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.85); }
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.4;
+        transform: scale(0.85);
+      }
     }
 
     .icon-btn {
@@ -273,6 +287,7 @@
       cursor: pointer;
       transition: all 0.15s;
     }
+
     .icon-btn:active {
       transform: scale(0.92);
       color: #fff;
@@ -319,6 +334,7 @@
       cursor: pointer;
       transition: all 0.15s;
     }
+
     .date-nav-btn:active {
       background: var(--primary);
       color: #000;
@@ -421,6 +437,7 @@
     .hero-card.sales .card-label {
       color: #fbbf24;
     }
+
     .hero-card.orders .card-label {
       color: #34d399;
     }
@@ -544,9 +561,17 @@
       text-transform: uppercase;
     }
 
-    .breakdown-card.delivery .breakdown-type { color: #60a5fa; }
-    .breakdown-card.dinein .breakdown-type { color: #34d399; }
-    .breakdown-card.takeaway .breakdown-type { color: #fbbf24; }
+    .breakdown-card.delivery .breakdown-type {
+      color: #60a5fa;
+    }
+
+    .breakdown-card.dinein .breakdown-type {
+      color: #34d399;
+    }
+
+    .breakdown-card.takeaway .breakdown-type {
+      color: #fbbf24;
+    }
 
     .breakdown-val {
       font-family: 'Outfit', sans-serif;
@@ -696,7 +721,9 @@
       cursor: pointer;
       transition: all 0.15s;
     }
-    .history-item:active, .history-item.active {
+
+    .history-item:active,
+    .history-item.active {
       border-color: var(--primary);
       background: rgba(245, 158, 11, 0.08);
     }
@@ -754,11 +781,13 @@
       transition: color 0.2s;
     }
 
-    .powered-by-link:hover, .powered-by-link:active {
+    .powered-by-link:hover,
+    .powered-by-link:active {
       color: #fff;
     }
 
-    .powered-by-link:hover span, .powered-by-link:active span {
+    .powered-by-link:hover span,
+    .powered-by-link:active span {
       color: #fbbf24;
       text-decoration: underline;
     }
@@ -766,12 +795,19 @@
     .spin {
       animation: spin 0.8s linear infinite;
     }
+
     @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
+      from {
+        transform: rotate(0deg);
+      }
+
+      to {
+        transform: rotate(360deg);
+      }
     }
   </style>
 </head>
+
 <body>
 
   <!-- ==================================================== -->
@@ -808,8 +844,8 @@
       </div>
 
       <div style="margin-top: 24px; text-align: center;">
-        <a href="https://corevex.tech" target="_blank" rel="noopener noreferrer" class="powered-by-link">
-          Powered By : <span>corevex.tech</span>
+        <a href="https://azanasghar.me" target="_blank" rel="noopener noreferrer" class="powered-by-link">
+          Powered By : <span>azanasghar.me</span>
         </a>
       </div>
     </div>
@@ -958,8 +994,8 @@
     </footer>
 
     <div class="powered-by-wrapper">
-      <a href="https://corevex.tech" target="_blank" rel="noopener noreferrer" class="powered-by-link">
-        Powered By : <span>corevex.tech</span>
+      <a href="https://azanasghar.me" target="_blank" rel="noopener noreferrer" class="powered-by-link">
+        Powered By : <span>azanasghar.me</span>
       </a>
     </div>
   </section>
@@ -1087,7 +1123,7 @@
       const dt = new Date(y, m - 1, d);
       dt.setDate(dt.getDate() + delta);
       const nextDateStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-      
+
       // Do not allow picking future dates beyond current business day
       if (nextDateStr > currentBusinessDate) return;
 
@@ -1163,8 +1199,8 @@
 
           const aov = orders > 0 ? Math.round(sales / orders) : 0;
           document.getElementById('avgOrderVal').innerText = `Avg: PKR ${aov.toLocaleString('en-PK')}`;
-          document.getElementById('salesSub').innerText = isToday 
-            ? 'Live updated across all active POS devices' 
+          document.getElementById('salesSub').innerText = isToday
+            ? 'Live updated across all active POS devices'
             : `Completed business day (${dateStr})`;
 
           // 3. Connected Devices Breakdown
@@ -1293,4 +1329,5 @@
     }
   </script>
 </body>
+
 </html>

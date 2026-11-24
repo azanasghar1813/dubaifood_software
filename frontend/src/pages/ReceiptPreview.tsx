@@ -174,7 +174,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
     <!-- Footer -->
     <div style="text-align:center;margin-top:16px;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:4px">
       <p>Thank you for your order!<br>Please visit again.</p>
-      <div style="font-size:11px;font-weight:600;margin-top:8px;">Powered By : corevex.tech (-_-)</div> 
+      <div style="font-size:11px;font-weight:600;margin-top:8px;">Powered By : azanasghar.me</div> 
     </div> 
   </div>
   ${autoPrintScript}
@@ -337,7 +337,7 @@ export default function ReceiptPreview({ order, autoPrint, onClose }: ReceiptPre
       {/* Footer */}
       <div className="text-center mt-2 text-[11px] font-semibold flex flex-col items-center gap-1 mb-4">
         <p>Thank you for your order!<br />Please visit again.</p>
-        <div className="text-[11px] font-semibold mt-2">Powered By : corevex.tech</div>
+        <div className="text-[11px] font-semibold mt-2">Powered By : azanasghar.me</div>
       </div>
     </div>
   )
