@@ -1314,10 +1314,30 @@
       });
     }
 
-    // --- 4. Service Worker (PWA Installation) ---
+    // --- 4. Service Worker (PWA Installation & Auto-Update) ---
     if ('serviceWorker' in navigator) {
+      let refreshing = false;
+
+      // Auto-reload once new service worker activates and takes control
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((err) => {
+        navigator.serviceWorker.register('/sw.js').then((reg) => {
+          // Check Vercel for new deployment immediately on app open
+          reg.update();
+
+          // Also check for updates when user opens/returns to the app from background
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+              reg.update();
+            }
+          });
+        }).catch((err) => {
           console.warn('PWA ServiceWorker registration failed:', err);
         });
       });
